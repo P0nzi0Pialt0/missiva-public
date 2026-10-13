@@ -1,0 +1,206 @@
+<Window x:Class="Missiva.UI.AccountWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Aggiungi un account" Width="540" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Icon="pack://application:,,,/Assets/missiva.ico">
+    <Window.Resources>
+        <Style x:Key="Secondary" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <!-- Larghi tutti uguali: il Button di Fluent si allinea a sinistra e prende la larghezza del testo. -->
+        <Style x:Key="Choice" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="28,22,28,24">
+        <TextBlock x:Name="Heading" Text="Aggiungi un account" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,16" />
+
+        <!-- Primo passo: l'indirizzo, come in Outlook e Thunderbird -->
+        <StackPanel x:Name="AddressPanel">
+            <TextBlock Style="{StaticResource Secondary}" Margin="0,0,0,12"
+                       Text="Scrivi l'indirizzo email: Missiva riconosce da sé il tipo di account (Outlook.com, Microsoft 365, Gmail, Google Workspace o un altro servizio). Puoi sempre sceglierlo a mano." />
+            <TextBlock Text="Indirizzo email" Margin="0,0,0,4" />
+            <TextBox x:Name="AddressBox" AutomationProperties.Name="Indirizzo email" />
+            <TextBlock x:Name="Detecting" Style="{StaticResource Secondary}" Margin="0,10,0,0" Visibility="Collapsed"
+                       Text="Cerco il servizio di posta del dominio…" />
+            <TextBlock Margin="0,12,0,0">
+                <Hyperlink Click="OnShowChoices" AutomationProperties.Name="Scegli il tipo di account">Scegli il tipo di account</Hyperlink>
+            </TextBlock>
+            <!-- Solo senza account (primo avvio, un PC nuovo): la copia di sicurezza fatta su un altro PC si importa da qui -->
+            <TextBlock x:Name="ImportBackupLine" Style="{StaticResource Secondary}" Margin="0,8,0,0" Visibility="Collapsed">
+                <Run Text="Hai una copia di sicurezza di Missiva fatta su un altro PC?" />
+                <Hyperlink Click="OnImportBackup" AutomationProperties.Name="Importa una copia di sicurezza">Importala</Hyperlink>
+            </TextBlock>
+        </StackPanel>
+
+        <!-- Scelta a mano -->
+        <StackPanel x:Name="ChoicePanel" Visibility="Collapsed">
+            <TextBlock x:Name="ChoiceNote" Style="{StaticResource Secondary}" Margin="0,0,0,12" Visibility="Collapsed" />
+            <Button Style="{StaticResource Choice}" Click="OnChooseMicrosoft" AutomationProperties.Name="Microsoft">
+                <StackPanel>
+                    <TextBlock Text="Microsoft" FontWeight="SemiBold" />
+                    <TextBlock Text="Outlook.com, Hotmail e Live, con l'accesso di Windows" Style="{StaticResource Secondary}" />
+                </StackPanel>
+            </Button>
+            <Button Style="{StaticResource Choice}" Click="OnChooseWork" AutomationProperties.Name="Microsoft 365">
+                <StackPanel>
+                    <TextBlock Text="Microsoft 365" FontWeight="SemiBold" />
+                    <TextBlock Text="Account di lavoro o della scuola (Exchange Online), con l'accesso di Windows" Style="{StaticResource Secondary}" />
+                </StackPanel>
+            </Button>
+            <Button Style="{StaticResource Choice}" Click="OnChooseGmail" AutomationProperties.Name="Google">
+                <StackPanel>
+                    <TextBlock Text="Google" FontWeight="SemiBold" />
+                    <TextBlock Text="Gmail e Google Workspace, con l'accesso dal browser" Style="{StaticResource Secondary}" />
+                </StackPanel>
+            </Button>
+            <Button Style="{StaticResource Choice}" Click="OnChooseImap" AutomationProperties.Name="Altro account">
+                <StackPanel>
+                    <TextBlock Text="Altro account" FontWeight="SemiBold" />
+                    <TextBlock Text="IMAP e SMTP con password: Aruba, Register.it, OVH, Zoho, cPanel, Exchange con IMAP" Style="{StaticResource Secondary}" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!-- Il tipo scelto o riconosciuto, sempre modificabile -->
+        <DockPanel x:Name="KindLine" Visibility="Collapsed" Margin="0,0,0,12">
+            <TextBlock DockPanel.Dock="Right" Margin="12,0,0,0">
+                <Hyperlink Click="OnShowChoices" AutomationProperties.Name="Cambia tipo">Cambia tipo</Hyperlink>
+            </TextBlock>
+            <TextBlock x:Name="KindText" Style="{StaticResource Secondary}" />
+        </DockPanel>
+
+        <!-- Microsoft personale -->
+        <StackPanel x:Name="MicrosoftPanel" Visibility="Collapsed">
+            <TextBlock Style="{StaticResource Secondary}" Margin="0,0,0,12"
+                       Text="Premendo Accedi con Microsoft si apre la finestra account di Windows: scegli l'account e consenti a Missiva di leggere e inviare la posta. Missiva non vede mai la tua password." />
+            <Expander x:Name="MicrosoftAppExpander" Header="App Microsoft di Missiva">
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Style="{StaticResource Secondary}" Margin="0,0,0,10">
+                        <Run Text="L'ID dell'app Missiva registrata su" />
+                        <Hyperlink NavigateUri="https://entra.microsoft.com" RequestNavigate="OnLink">Microsoft Entra</Hyperlink><Run Text=". È già inserito: cambialo solo se usi un'app registrata da te. Vale per gli account personali." />
+                    </TextBlock>
+                    <TextBlock Text="ID applicazione (client)" Margin="0,0,0,4" />
+                    <TextBox x:Name="ClientIdBox" AutomationProperties.Name="ID applicazione degli account personali" />
+                </StackPanel>
+            </Expander>
+        </StackPanel>
+
+        <!-- Microsoft 365, lavoro o scuola -->
+        <StackPanel x:Name="WorkPanel" Visibility="Collapsed">
+            <TextBlock x:Name="WorkIntro" Style="{StaticResource Secondary}" Margin="0,0,0,12"
+                       Text="Premendo Accedi con Microsoft si apre la finestra account di Windows con il tuo account di lavoro o della scuola. La tua organizzazione può chiedere l'approvazione di un amministratore: in quel caso Missiva te lo dice e ti dà il link da mandargli. Missiva non vede mai la tua password." />
+            <!-- Solo se la registrazione di Missiva tornasse per i soli account personali (MicrosoftAuth.DefaultAppAcceptsWork) -->
+            <TextBlock x:Name="WorkBlocked" Style="{StaticResource Secondary}" Margin="0,0,0,12" Visibility="Collapsed"
+                       Text="L'app di Missiva ora è registrata solo per gli account Microsoft personali: con un account di lavoro o della scuola Microsoft rifiuterebbe l'accesso. Se la tua organizzazione ha registrato un'app per Missiva, usala qui sotto." />
+            <CheckBox x:Name="OwnAppCheck" Content="Usa l'app della mia organizzazione" Checked="OnOwnApp" Unchecked="OnOwnApp" />
+            <StackPanel x:Name="OwnAppPanel" Visibility="Collapsed" Margin="28,8,0,0">
+                <TextBlock Style="{StaticResource Secondary}" Margin="0,0,0,10"
+                           Text="L'app registrata dall'amministratore su Microsoft Entra, con la piattaforma App per dispositivi mobili e desktop (indirizzi di ritorno ms-appx-web://microsoft.aad.brokerplugin/ID e http://localhost) e i permessi delegati User.Read, Mail.ReadWrite e Mail.Send. Vale solo per questo account." />
+                <TextBlock Text="ID applicazione (client)" Margin="0,0,0,4" />
+                <TextBox x:Name="WorkClientIdBox" Margin="0,0,0,10" AutomationProperties.Name="ID applicazione dell'organizzazione" />
+                <TextBlock Text="ID o dominio della directory (tenant)" Margin="0,0,0,4" />
+                <TextBox x:Name="TenantBox" AutomationProperties.Name="ID o dominio della directory" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Google: Gmail e Google Workspace -->
+        <StackPanel x:Name="GmailPanel" Visibility="Collapsed">
+            <TextBlock Style="{StaticResource Secondary}" Margin="0,0,0,12"
+                       Text="Premendo Accedi con Google si apre il browser: scegli l'account e consenti a Missiva di leggere e inviare la posta. Missiva non vede mai la tua password." />
+            <TextBlock x:Name="WorkspaceNote" Style="{StaticResource Secondary}" Margin="0,0,0,12" Visibility="Collapsed"
+                       Text="Con Google Workspace l'amministratore della tua organizzazione può bloccare le app che non ha reso attendibili (Google mostra admin_policy_enforced) o spegnere IMAP per il dominio: Missiva te lo dice e ti spiega cosa chiedergli." />
+            <Expander x:Name="GoogleAppExpander" Header="App Google di Missiva">
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Style="{StaticResource Secondary}" Margin="0,0,0,10">
+                        <Run Text="Serve il client OAuth di tipo App desktop che hai creato su" />
+                        <Hyperlink NavigateUri="https://console.cloud.google.com/auth/clients" RequestNavigate="OnLink">Google Cloud</Hyperlink><Run Text=": si inserisce una volta sola e vale per tutti gli account Google." />
+                    </TextBlock>
+                    <TextBlock Text="ID client" Margin="0,0,0,4" />
+                    <TextBox x:Name="GoogleIdBox" Margin="0,0,0,10" />
+                    <TextBlock Text="Client secret" Margin="0,0,0,4" />
+                    <TextBox x:Name="GoogleSecretBox" />
+                </StackPanel>
+            </Expander>
+            <TextBlock x:Name="GoogleWaiting" Style="{StaticResource Secondary}" Margin="0,14,0,0" Visibility="Collapsed"
+                       Text="Continua nel browser. Quando hai consentito l'accesso, l'account si aggiunge da solo." />
+        </StackPanel>
+
+        <!-- Altro account: IMAP e SMTP -->
+        <StackPanel x:Name="ImapPanel" Visibility="Collapsed">
+            <TextBlock Style="{StaticResource Secondary}" Margin="0,0,0,12"
+                       Text="Missiva cerca da sola i server della tua casella. La password resta cifrata su questo PC, solo per il tuo utente di Windows, e viaggia sempre cifrata (SSL/TLS o STARTTLS)." />
+            <TextBlock Text="Il tuo nome" Margin="0,0,0,4" />
+            <TextBox x:Name="NameBox" Margin="0,0,0,10" AutomationProperties.Name="Il tuo nome" />
+            <TextBlock Text="Password" Margin="0,0,0,4" />
+            <PasswordBox x:Name="PasswordBox" AutomationProperties.Name="Password" />
+            <TextBlock x:Name="ConfigStatus" Style="{StaticResource Secondary}" Margin="0,12,0,0" />
+            <Expander x:Name="ManualExpander" Header="Configurazione manuale" Margin="0,10,0,0">
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="120" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Server IMAP (posta in arrivo)" Margin="0,0,0,4" />
+                    <TextBlock Grid.Column="2" Text="Porta" Margin="0,0,0,4" />
+                    <TextBlock Grid.Column="4" Text="Sicurezza" Margin="0,0,0,4" />
+                    <TextBox x:Name="ImapHostBox" Grid.Row="1" AutomationProperties.Name="Server IMAP" />
+                    <TextBox x:Name="ImapPortBox" Grid.Row="1" Grid.Column="2" AutomationProperties.Name="Porta IMAP" />
+                    <ComboBox x:Name="ImapSecurityBox" Grid.Row="1" Grid.Column="4" SelectedIndex="0" AutomationProperties.Name="Sicurezza IMAP">
+                        <ComboBoxItem Content="SSL/TLS" />
+                        <ComboBoxItem Content="STARTTLS" />
+                    </ComboBox>
+                    <TextBlock Grid.Row="2" Text="Server SMTP (posta in uscita)" Margin="0,10,0,4" />
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Porta" Margin="0,10,0,4" />
+                    <TextBlock Grid.Row="2" Grid.Column="4" Text="Sicurezza" Margin="0,10,0,4" />
+                    <TextBox x:Name="SmtpHostBox" Grid.Row="3" AutomationProperties.Name="Server SMTP" />
+                    <TextBox x:Name="SmtpPortBox" Grid.Row="3" Grid.Column="2" AutomationProperties.Name="Porta SMTP" />
+                    <ComboBox x:Name="SmtpSecurityBox" Grid.Row="3" Grid.Column="4" SelectedIndex="0" AutomationProperties.Name="Sicurezza SMTP">
+                        <ComboBoxItem Content="SSL/TLS" />
+                        <ComboBoxItem Content="STARTTLS" />
+                    </ComboBox>
+                    <TextBlock Grid.Row="4" Text="Nome utente" Margin="0,10,0,4" />
+                    <TextBox x:Name="UserBox" Grid.Row="5" Grid.ColumnSpan="5" AutomationProperties.Name="Nome utente" />
+                </Grid>
+            </Expander>
+        </StackPanel>
+
+        <TextBlock x:Name="Error" Margin="0,14,0,0" TextWrapping="Wrap" Foreground="{DynamicResource CriticalBrush}" Visibility="Collapsed" />
+
+        <!-- Consenso dell'amministratore di Microsoft 365 -->
+        <StackPanel x:Name="AdminPanel" Visibility="Collapsed" Margin="0,14,0,0">
+            <TextBlock Text="Chiedi l'approvazione all'amministratore" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock x:Name="AdminText" Style="{StaticResource Secondary}" Margin="0,0,0,8"
+                       Text="Manda questo link a un amministratore di Microsoft 365 della tua organizzazione: aprendolo può approvare Missiva per tutti gli utenti. Quando l'ha fatto, aggiungi di nuovo l'account." />
+            <TextBox x:Name="AdminLink" IsReadOnly="True" TextWrapping="Wrap" AutomationProperties.Name="Link per l'amministratore" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <Button x:Name="CopyAdminLink" Content="Copia" MinWidth="100" Click="OnCopyAdminLink" />
+                <Button x:Name="MailAdminButton" Content="Scrivi all'amministratore" Margin="8,0,0,0" Click="OnMailAdmin" />
+            </StackPanel>
+        </StackPanel>
+
+        <DockPanel Margin="0,20,0,0" LastChildFill="False">
+            <Button x:Name="BackButton" Content="Indietro" Visibility="Collapsed" Click="OnBack" MinWidth="100" />
+            <Button x:Name="ConfirmButton" DockPanel.Dock="Right" Style="{DynamicResource AccentButtonStyle}" MinWidth="120"
+                    Content="Avanti" IsDefault="True" Click="OnConfirm" />
+            <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Annulla" Margin="0,0,8,0" MinWidth="100" IsCancel="True" />
+        </DockPanel>
+    </StackPanel>
+</Window>

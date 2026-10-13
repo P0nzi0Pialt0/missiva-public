@@ -1,0 +1,85 @@
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="DefineConstants">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Missiva</AssemblyName>
+    <RootNamespace>Missiva</RootNamespace>
+    <StartupObject>Missiva.Program</StartupObject>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\missiva.ico</ApplicationIcon>
+    <Version>0.3.0</Version>
+    <AssemblyTitle>Missiva</AssemblyTitle>
+    <Product>Missiva</Product>
+    <Description>Client di posta nativo per Windows</Description>
+    <SatelliteResourceLanguages>it</SatelliteResourceLanguages>
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <!-- Senza compressione: gli assembly si mappano dal file invece di essere decompressi in memoria privata. Misure del
+         26 settembre 2026 (prova.ps1 -Release): finestra pronta 621-658 ms invece di 807-831, Missiva 122-137 MB privati
+         dopo l'avvio invece di 192-194 e 166 invece di 236 dopo 12 messaggi; il file passa da 71 a 164 MB. -->
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <!-- ReadyToRun (giro P3, richiesta dell'autore): il codice di Missiva e delle librerie già compilato, niente JIT all'avvio.
+         Misure del 27 settembre 2026, tre avvii di prova.ps1 -Release: finestra pronta 714-834 ms invece di 915-966,
+         primo disegno 847-959 invece di 1005-1106, lettura delle impostazioni 41-44 ms invece di 104-109; Missiva 124 MB
+         privati dopo l'avvio come prima; il file passa da 165 a 245 MB. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+  </PropertyGroup>
+
+  <!-- Fuori dalla Debug .NET non carica gli assembly scritti nella variabile d'ambiente DOTNET_STARTUP_HOOKS prima di Main:
+       la versione installata non esegue codice scelto da una variabile d'ambiente (audit dell'11 ottobre, T-29). -->
+  <PropertyGroup Condition="'$(Configuration)' != 'Debug'">
+    <StartupHookSupport>false</StartupHookSupport>
+  </PropertyGroup>
+
+  <!-- In Debug un avviso di nullità (CS86xx: un valore che può essere null usato come se non lo fosse) ferma la
+       compilazione: dal 12 ottobre 2026 sono zero (audit dell'11 ottobre, C-37), e uno nuovo va guardato quando nasce.
+       La condizione è sulla configurazione, non sulla costante DEBUG: in Release restano avvisi, anche nella versione
+       finale con gli strumenti di prova (-p:DefineConstants=DEBUG%3BTRACE), così installa.ps1 e prova.ps1 -Release non
+       si fermano mai per questo (scelte del 12 ottobre, C-37). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <WarningsAsErrors>$(WarningsAsErrors);nullable</WarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- Prove della versione finale (strumenti\prova.ps1 -Release): come la versione di prova, lavora su una copia dei
+       dati, non segna letti i messaggi aperti e scrive le righe "tempi:" nel registro.
+       TreatAsLocalProperty="DefineConstants" in cima: una proprietà data dalla riga di comando vale più di quelle scritte
+       qui, e con -p:DefineConstants=DEBUG%3BTRACE (la versione finale con gli strumenti di prova) PROVA non si aggiungeva:
+       l'eseguibile, avviato senza MISSIVA_DATA, non si chiudeva (audit dell'11 ottobre, T-28). -->
+  <PropertyGroup Condition="'$(MissivaProva)' == 'true'">
+    <DefineConstants>$(DefineConstants);PROVA</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\*.ico" />
+    <Resource Include="Assets\*.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AngleSharp" Version="1.8.2" />
+    <PackageReference Include="MailKit" Version="4.18.0" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.90.0" />
+    <PackageReference Include="Microsoft.Identity.Client.Broker" Version="4.90.0" />
+    <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.90.0" />
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+    <PackageReference Include="SharpVectors.Wpf" Version="1.8.6" />
+    <!-- System.Security.Cryptography.ProtectedData (DPAPI) non è più fra i pacchetti: con .NET 10 fa parte del framework
+         di WPF (Microsoft.WindowsDesktop.App), e il riferimento esplicito dava l'avviso NU1510 a ogni compilazione
+         (audit dell'11 ottobre, C-37). L'assembly resta accanto all'eseguibile, dal framework. -->
+  </ItemGroup>
+
+</Project>

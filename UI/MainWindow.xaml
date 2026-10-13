@@ -1,0 +1,1031 @@
+<Window x:Class="Missiva.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Missiva.UI"
+        Title="Missiva" Width="1320" Height="820" MinWidth="720" MinHeight="560"
+        WindowStartupLocation="CenterScreen" SizeChanged="OnWindowSize"
+        Icon="pack://application:,,,/Assets/missiva.ico">
+
+    <!-- Una sola barra in alto, come nel nuovo Outlook: nome e ricerca nella barra del titolo, pulsanti di sistema disegnati
+         da Windows (così resta Snap Layouts su Ingrandisci); la parte vuota trascina la finestra e il doppio clic la ingrandisce -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="44" GlassFrameThickness="-1" UseAeroCaptionButtons="True" ResizeBorderThickness="6" />
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+        <Style x:Key="Glyph" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource Icons}" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- La riga dell'elenco dei messaggi: un solo elemento che si disegna da sé (MessageRowElement) -->
+        <DataTemplate x:Key="MessageRowNew"><local:MessageRowElement /></DataTemplate>
+        <Style x:Key="Secondary" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+        </Style>
+        <!-- Pulsante leggero come nel nuovo Outlook: senza fondo né bordo, un grigio al passaggio del mouse; disabilitato resta
+             senza fondo e con icona e testo tenui (il modello Fluent del Button gli dava il fondo grigio, e sembrava premuto) -->
+        <ControlTemplate x:Key="SubtleButton" TargetType="Button">
+            <Border x:Name="Back" CornerRadius="4" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True" />
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Back" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter TargetName="Back" Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+        <!-- Bandierina rossa di Contrassegna, che da disabilitata diventa tenue come le altre icone -->
+        <Style x:Key="FlagGlyph" TargetType="TextBlock" BasedOn="{StaticResource Glyph}">
+            <Setter Property="Foreground" Value="{DynamicResource CriticalBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=Button}}" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <!-- Pulsante della barra dei comandi: icona e testo, senza bordo finché non ci passi sopra -->
+        <Style x:Key="Command" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Margin" Value="0,0,2,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template" Value="{StaticResource SubtleButton}" />
+        </Style>
+        <!-- Scheda come nel nuovo Outlook: solo testo, con una barretta del colore principale sotto quella attiva -->
+        <Style x:Key="Tab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="10,3,10,4" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <ContentPresenter HorizontalAlignment="Center" Margin="0,0,0,5" />
+                                <Border x:Name="Bar" Width="18" Height="3" CornerRadius="1.5" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                                        Background="{DynamicResource AccentFillColorDefaultBrush}" Visibility="Hidden" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bar" Property="Visibility" Value="Visible" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Pulsanti dell'intestazione dell'elenco: solo icona -->
+        <Style x:Key="HeaderButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template" Value="{StaticResource SubtleButton}" />
+        </Style>
+        <Style x:Key="HeaderToggle" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Margin" Value="1,0" />
+        </Style>
+        <Style x:Key="RailButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template" Value="{StaticResource SubtleButton}" />
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Barra del titolo: nome della finestra e ricerca; a destra lo spazio dei pulsanti di sistema -->
+        <!-- Alta 44 invece di 48 (l'autore: più bassa), con logo e ricerca più in basso; il pixel più alto del logo è quello della
+             ricerca: la ricerca sta a 11 dall'alto, il logo a 10 perché la sua immagine ha 1 DIP trasparente sopra (verificato sulle
+             foto della prova: primo pixel visibile a y=22 in tutti e due, a scala 200%) -->
+        <Grid x:Name="TitleBar" Height="44" Margin="12,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel x:Name="Brand" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,10,0,0" HorizontalAlignment="Left">
+                <Image Source="pack://application:,,,/Assets/missiva-128.png" Width="20" Height="20" Margin="4,0,10,0" />
+                <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}" FontSize="13" FontWeight="SemiBold"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <!-- Larga 520 finché la finestra lo permette, sempre al centro e mai sotto i pulsanti di sistema (OnWindowSize) -->
+            <Grid x:Name="SearchArea" Grid.Column="1" Width="520" Height="30" VerticalAlignment="Top" Margin="0,11,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
+                <TextBox x:Name="SearchBox" MinHeight="30" Padding="34,4,34,4" KeyDown="OnSearchKeyDown" TextChanged="OnSearchTextChanged"
+                         PreviewKeyDown="OnSearchPreviewKeyDown" GotKeyboardFocus="OnSearchFocus" LostKeyboardFocus="OnSearchBlur" />
+                <TextBlock Text="&#xE721;" Style="{StaticResource Glyph}" FontSize="14" Margin="12,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                <TextBlock x:Name="SearchHint" Text="Cerca" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                <!-- I filtri della ricerca come pastiglie nella casella, con la x per toglierli (MainWindow.SearchFilters.cs) -->
+                <StackPanel x:Name="SearchPills" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="32,0,0,0"
+                            MaxWidth="300" ClipToBounds="True" SizeChanged="OnSearchPillsSize" AutomationProperties.Name="Filtri della ricerca" />
+                <!-- Cancella e dove cercare (Tutte le cartelle o Cartella corrente), come nel nuovo Outlook -->
+                <StackPanel x:Name="SearchTools" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,3,0" SizeChanged="OnSearchToolsSize">
+                    <Button x:Name="ClearSearchButton" Width="30" Height="26" Padding="0" VerticalAlignment="Center"
+                            Background="Transparent" BorderThickness="0" Visibility="Collapsed" Click="OnClearSearch" ToolTip="Cancella la ricerca"
+                            AutomationProperties.Name="Cancella la ricerca">
+                        <TextBlock Text="&#xE711;" Style="{StaticResource Glyph}" FontSize="11" />
+                    </Button>
+                    <Button x:Name="SearchFiltersButton" Width="30" Height="26" Padding="0" VerticalAlignment="Center" Background="Transparent"
+                            BorderThickness="0" Click="OnSearchFilters" ToolTip="Filtri: Da, A, Oggetto, date, allegati, non letti, contrassegnati"
+                            AutomationProperties.Name="Filtri">
+                        <TextBlock x:Name="SearchFiltersGlyph" Text="&#xE71C;" Style="{StaticResource Glyph}" FontSize="13"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </Button>
+                    <Button x:Name="SearchScopeButton" Height="26" Padding="8,0" MinWidth="0" VerticalAlignment="Center" Background="Transparent"
+                            BorderThickness="0" Click="OnSearchScope" ToolTip="Dove cercare" AutomationProperties.Name="Dove cercare">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="SearchScopeText" Text="Tutte le cartelle" FontSize="12" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="9" Margin="6,0,0,0"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <!-- Pannello dei suggerimenti, come nel nuovo Outlook: Tutto, Mail, Persone, File (MainWindow.Suggestions.cs).
+                     Niente è attivabile col fuoco: la tastiera resta nella casella, frecce e Invio scelgono le righe. -->
+                <Popup x:Name="SuggestPopup" PlacementTarget="{Binding ElementName=SearchArea}" Placement="Bottom" AllowsTransparency="True"
+                       StaysOpen="True" Focusable="False" MinWidth="420" Width="{Binding ActualWidth, ElementName=SearchArea}">
+                    <Border CornerRadius="8" BorderThickness="1" Padding="6,4,6,6" Margin="0,4,0,0"
+                            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
+                        <StackPanel>
+                            <StackPanel x:Name="SuggestTabs" Orientation="Horizontal" Margin="2,0,0,4">
+                                <RadioButton x:Name="SuggestAllTab" Style="{StaticResource Tab}" Content="Tutto" IsChecked="True" Focusable="False"
+                                             GroupName="SuggestTabs" Checked="OnSuggestTab" />
+                                <RadioButton x:Name="SuggestMailTab" Style="{StaticResource Tab}" Content="Mail" Focusable="False"
+                                             GroupName="SuggestTabs" Checked="OnSuggestTab" />
+                                <RadioButton x:Name="SuggestPeopleTab" Style="{StaticResource Tab}" Content="Persone" Focusable="False"
+                                             GroupName="SuggestTabs" Checked="OnSuggestTab" />
+                                <RadioButton x:Name="SuggestFilesTab" Style="{StaticResource Tab}" Content="File" Focusable="False"
+                                             GroupName="SuggestTabs" Checked="OnSuggestTab" />
+                            </StackPanel>
+                            <ListBox x:Name="SuggestList" Focusable="False" BorderThickness="0" Background="Transparent" MaxHeight="440"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Suggerimenti della ricerca">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource NavItem}">
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="MinHeight" Value="40" />
+                                        <Setter Property="AutomationProperties.Name" Value="{Binding}" />
+                                        <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnSuggestionClick" />
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="34" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Glyph}" Foreground="{Binding GlyphBrush}" Style="{StaticResource Glyph}" FontSize="16"
+                                                       HorizontalAlignment="Center" Visibility="{Binding GlyphVisibility}" />
+                                            <Border Width="28" Height="28" CornerRadius="14" Background="{Binding AvatarBrush}" VerticalAlignment="Center"
+                                                    Visibility="{Binding AvatarVisibility}">
+                                                <TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Margin="8,0,4,0" VerticalAlignment="Center">
+                                                <TextBlock TextTrimming="CharacterEllipsis">
+                                                    <Run Text="{Binding Before, Mode=OneWay}" /><Run Text="{Binding Match, Mode=OneWay}" FontWeight="Bold" /><Run Text="{Binding After, Mode=OneWay}" />
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding Subtitle}" Visibility="{Binding SubtitleVisibility}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock x:Name="SuggestStatus" Margin="12,6,12,6" FontSize="12" Visibility="Collapsed"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+                </Popup>
+            </Grid>
+        </Grid>
+
+        <!-- Schede e barra dei comandi, come nel nuovo Outlook -->
+        <StackPanel x:Name="CommandArea" Grid.Row="1" Margin="12,0,12,4">
+            <StackPanel Orientation="Horizontal" Margin="4,0,0,2">
+                <RadioButton x:Name="HomeTab" Style="{StaticResource Tab}" Content="Home" IsChecked="True" Margin="0,0,4,0" Checked="OnTab" />
+                <RadioButton x:Name="ViewTab" Style="{StaticResource Tab}" Content="Visualizza" Checked="OnTab" />
+            </StackPanel>
+            <Border Padding="6,3" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <Grid>
+                    <!-- I pulsanti che non entrano finiscono nel menu "..." (CommandOverflow) -->
+                    <DockPanel x:Name="HomeBar" LastChildFill="False" SizeChanged="OnBarSize">
+                        <Button x:Name="HomeRefresh" Style="{StaticResource Command}" DockPanel.Dock="Right" Click="OnRefresh" ToolTip="Sincronizza (F5)"
+                                AutomationProperties.Name="Sincronizza">
+                            <TextBlock Text="&#xE72C;" Style="{StaticResource Glyph}" />
+                        </Button>
+                        <StackPanel x:Name="HomeCommands" Orientation="Horizontal">
+                            <Button x:Name="FoldersButton" Style="{StaticResource Command}" Click="OnToggleFolders" ToolTip="Mostra o nascondi le cartelle"
+                                    AutomationProperties.Name="Cartelle">
+                                <TextBlock Text="&#xE700;" Style="{StaticResource Glyph}" />
+                            </Button>
+                            <!-- Padding verticale 5 invece di 6: il bordo di 1 dello stile Fluent lo farebbe 2 DIP più alto degli altri
+                                 comandi, e passando a Visualizza cartelle ed elenco salivano di 2 DIP -->
+                            <Button x:Name="NewButton" Style="{DynamicResource AccentButtonStyle}" Padding="12,5" Margin="4,0,10,0" Click="OnNew"
+                                    ToolTip="Nuovo messaggio (Ctrl+N)" AutomationProperties.Name="Nuovo messaggio">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE70F;" Style="{StaticResource Glyph}" FontSize="14" Margin="0,0,8,0" />
+                                    <TextBlock Text="Nuovo messaggio" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="DeleteButton" Style="{StaticResource Command}" Click="OnDelete" ToolTip="Elimina (Canc)" AutomationProperties.Name="Elimina">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Elimina" /></StackPanel>
+                            </Button>
+                            <Button x:Name="ArchiveButton" Style="{StaticResource Command}" Click="OnArchive" AutomationProperties.Name="Archivia">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7B8;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Archivia" /></StackPanel>
+                            </Button>
+                            <Button x:Name="MoveButton" Style="{StaticResource Command}" Click="OnMoveMenu" AutomationProperties.Name="Sposta in">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8DE;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Sposta in" /></StackPanel>
+                            </Button>
+                            <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+                            <Button x:Name="ReplyButton" Style="{StaticResource Command}" Click="OnReply" ToolTip="Rispondi (Ctrl+R)" AutomationProperties.Name="Rispondi">
+                                <TextBlock Text="&#xE97A;" Style="{StaticResource Glyph}" />
+                            </Button>
+                            <Button x:Name="ReplyAllButton" Style="{StaticResource Command}" Click="OnReplyAll" ToolTip="Rispondi a tutti (Ctrl+Maiusc+R)"
+                                    AutomationProperties.Name="Rispondi a tutti" Tag="{x:Static local:ContextMenus.ReplyAllGlyph}">
+                                <!-- Due frecce di risposta sovrapposte, come nel nuovo Outlook -->
+                                <Grid Width="20">
+                                    <TextBlock Text="&#xE97A;" Style="{StaticResource Glyph}" Margin="-3,0,0,0">
+                                        <TextBlock.Clip><RectangleGeometry Rect="0,0,7,24" /></TextBlock.Clip>
+                                    </TextBlock>
+                                    <TextBlock Text="&#xE97A;" Style="{StaticResource Glyph}" Margin="3,0,0,0" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="ForwardButton" Style="{StaticResource Command}" Click="OnForward" ToolTip="Inoltra (Ctrl+Maiusc+F)"
+                                    AutomationProperties.Name="Inoltra" Tag="{x:Static local:ContextMenus.ForwardGlyph}">
+                                <TextBlock Text="&#xE97A;" Style="{StaticResource Glyph}" RenderTransformOrigin="0.5,0.5">
+                                    <TextBlock.RenderTransform><ScaleTransform ScaleX="-1" /></TextBlock.RenderTransform>
+                                </TextBlock>
+                            </Button>
+                            <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+                            <Button x:Name="ReadButton" Style="{StaticResource Command}" Click="OnToggleRead" ToolTip="Segna come già letto (Ctrl+Q) o da leggere (Ctrl+U)"
+                                    AutomationProperties.Name="Già letto/Da leggere">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8C3;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Già letto/Da leggere" /></StackPanel>
+                            </Button>
+                            <Button x:Name="FlagButton" Style="{StaticResource Command}" Click="OnToggleFlag" ToolTip="Contrassegna (Ins)" AutomationProperties.Name="Contrassegna">
+                                <TextBlock Text="&#xE7C1;" Style="{StaticResource FlagGlyph}" />
+                            </Button>
+                            <Button x:Name="PinButton" Style="{StaticResource Command}" Click="OnTogglePin" ToolTip="Fissa in alto" AutomationProperties.Name="Fissa in alto">
+                                <TextBlock Text="&#xE718;" Style="{StaticResource Glyph}" />
+                            </Button>
+                        </StackPanel>
+                        <Button x:Name="HomeMore" Style="{StaticResource Command}" Click="OnMoreCommands" ToolTip="Altre opzioni" Visibility="Collapsed"
+                                AutomationProperties.Name="Altre opzioni">
+                            <TextBlock Text="&#xE712;" Style="{StaticResource Glyph}" />
+                        </Button>
+                    </DockPanel>
+
+                    <DockPanel x:Name="ViewBar" LastChildFill="False" Visibility="Collapsed" SizeChanged="OnBarSize">
+                        <Button x:Name="ViewRefresh" Style="{StaticResource Command}" DockPanel.Dock="Right" Click="OnRefresh" AutomationProperties.Name="Sincronizza">
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE72C;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Sincronizza" /></StackPanel>
+                        </Button>
+                        <StackPanel x:Name="ViewCommands" Orientation="Horizontal">
+                            <Button Style="{StaticResource Command}" Click="OnViewSettings" AutomationProperties.Name="Impostazioni di visualizzazione">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Impostazioni di visualizzazione" /></StackPanel>
+                            </Button>
+                            <Button x:Name="MessagesMenuButton" Style="{StaticResource Command}" Click="OnMessagesMenu" AutomationProperties.Name="Messaggi">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8BD;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Messaggi" /><TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,0,0,0" /></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource Command}" Click="OnCollapseConversations" AutomationProperties.Name="Comprimi conversazioni">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8D5;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Comprimi conversazioni" /></StackPanel>
+                            </Button>
+                            <Button x:Name="ZoomButton" Style="{StaticResource Command}" Click="OnZoomMenu" AutomationProperties.Name="Zoom">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE71E;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock x:Name="ZoomText" Text="Zoom" /></StackPanel>
+                            </Button>
+                            <ToggleButton x:Name="LightToggle" Background="Transparent" BorderThickness="0" Padding="10,6" Margin="0,0,2,0" Click="OnLightToggle"
+                                          AutomationProperties.Name="Riquadro di lettura chiaro">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE706;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Riquadro di lettura chiaro" /></StackPanel>
+                            </ToggleButton>
+                            <Button x:Name="PaneMenuButton" Style="{StaticResource Command}" Click="OnPaneMenu" AutomationProperties.Name="Riquadro di lettura">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE89F;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Riquadro di lettura" /><TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,0,0,0" /></StackPanel>
+                            </Button>
+                            <Button x:Name="SizeMenuButton" Style="{StaticResource Command}" Click="OnSizeMenu" AutomationProperties.Name="Dimensioni testo">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8D2;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Dimensioni testo" /><TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,0,0,0" /></StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <Button x:Name="ViewMore" Style="{StaticResource Command}" Click="OnMoreCommands" ToolTip="Altre opzioni" Visibility="Collapsed"
+                                AutomationProperties.Name="Altre opzioni">
+                            <TextBlock Text="&#xE712;" Style="{StaticResource Glyph}" />
+                        </Button>
+                    </DockPanel>
+                </Grid>
+            </Border>
+        </StackPanel>
+
+        <!-- Contenuto -->
+        <Grid x:Name="MainArea" Grid.Row="2" Margin="0,0,12,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="60" />
+                <ColumnDefinition x:Name="FolderColumn" Width="250" MinWidth="0" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="0" />
+                <ColumnDefinition Width="0" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Colonna delle app -->
+            <DockPanel Margin="8,0,8,0">
+                <Button x:Name="MailRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" ToolTip="Posta" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        AutomationProperties.Name="Posta" Click="OnMailRail">
+                    <TextBlock x:Name="MailRailGlyph" Text="&#xE715;" Style="{StaticResource Glyph}" FontSize="18" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                </Button>
+                <Button x:Name="CalendarRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" AutomationProperties.Name="Calendario"
+                        ToolTip="Calendario" Click="OnCalendarRail">
+                    <TextBlock x:Name="CalendarRailGlyph" Text="&#xE787;" Style="{StaticResource Glyph}" FontSize="18" />
+                </Button>
+                <Button x:Name="PeopleRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" AutomationProperties.Name="Persone"
+                        ToolTip="Persone" Click="OnPeopleRail">
+                    <TextBlock x:Name="PeopleRailGlyph" Text="&#xE716;" Style="{StaticResource Glyph}" FontSize="18" />
+                </Button>
+                <Button x:Name="SettingsButton" Style="{StaticResource RailButton}" DockPanel.Dock="Bottom" VerticalAlignment="Bottom"
+                        ToolTip="Account e impostazioni" Click="OnSettingsMenu" AutomationProperties.Name="Account e impostazioni">
+                    <TextBlock Text="&#xE713;" Style="{StaticResource Glyph}" FontSize="18" />
+                </Button>
+            </DockPanel>
+
+            <!-- Cartelle: nella finestra stretta si aprono sopra l'elenco, come nel nuovo Outlook (SetCompact) -->
+            <Border Grid.Column="1" x:Name="FolderPane" Panel.ZIndex="10" CornerRadius="8" SizeChanged="OnFolderPaneSize">
+            <DockPanel>
+                <Button DockPanel.Dock="Bottom" Margin="4,8,8,0" HorizontalAlignment="Stretch" Click="OnAddAccount" AutomationProperties.Name="Aggiungi account">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE710;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,8,0" />
+                        <TextBlock Text="Aggiungi account" />
+                    </StackPanel>
+                </Button>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                    <!-- Tutti gli account: le viste comuni, con due o più account, come in Thunderbird, Apple Mail ed eM Client -->
+                    <StackPanel x:Name="UnifiedPanel" Margin="0,0,4,12" Visibility="Collapsed">
+                        <!-- Gruppo chiuso con una sua vista aperta: l'intestazione e' evidenziata come una cartella scelta (SidebarMarks) -->
+                        <Grid>
+                        <Grid x:Name="UnifiedHeaderMark" Visibility="Collapsed" IsHitTestVisible="False">
+                            <Border CornerRadius="4" Background="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                            <Border Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Background="{DynamicResource AccentFillColorDefaultBrush}" />
+                        </Grid>
+                        <Button Click="OnUnifiedToggle" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="4,4"
+                                AutomationProperties.Name="Tutti gli account: mostra o nascondi">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="UnifiedChevron" Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
+                                           VerticalAlignment="Center" Margin="2,0,10,0" />
+                                <TextBlock Text="Tutti gli account" FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Button>
+                        </Grid>
+                        <ListBox x:Name="UnifiedList" SelectionChanged="OnUnifiedSelected" BorderThickness="0" Background="Transparent"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ItemContainerStyle="{StaticResource NavItem}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ToolTip="{Binding Tip}" AutomationProperties.Name="{Binding AutomationName}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
+                                                   VerticalAlignment="Center" Margin="14,0,10,0" />
+                                        <TextBlock x:Name="UnifiedName" Grid.Column="1" Text="{Binding Name}" FontWeight="{Binding Weight}" TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="{Binding UnreadText}" FontWeight="SemiBold" Margin="8,0,4,0" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                    </Grid>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter TargetName="UnifiedName" Property="FontWeight" Value="SemiBold" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                    <!-- Preferiti: cartelle scelte da qualsiasi account, in cima, come nel nuovo Outlook -->
+                    <StackPanel x:Name="FavoritesPanel" Margin="0,0,4,12" Visibility="Collapsed">
+                        <Grid>
+                        <Grid x:Name="FavoritesHeaderMark" Visibility="Collapsed" IsHitTestVisible="False">
+                            <Border CornerRadius="4" Background="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                            <Border Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Background="{DynamicResource AccentFillColorDefaultBrush}" />
+                        </Grid>
+                        <Button Click="OnFavoritesToggle" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="4,4"
+                                AutomationProperties.Name="Preferiti: mostra o nascondi">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="FavoritesChevron" Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
+                                           VerticalAlignment="Center" Margin="2,0,10,0" />
+                                <TextBlock Text="Preferiti" FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Button>
+                        </Grid>
+                        <ListBox x:Name="FavoritesList" SelectionChanged="OnFolderSelected" ContextMenuOpening="OnFolderMenu" BorderThickness="0"
+                                 AllowDrop="True" DragOver="OnFolderDragOver" DragLeave="OnFolderDragLeave" Drop="OnFolderDrop"
+                                 Background="Transparent" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ItemContainerStyle="{StaticResource NavItem}">
+                            <ListBox.ContextMenu><ContextMenu /></ListBox.ContextMenu>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ToolTip="{Binding Account.Header}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
+                                                   VerticalAlignment="Center" Margin="14,0,10,0" Foreground="{Binding GlyphBrush}" />
+                                        <TextBlock x:Name="FolderName" Grid.Column="1" Text="{Binding Name}" FontWeight="{Binding Weight}" TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="{Binding UnreadText}" FontWeight="SemiBold" Margin="8,0,4,0" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                    </Grid>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter TargetName="FolderName" Property="FontWeight" Value="SemiBold" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                    <ItemsControl x:Name="AccountsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,0,4,12">
+                                    <!-- Gli account si riordinano trascinandoli per l'intestazione o dal tasto destro (Sposta su e giù) -->
+                                    <Border BorderThickness="{Binding DropLine}" BorderBrush="{DynamicResource AccentFillColorDefaultBrush}">
+                                      <Grid>
+                                        <!-- Account chiuso con la cartella aperta: intestazione evidenziata come una cartella scelta (SidebarMarks) -->
+                                        <Grid Visibility="{Binding HeaderSelectedVisibility}" IsHitTestVisible="False">
+                                            <Border CornerRadius="4" Background="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                                            <Border Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                    Background="{DynamicResource AccentFillColorDefaultBrush}" />
+                                        </Grid>
+                                        <Button Tag="{Binding}" Click="OnAccountToggle" Background="Transparent" BorderThickness="0" AutomationProperties.Name="{Binding HeaderAutomationName}"
+                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="4,4" ContextMenuOpening="OnAccountMenu" AllowDrop="True"
+                                                PreviewMouseLeftButtonDown="OnAccountMouseDown" PreviewMouseMove="OnAccountMouseMove"
+                                                DragOver="OnAccountDragOver" DragLeave="OnAccountDragLeave" Drop="OnAccountDrop">
+                                            <Button.ContextMenu><ContextMenu /></Button.ContextMenu>
+                                            <!-- Con l'account chiuso a destra i non letti della sua Posta in arrivo (AccountItem.HeaderUnreadText) -->
+                                            <Grid ToolTip="{Binding HeaderTip}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Chevron}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
+                                                           VerticalAlignment="Center" Margin="2,0,10,0" />
+                                                <!-- Casella condivisa di Microsoft 365, sotto l'account di lavoro che la apre -->
+                                                <TextBlock Grid.Column="1" Text="&#xE716;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Visibility="{Binding SharedVisibility}"
+                                                           VerticalAlignment="Center" Margin="0,0,6,0" AutomationProperties.Name="Casella condivisa" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Header}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="3" Text="{Binding HeaderUnreadText}" Visibility="{Binding HeaderUnreadVisibility}" FontWeight="SemiBold"
+                                                           Margin="8,0,4,0" VerticalAlignment="Center" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                            </Grid>
+                                        </Button>
+                                      </Grid>
+                                    </Border>
+                                    <TextBlock Text="{Binding StatusLine}" Visibility="{Binding StatusVisibility}" Margin="10,0,4,4" FontSize="12"
+                                               TextWrapping="Wrap" Style="{StaticResource Secondary}" />
+                                    <!-- Password rifiutata o nuovo accesso chiesto: il rimedio porta a Gestisci account, niente si apre da solo -->
+                                    <Border Visibility="{Binding FixVisibility}" Margin="6,0,4,6" Padding="10,6,10,8" CornerRadius="4"
+                                            Background="{DynamicResource SystemFillColorCautionBackgroundBrush}" ToolTip="{Binding Status}">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding FixMessage}" FontSize="12" TextWrapping="Wrap" />
+                                            <Button Tag="{Binding}" Click="OnAccountFix" Margin="0,6,0,0" Padding="10,3"
+                                                    HorizontalAlignment="Left" FontSize="12" AutomationProperties.Name="{Binding FixText}">
+                                                <TextBlock Text="{Binding FixText}" TextWrapping="Wrap" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+                                    <!-- Risposte automatiche attive o programmate (solo con il consenso già dato): Disattiva e Modifica -->
+                                    <Border Visibility="{Binding AutoReplyVisibility}" Margin="6,0,4,6" Padding="10,6,10,8" CornerRadius="4"
+                                            Background="{DynamicResource SystemFillColorAttentionBackgroundBrush}">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding AutoReplyText}" FontSize="12" TextWrapping="Wrap" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                <Button Content="Disattiva" Tag="{Binding}" Click="OnAutoRepliesOff" Padding="10,3" FontSize="12"
+                                                        AutomationProperties.Name="Disattiva le risposte automatiche" />
+                                                <Button Content="Modifica" Tag="{Binding}" Click="OnAutoRepliesEdit" Padding="10,3" FontSize="12" Margin="6,0,0,0"
+                                                        AutomationProperties.Name="Modifica le risposte automatiche" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                    <!-- Albero delle cartelle: le sottocartelle rientrate e comprimibili; si riordinano trascinandole -->
+                                    <ListBox ItemsSource="{Binding Folders}" SelectionChanged="OnFolderSelected" BorderThickness="0" Background="Transparent"
+                                             Visibility="{Binding FoldersVisibility}" AllowDrop="True"
+                                             PreviewMouseLeftButtonDown="OnFolderMouseDown" PreviewMouseMove="OnFolderMouseMove"
+                                             DragOver="OnFolderDragOver" DragLeave="OnFolderDragLeave" Drop="OnFolderDrop"
+                                             ContextMenuOpening="OnFolderMenu"
+                                             ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ContextMenu><ContextMenu /></ListBox.ContextMenu>
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource NavItem}">
+                                                <Setter Property="Visibility" Value="{Binding RowVisibility}" />
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderThickness="{Binding DropLine}" BorderBrush="{DynamicResource AccentFillColorDefaultBrush}" Opacity="{Binding RowOpacity}">
+                                                    <Grid Margin="{Binding Indent}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Button Tag="{Binding}" Click="OnFolderToggle" Visibility="{Binding ChevronVisibility}" Background="Transparent"
+                                                                BorderThickness="0" Padding="0" MinWidth="0" Width="18" Height="20" Margin="-8,0,4,0"
+                                                                ToolTip="Mostra o nascondi le sottocartelle">
+                                                            <TextBlock Text="{Binding ChevronGlyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="9" />
+                                                        </Button>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
+                                                                   VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{Binding GlyphBrush}" />
+                                                        <TextBlock x:Name="FolderName" Grid.Column="2" Text="{Binding Name}" FontWeight="{Binding Weight}"
+                                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding Folder.Id}" />
+                                                        <TextBlock Grid.Column="3" Text="{Binding UnreadText}" FontWeight="SemiBold" Margin="8,0,4,0" VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                                    </Grid>
+                                                </Border>
+                                                <DataTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                        <Setter TargetName="FolderName" Property="FontWeight" Value="SemiBold" />
+                                                    </DataTrigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <Button Tag="{Binding}" Click="OnToggleHidden" Visibility="{Binding HiddenToggleVisibility}"
+                                            Background="Transparent" BorderThickness="0" Padding="12,4" Margin="0,2,0,0" HorizontalAlignment="Left">
+                                        <TextBlock Text="{Binding HiddenToggleText}" FontSize="12" Style="{StaticResource Secondary}" />
+                                    </Button>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+            </Border>
+
+            <GridSplitter x:Name="FolderSplitter" Grid.Column="2" Width="6" HorizontalAlignment="Center" Background="Transparent"
+                          DragCompleted="OnFolderSplitterDragged" />
+
+            <!-- Elenco e riquadro di lettura: la disposizione cambia con Visualizza, Riquadro di lettura -->
+            <Grid x:Name="WorkArea" Grid.Column="3" Grid.ColumnSpan="3">
+                <Border x:Name="ListCard" CornerRadius="8" BorderThickness="1"
+                        Background="{DynamicResource ListPanelBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+                    <Grid>
+                    <DockPanel>
+                        <!-- Intestazione dell'elenco, come nel nuovo Outlook: titolo e Preferiti, poi Seleziona, Vai a, Filtro, Ordina -->
+                        <StackPanel DockPanel.Dock="Top" Margin="11,8,8,4">
+                            <Grid x:Name="ListHeader" SizeChanged="OnListHeaderSize">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox x:Name="SelectAllBox" Visibility="Collapsed" Click="OnSelectAll" MinWidth="0" Margin="4,0,6,0"
+                                          VerticalAlignment="Center" ToolTip="Seleziona tutto" />
+                                <TextBlock x:Name="ListTitle" Grid.Column="1" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center" />
+                                <Button x:Name="StarButton" Grid.Column="2" Style="{StaticResource HeaderButton}" Click="OnStar" Margin="4,0,0,0">
+                                    <TextBlock x:Name="StarGlyph" Text="&#xE734;" Style="{StaticResource Glyph}" />
+                                </Button>
+                                <StackPanel x:Name="HeaderButtons" Grid.Column="4" Orientation="Horizontal">
+                                    <ToggleButton x:Name="SelectModeButton" Style="{StaticResource HeaderToggle}" Checked="OnSelectMode" Unchecked="OnSelectMode" ToolTip="Seleziona" AutomationProperties.Name="Seleziona">
+                                        <TextBlock Text="&#xE762;" Style="{StaticResource Glyph}" />
+                                    </ToggleButton>
+                                    <Button x:Name="JumpButton" Style="{StaticResource HeaderButton}" Click="OnJumpTo" ToolTip="Vai a" AutomationProperties.Name="Vai a">
+                                        <TextBlock x:Name="JumpGlyph" Text="&#xE787;" Style="{StaticResource Glyph}" />
+                                    </Button>
+                                    <Button x:Name="FilterButton" Style="{StaticResource HeaderButton}" Click="OnFilterMenu" ToolTip="Filtro" AutomationProperties.Name="Filtro">
+                                        <TextBlock x:Name="FilterGlyph" Text="&#xE71C;" Style="{StaticResource Glyph}" />
+                                    </Button>
+                                    <Button x:Name="SortButton" Style="{StaticResource HeaderButton}" Click="OnSortMenu" ToolTip="Ordina" AutomationProperties.Name="Ordina">
+                                        <TextBlock x:Name="SortGlyph" Text="&#xE8CB;" Style="{StaticResource Glyph}" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                            <StackPanel x:Name="FocusedTabs" Orientation="Horizontal" Visibility="Collapsed" Margin="-6,4,0,0">
+                                <RadioButton x:Name="FocusedTab" Style="{StaticResource Tab}" Content="Evidenziata" IsChecked="True" Margin="0,0,4,0" Checked="OnFocusedTab" />
+                                <RadioButton x:Name="OtherTab" Style="{StaticResource Tab}" Content="Altra" Checked="OnFocusedTab" />
+                            </StackPanel>
+                            <!-- Vai a: il calendario, per saltare ai messaggi arrivati fino a quel giorno -->
+                            <Popup x:Name="JumpPopup" PlacementTarget="{Binding ElementName=JumpButton}" Placement="Bottom" StaysOpen="False"
+                                   AllowsTransparency="True" PopupAnimation="Fade">
+                                <Border CornerRadius="8" BorderThickness="1" Padding="12" Margin="0,4,0,0"
+                                        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="Vai ai messaggi arrivati fino al giorno" Margin="4,0,4,8" Style="{StaticResource Secondary}" />
+                                        <Calendar x:Name="JumpCalendar" SelectedDatesChanged="OnJumpDate" />
+                                        <Button x:Name="JumpResetButton" Content="Torna ai più recenti" Click="OnJumpReset" Margin="0,8,0,0"
+                                                HorizontalAlignment="Stretch" Visibility="Collapsed" />
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
+                        </StackPanel>
+                        <TextBlock x:Name="ListStatus" DockPanel.Dock="Top" Margin="14,0,14,6" TextWrapping="Wrap" FontSize="12"
+                                   Style="{StaticResource Secondary}" Visibility="Collapsed" />
+                        <ListBox x:Name="MessageList" SelectionMode="Extended" BorderThickness="0" Background="Transparent"
+                                 HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                                 VirtualizingPanel.IsVirtualizingWhenGrouping="True" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0" VirtualizingPanel.CacheLengthUnit="Pixel"
+                                 ScrollViewer.CanContentScroll="True"
+                                 SelectionChanged="OnMessageSelected" KeyDown="OnMessageKeyDown" ScrollViewer.ScrollChanged="OnListScrolled"
+                                 PreviewKeyDown="OnMessageListKey" PreviewMouseDown="OnMessageListMouse"
+                                 PreviewMouseLeftButtonDown="OnMessageDragStart" PreviewMouseMove="OnMessageDragMove" PreviewMouseLeftButtonUp="OnMessageMouseUp"
+                                 MouseDoubleClick="OnMessageDoubleClick" ContextMenuOpening="OnMessageMenu">
+                            <ListBox.ContextMenu><ContextMenu /></ListBox.ContextMenu>
+                            <!-- Ogni messaggio è una casella con un bordo sottile; la selezione è una tinta leggera del colore principale -->
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <!-- 10 a sinistra e 14 a destra: la barra di scorrimento di Fluent si posa sopra l'elenco, larga 12 quando
+                                         si allarga, e con 8 copriva l'estremità delle schede (misurato il 29 settembre 2026) -->
+                                    <Setter Property="Margin" Value="10,2,14,3" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <!-- Profondità senza effetti di WPF (un'ombra vera per riga pesa sullo scorrimento): la scheda
+                                                     piena più chiara del pannello dell'elenco e il bordo più scuro in basso, senza ombre né alone
+                                                     (ogni forma in più per scheda si paga a ogni fotogramma dello scorrimento veloce) -->
+                                                <Grid x:Name="Root">
+                                                    <Border CornerRadius="6" Background="{DynamicResource RowCardBrush}" />
+                                                    <Border x:Name="Tint" CornerRadius="6" Opacity="0" Background="{DynamicResource AccentFillColorDefaultBrush}" />
+                                                    <!-- Padding 1: col bordo da 2 della selezione il contenuto non si sposta -->
+                                                    <Border x:Name="Card" CornerRadius="6" BorderThickness="1" Padding="1" Background="Transparent"
+                                                            BorderBrush="{DynamicResource RowBorderBrush}">
+                                                        <ContentPresenter />
+                                                    </Border>
+                                                </Grid>
+                                                <!-- Accento tenue per i non letti, grigio e bordo marcato per la selezione (vince, è dopo) -->
+                                                <ControlTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRead}" Value="False">
+                                                        <Setter TargetName="Tint" Property="Opacity" Value="{DynamicResource UnreadTintOpacity}" />
+                                                    </DataTrigger>
+                                                    <!-- La riga appena arrivata in cima (MessageItem.Arrived) entra crescendo e spinge giù le altre,
+                                                         invece di farle saltare tutte di una scheda (richiesta dell'autore, giro D1). La trasformazione
+                                                         c'è solo durante l'ingresso: su ogni riga, sempre, lo scorrimento veloce perdeva circa 1 ms
+                                                         a fotogramma (10,7 contro 11,9 ms, "scorri 30"). -->
+                                                    <DataTrigger Binding="{Binding Arrived}" Value="True">
+                                                        <Setter TargetName="Root" Property="LayoutTransform">
+                                                            <Setter.Value>
+                                                                <ScaleTransform ScaleY="0" />
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                        <DataTrigger.EnterActions>
+                                                            <BeginStoryboard>
+                                                                <Storyboard Timeline.DesiredFrameRate="120">
+                                                                    <DoubleAnimation Storyboard.TargetName="Root"
+                                                                                     Storyboard.TargetProperty="(FrameworkElement.LayoutTransform).(ScaleTransform.ScaleY)"
+                                                                                     From="0" To="1" Duration="0:0:0.18">
+                                                                        <DoubleAnimation.EasingFunction>
+                                                                            <CubicEase EasingMode="EaseOut" />
+                                                                        </DoubleAnimation.EasingFunction>
+                                                                    </DoubleAnimation>
+                                                                    <DoubleAnimation Storyboard.TargetName="Root" Storyboard.TargetProperty="Opacity"
+                                                                                     From="0" To="1" Duration="0:0:0.18" />
+                                                                </Storyboard>
+                                                            </BeginStoryboard>
+                                                        </DataTrigger.EnterActions>
+                                                    </DataTrigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Card" Property="Background" Value="{DynamicResource RowHoverBrush}" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Tint" Property="Opacity" Value="0" />
+                                                        <Setter TargetName="Card" Property="Background" Value="{DynamicResource RowSelectedBrush}" />
+                                                        <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                                        <Setter TargetName="Card" Property="BorderThickness" Value="2" />
+                                                        <Setter TargetName="Card" Property="Padding" Value="0" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.GroupStyle>
+                                <GroupStyle>
+                                    <!-- Il modello del gruppo senza margini: quello di Fluent metteva 5 DIP a sinistra delle schede (misurato: le schede
+                                         partivano da 14 invece di 9, e con la barra di scorrimento sopra sembravano spostate a destra nel pannello) -->
+                                    <GroupStyle.ContainerStyle>
+                                        <Style TargetType="GroupItem">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="GroupItem">
+                                                        <StackPanel>
+                                                            <ContentPresenter />
+                                                            <ItemsPresenter />
+                                                        </StackPanel>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </GroupStyle.ContainerStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <!-- Oggi, Ieri, Settimana scorsa: etichetta a pillola nel colore d'accento e una linea fino al
+                                             bordo, che chiude il gruppo (l'autore: prima si perdevano fra le schede, scelta B con la linea di C) -->
+                                        <DataTemplate>
+                                            <Grid x:Name="Header" Margin="10,12,14,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <!-- Margine del testo 0,67 sopra e 2,33 sotto (la somma, 3, e' quella di prima: la pillola non cambia): misurato in
+                                                     pixel, la maiuscola stava 0,33 DIP sotto il centro della pillola (1 pixel a 200%), ora e' al centro -->
+                                                <Border CornerRadius="10" Background="{DynamicResource AccentFillColorDefaultBrush}" Opacity="0.14" />
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" Margin="10,0.67,10,2.33"
+                                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                                <Border Grid.Column="1" Height="1" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                        Background="{DynamicResource AccentFillColorDefaultBrush}" Opacity="0.35" />
+                                            </Grid>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding Name}" Value="">
+                                                    <Setter TargetName="Header" Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ListBox.GroupStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="{Binding Padding, Mode=OneTime}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="4" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="3" CornerRadius="1.5" Margin="0,2" Visibility="{Binding UnreadVisibility}"
+                                                Background="{DynamicResource AccentFillColorDefaultBrush}" />
+
+                                        <!-- Immagine del mittente, che al passaggio del mouse diventa una casella di selezione -->
+                                        <Grid Grid.Column="1" Margin="{Binding RowMargin, Mode=OneTime}" VerticalAlignment="Top">
+                                            <Border x:Name="Avatar" Width="34" Height="34" CornerRadius="17" Margin="8,0,12,0"
+                                                    Background="{Binding AvatarBrush, Mode=OneTime}" Visibility="{Binding AvatarVisibility, Mode=OneTime}">
+                                                <Grid>
+                                                    <TextBlock Text="{Binding Initials, Mode=OneTime}" Foreground="White" FontSize="13" FontWeight="SemiBold"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    <!-- Il logo del marchio (Logos), quando c'è, copre le iniziali: fondo bianco per i loghi
+                                                         trasparenti e un filo attorno, che stacca quelli bianchi dalla scheda -->
+                                                    <Ellipse Fill="White" Visibility="{Binding LogoVisibility}" />
+                                                    <Ellipse Visibility="{Binding LogoVisibility}" RenderOptions.BitmapScalingMode="HighQuality">
+                                                        <Ellipse.Fill>
+                                                            <ImageBrush ImageSource="{Binding Logo}" Stretch="UniformToFill" />
+                                                        </Ellipse.Fill>
+                                                    </Ellipse>
+                                                    <Ellipse Stroke="#1F000000" StrokeThickness="1" Visibility="{Binding LogoVisibility}" />
+                                                </Grid>
+                                            </Border>
+                                            <CheckBox x:Name="Check" Visibility="Collapsed" Margin="14,6,6,0" MinWidth="0" VerticalAlignment="Top"
+                                                      IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                                        </Grid>
+
+                                        <StackPanel Grid.Column="2">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Button Background="Transparent" BorderThickness="0" Padding="2,0,6,0" MinWidth="0" Tag="{Binding}"
+                                                        Visibility="{Binding ChevronVisibility}" Click="OnConversationToggle" VerticalAlignment="Center"
+                                                        AutomationProperties.Name="{Binding ChevronTip}">
+                                                    <TextBlock Text="{Binding ChevronGlyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10" />
+                                                </Button>
+                                                <TextBlock Grid.Column="1" TextTrimming="CharacterEllipsis" FontSize="{Binding FontSize, Mode=OneTime}"
+                                                           FontWeight="{Binding Line1Weight}" Foreground="{Binding Line1Brush}">
+                                                    <Run Text="{Binding Line1Tag, Mode=OneTime}" Foreground="{Binding DraftBrush, Mode=OneWay}" /><Run
+                                                         Text="{Binding Line1, Mode=OneTime}" /><Run Text=" " /><Run Text="{Binding Line1Suffix, Mode=OneWay}"
+                                                         Foreground="{DynamicResource SecondaryTextBrush}" FontWeight="Normal" />
+                                                </TextBlock>
+                                                <!-- Data, oppure azioni rapide al passaggio del mouse -->
+                                                <TextBlock x:Name="DateLabel" Grid.Column="2" Text="{Binding DateText}" FontSize="{Binding SmallFontSize, Mode=OneTime}" Margin="8,0,0,0"
+                                                           FontWeight="{Binding Weight}" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                <StackPanel x:Name="HoverActions" Grid.Column="2" Orientation="Horizontal" Visibility="Collapsed" Margin="4,-4,0,-4">
+                                                    <Button Tag="{Binding}" Click="OnRowRead" ToolTip="{Binding ReadTip}" AutomationProperties.Name="{Binding ReadTip}"
+                                                            Background="Transparent" BorderThickness="0" Padding="5,3" MinWidth="0">
+                                                        <TextBlock Text="{Binding ReadGlyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" />
+                                                    </Button>
+                                                    <Button Tag="{Binding}" Click="OnRowFlag" ToolTip="{Binding FlagTip}" AutomationProperties.Name="{Binding FlagTip}"
+                                                            Background="Transparent" BorderThickness="0" Padding="5,3" MinWidth="0">
+                                                        <TextBlock Text="&#xE7C1;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" />
+                                                    </Button>
+                                                    <Button Tag="{Binding}" Click="OnRowPin" ToolTip="{Binding PinTip}" AutomationProperties.Name="{Binding PinTip}"
+                                                            Background="Transparent" BorderThickness="0" Padding="5,3" MinWidth="0">
+                                                        <TextBlock Text="&#xE718;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" />
+                                                    </Button>
+                                                    <Button Tag="{Binding}" Click="OnRowDelete" ToolTip="Elimina" AutomationProperties.Name="Elimina"
+                                                            Background="Transparent" BorderThickness="0" Padding="5,3" MinWidth="0">
+                                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" />
+                                                    </Button>
+                                                </StackPanel>
+                                            </Grid>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <!-- Importanza alta, come il punto esclamativo di Outlook -->
+                                                <TextBlock Grid.Column="5" Text="&#xE8C9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
+                                                           Margin="6,0,0,0" VerticalAlignment="Center" Visibility="{Binding ImportantVisibility, Mode=OneTime}" Foreground="{DynamicResource CriticalBrush}"
+                                                           ToolTip="Importanza alta" />
+                                                <TextBlock FontSize="{Binding FontSize, Mode=OneTime}" FontWeight="{Binding Line2Weight}"
+                                                           Foreground="{Binding Line2Brush}" TextTrimming="CharacterEllipsis">
+                                                    <Run Text="{Binding Line2Tag, Mode=OneTime}" Foreground="{Binding DraftBrush, Mode=OneWay}" /><Run
+                                                         Text="{Binding Line2, Mode=OneTime}" />
+                                                </TextBlock>
+                                                <!-- Ricerca in tutte le cartelle: la cartella del messaggio, come in Outlook; nelle viste di
+                                                     tutti gli account anche il colore e l'indirizzo dell'account, come in Thunderbird -->
+                                                <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                            Visibility="{Binding WhereVisibility, Mode=OneTime}" ToolTip="{Binding WhereTip, Mode=OneTime}">
+                                                    <Ellipse Width="7" Height="7" Margin="0,1,5,0" VerticalAlignment="Center" Fill="{Binding AccountBrush, Mode=OneTime}"
+                                                             Visibility="{Binding AccountDotVisibility, Mode=OneTime}" />
+                                                    <TextBlock Text="{Binding WhereText, Mode=OneTime}" FontSize="{Binding SmallFontSize, Mode=OneTime}" MaxWidth="170" TextTrimming="CharacterEllipsis"
+                                                               VerticalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="&#xE723;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
+                                                           Margin="6,0,0,0" VerticalAlignment="Center" Visibility="{Binding AttachmentVisibility, Mode=OneTime}"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                <TextBlock Grid.Column="2" Text="&#xE718;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
+                                                           Margin="6,0,0,0" VerticalAlignment="Center" Visibility="{Binding PinVisibility}"
+                                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                                <!-- Contrassegno, con la scadenza come in Outlook ("Scadenza: domani", in rosso se passata) -->
+                                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Visibility="{Binding FlagVisibility}">
+                                                    <TextBlock Text="{Binding DueText}" FontSize="{Binding SmallFontSize, Mode=OneTime}" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                               Visibility="{Binding DueVisibility}" Foreground="{Binding DueBrush}" />
+                                                    <TextBlock Text="&#xE7C1;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
+                                                               Margin="6,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource CriticalBrush}" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Text="{Binding Preview}" FontSize="{Binding SmallFontSize, Mode=OneTime}" TextTrimming="CharacterEllipsis"
+                                                       Visibility="{Binding PreviewVisibility, Mode=OneTime}" TextWrapping="{Binding PreviewWrapping, Mode=OneTime}" Height="{Binding PreviewHeight, Mode=OneTime}"
+                                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                                            <!-- Categorie: pastiglie colorate, come in Outlook -->
+                                            <ItemsControl ItemsSource="{Binding CategoryChips}" Visibility="{Binding CategoryVisibility}" Margin="0,4,0,0" Focusable="False">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border CornerRadius="4" Padding="7,1,7,2" Margin="0,0,5,2" Background="{Binding Background}" ToolTip="{Binding Name}">
+                                                            <TextBlock Text="{Binding Text}" FontSize="11" Foreground="{Binding Foreground}" MaxWidth="140" TextTrimming="CharacterEllipsis" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <ItemsControl ItemsSource="{Binding AttachmentChips, Mode=OneTime}" Visibility="{Binding ChipsVisibility, Mode=OneTime}" Margin="0,4,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <!-- Un clic apre il messaggio e l'anteprima dell'allegato (o l'allegato, se non ha anteprima) -->
+                                                        <Border CornerRadius="4" BorderThickness="1" Padding="6,2" Margin="0,0,6,2" MaxWidth="170" Background="Transparent"
+                                                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" ToolTip="{Binding Name}" Cursor="Hand"
+                                                                PreviewMouseLeftButtonUp="OnChipClick">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <!-- Icona del tipo di file, con le tinte delle schede del riquadro (FileKinds) -->
+                                                                <TextBlock Text="{Binding Glyph}" Foreground="{Binding Brush}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                                           FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                                                <TextBlock Text="{Binding Name}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Grid>
+                                    <DataTemplate.Triggers>
+                                        <!-- Modalità Seleziona: le caselle al posto delle immagini dei mittenti, su tutte le righe -->
+                                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="select">
+                                            <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="Avatar" Property="Visibility" Value="Hidden" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="Avatar" Property="Visibility" Value="Hidden" />
+                                            <Setter TargetName="HoverActions" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="DateLabel" Property="Visibility" Value="Hidden" />
+                                        </DataTrigger>
+                                        <!-- Le azioni rapide anche sulla riga scelta con le frecce (MessageItem.KeyboardActions) -->
+                                        <DataTrigger Binding="{Binding KeyboardActions}" Value="True">
+                                            <Setter TargetName="HoverActions" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="DateLabel" Property="Visibility" Value="Hidden" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                    <StackPanel VerticalAlignment="Bottom">
+                    <!-- Posta in uscita, come l'Outlook classico: i messaggi inviati senza rete partono quando torna -->
+                    <Border x:Name="OutboxBar" Visibility="Collapsed" HorizontalAlignment="Stretch" Margin="12,0,12,8"
+                            CornerRadius="6" BorderThickness="1" Padding="14,6,6,6"
+                            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" />
+                        </Border.Effect>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Annulla" Click="OnOutboxUndo" Template="{StaticResource SubtleButton}" Background="Transparent"
+                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
+                                    ToolTip="Togli l'ultimo messaggio dalla Posta in uscita e riaprilo" AutomationProperties.Name="Annulla l'invio dalla Posta in uscita" />
+                            <Button DockPanel.Dock="Right" Content="Riprova" Click="OnOutboxRetry" Template="{StaticResource SubtleButton}" Background="Transparent"
+                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
+                                    ToolTip="Prova adesso a inviare i messaggi e a fare le azioni in attesa" AutomationProperties.Name="Riprova l'invio della Posta in uscita" />
+                            <TextBlock DockPanel.Dock="Left" Text="&#xE724;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock x:Name="OutboxText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                        </DockPanel>
+                    </Border>
+                    <!-- Annulla invio, come nel nuovo Outlook: il messaggio aspetta qualche secondo prima di partire -->
+                    <Border x:Name="SendBar" Visibility="Collapsed" HorizontalAlignment="Stretch" Margin="12,0,12,8"
+                            CornerRadius="6" BorderThickness="1" Padding="14,6,6,6"
+                            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" />
+                        </Border.Effect>
+                        <DockPanel>
+                            <Button x:Name="UndoSendButton" DockPanel.Dock="Right" Content="Annulla" Click="OnUndoSend" Template="{StaticResource SubtleButton}" Background="Transparent"
+                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
+                                    ToolTip="Non inviare il messaggio e riaprilo" AutomationProperties.Name="Annulla invio" />
+                            <TextBlock x:Name="SendText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="Invio in corso…" />
+                        </DockPanel>
+                    </Border>
+                    <!-- Annulla dopo Elimina, Archivia e Sposta, come nel nuovo Outlook: sopra l'elenco, che così non si sposta -->
+                    <Border x:Name="UndoBar" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Margin="12,0,12,12"
+                            CornerRadius="6" BorderThickness="1" Padding="14,6,6,6"
+                            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" />
+                        </Border.Effect>
+                        <DockPanel>
+                            <Button x:Name="UndoButton" DockPanel.Dock="Right" Content="Annulla" Click="OnUndo" Template="{StaticResource SubtleButton}" Background="Transparent"
+                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
+                                    ToolTip="Annulla (Ctrl+Z)" AutomationProperties.Name="Annulla" />
+                            <TextBlock x:Name="UndoText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                    </Border>
+                    </StackPanel>
+                    </Grid>
+                </Border>
+
+                <GridSplitter x:Name="WorkSplitter" Background="Transparent" DragCompleted="OnWorkSplitterDragged" />
+
+                <Border x:Name="ReadingCard" CornerRadius="8" BorderThickness="1"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+                    <local:ReadingView x:Name="Reader" FullPaper="True" />
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

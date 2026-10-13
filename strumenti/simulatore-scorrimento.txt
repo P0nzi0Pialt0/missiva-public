@@ -1,0 +1,231 @@
+using System.Globalization;
+
+// Simulatore dello scorrimento: gli eventi veri registrati da WheelRecorder (E;ms;ampiezza;timestamp) dati a vari algoritmi,
+// con fotogrammi ideali a 120 Hz o con la cadenza registrata (F;ms;posizione;intervallo). Metriche di regolarità.
+var it = CultureInfo.GetCultureInfo("it-IT");
+string dir = @"C:\Progetti\Missiva\prova-dati";
+var names = args.Length > 0 ? args : new[] { "033456", "033458", "033501", "033504", "033506", "033509", "033511", "033520" };
+
+var algos = new (string Name, Func<Algo> Make)[]
+{
+    ("attuale", () => new Current()),
+    ("exp30", () => new Exp(30)),
+    ("exp45", () => new Exp(45)),
+    ("exp65", () => new Exp(65)),
+    ("vel60", () => new Velocity(60)),
+    ("vel90", () => new Velocity(90)),
+    ("exp50", () => new Exp(50)),
+    ("molla20", () => new Spring(20)),
+    ("molla28", () => new Spring(28)),
+    ("molla36", () => new Spring(36)),
+};
+
+foreach (var mode in new[] { "ideale", "registrata" })
+{
+    Console.WriteLine($"=== fotogrammi {mode}");
+    Console.WriteLine("sessione algoritmo   sbalzo%  fermi passoMax  ritardo(px) fine(ms) errore(px) eventi/px");
+    foreach (var name in names)
+    {
+        var (events, frames) = Load(Path.Combine(dir, $"rotella-vera-{name}.csv"), it);
+        double px = events.Sum(e => -e.Delta * 0.5);
+        foreach (var (algName, make) in algos)
+        {
+            var r = Run(make(), events, frames, mode == "registrata");
+            Console.WriteLine($"{name}  {algName,-9} {r.Jerk * 100,7:0} {r.Zeros,6} {r.MaxStep,8:0} {r.LagPx,10:0} {r.SettleMs,8:0} {r.Error,9:0.0}   {events.Count}/{px:0}");
+        }
+    }
+}
+
+static (List<Ev> Events, List<Fr> Frames) Load(string path, CultureInfo it)
+{
+    var events = new List<Ev>();
+    var frames = new List<Fr>();
+    foreach (var line in File.ReadLines(path).Skip(1))
+    {
+        var c = line.Split(';');
+        if (c[0] == "E") events.Add(new Ev(double.Parse(c[1], it), int.Parse(c[2])));
+        else if (c[0] == "F") frames.Add(new Fr(double.Parse(c[1], it), double.Parse(c[3], it)));
+    }
+    return (events, frames);
+}
+
+static Result Run(Algo algo, List<Ev> events, List<Fr> recorded, bool useRecorded)
+{
+    double first = events[0].T, last = events[^1].T;
+    double total = events.Sum(e => -e.Delta * 0.5);
+    // Il tempo dei fotogrammi: quelli registrati (con un riempimento a 120 Hz dove l'app non ne disegnava perché ferma), oppure ideali.
+    var times = new List<(double T, double Dt)>();
+    if (useRecorded)
+    {
+        double prev = 0;
+        foreach (var f in recorded.Where(f => f.T >= first - 30))
+        {
+            while (f.T - prev > 20 && prev > 0) { prev += 8.333; times.Add((prev, 8.333)); }
+            times.Add((f.T, Math.Clamp(f.Gap, 1, 17)));
+            prev = f.T;
+        }
+        while (prev < last + 2500) { prev += 8.333; times.Add((prev, 8.333)); }
+    }
+    else
+    {
+        for (double t = first; t < last + 2500; t += 8.333) times.Add((t, 8.333));
+    }
+    double offset = 0, lastT = first;
+    int e = 0;
+    var steps = new List<(double T, double Step, double Dt)>();
+    double lagSum = 0; int lagN = 0;
+    double input = 0, settled = double.NaN;
+    foreach (var (t, dt) in times)
+    {
+        while (e < events.Count && events[e].T <= t)
+        {
+            double p = -events[e].Delta * 0.5;
+            input += p;
+            algo.Event(events[e].T, p, offset);
+            e++;
+        }
+        double next = algo.Frame(t, dt, offset);
+        steps.Add((t, next - offset, dt));
+        offset = next;
+        if (t <= last + 100) { lagSum += input - offset; lagN++; }
+        if (e >= events.Count && double.IsNaN(settled) && Math.Abs(total - offset) < 1) settled = t;
+    }
+    var active = steps.Where(s => s.T >= first && s.T <= last + 100).ToList();
+    var v = active.Select(s => s.Step / s.Dt).ToList();
+    double mean = v.Count == 0 ? 0 : v.Average(Math.Abs);
+    double jerk = v.Count < 2 ? 0 : Enumerable.Range(1, v.Count - 1).Average(i => Math.Abs(v[i] - v[i - 1])) / Math.Max(mean, 1e-6);
+    int zeros = active.Count(s => Math.Abs(s.Step) < 0.01);
+    return new Result(jerk, zeros, steps.Max(s => Math.Abs(s.Step)), lagN == 0 ? 0 : lagSum / lagN, double.IsNaN(settled) ? double.NaN : settled - last, Math.Abs(total - offset));
+}
+
+record Ev(double T, int Delta);
+record Fr(double T, double Gap);
+record Result(double Jerk, int Zeros, double MaxStep, double LagPx, double SettleMs, double Error);
+
+abstract class Algo
+{
+    public abstract void Event(double t, double px, double offset);
+    public abstract double Frame(double t, double dt, double offset);
+}
+
+/// <summary>La parte dei movimenti fini di WheelScrolling.OnWheel e Step com'è ora (commit e7fa39d).</summary>
+sealed class Current : Algo
+{
+    bool has, fine;
+    double target, rate, fineGap = 16, fineAt = double.NegativeInfinity, lastFrame = -1;
+
+    public override void Event(double t, double px, double offset)
+    {
+        if (!has) { has = true; target = offset; fineGap = 16; rate = 0; fine = false; fineAt = double.NegativeInfinity; lastFrame = -1; }
+        target += px;
+        double gap = t - fineAt;
+        fineAt = t;
+        bool flowing = fine && gap < 60;
+        if (flowing && gap >= 4) fineGap = Math.Clamp(0.7 * fineGap + 0.3 * gap, 8, 33);
+        double want = Math.Abs(target - offset) / (1.25 * fineGap);
+        rate = flowing && rate > 0 ? Math.Clamp(want, rate * 0.85, rate * 1.15) : want;
+        fine = true;
+    }
+
+    public override double Frame(double t, double dt, double offset)
+    {
+        if (!has) return offset;
+        double d = lastFrame < 0 ? 8.333 : Math.Clamp(dt, 1, 17);
+        double rest = target - offset;
+        double r = t - fineAt > 2 * fineGap ? Math.Max(rate, 3 * Math.Abs(rest) / 150) : rate;
+        double step = Math.Min(Math.Abs(rest), r * d);
+        double next = offset + Math.Sign(rest) * step;
+        bool done = Math.Abs(target - next) < 0.5;
+        if (done) next = target;
+        lastFrame = t;
+        if (done) has = false;
+        return next;
+    }
+}
+
+/// <summary>Il movimento insegue la meta con una costante di tempo (a passi di dt, esatta per qualunque intervallo).</summary>
+sealed class Exp(double tau) : Algo
+{
+    double target, pos;
+    bool has;
+
+    public override void Event(double t, double px, double offset)
+    {
+        if (!has) { has = true; target = offset; }
+        target += px;
+    }
+
+    public override double Frame(double t, double dt, double offset)
+    {
+        if (!has) return offset;
+        double next = offset + (target - offset) * (1 - Math.Exp(-Math.Clamp(dt, 1, 17) / tau));
+        if (Math.Abs(target - next) < 0.5) { next = target; has = false; }
+        return next;
+    }
+}
+
+/// <summary>
+/// La velocità segue quella dell'ingresso (px in una finestra mobile di w ms) con un filtro; la posizione la integra, e il
+/// resto della meta si scarica con una frenata quando l'ingresso si ferma. Così i buchi e i gruppi di eventi non cambiano la velocità.
+/// </summary>
+sealed class Velocity(double window) : Algo
+{
+    readonly Queue<(double T, double Px)> recent = new();
+    double target, speed;
+    bool has;
+
+    public override void Event(double t, double px, double offset)
+    {
+        if (!has) { has = true; target = offset; speed = 0; recent.Clear(); }
+        target += px;
+        recent.Enqueue((t, px));
+    }
+
+    public override double Frame(double t, double dt, double offset)
+    {
+        if (!has) return offset;
+        dt = Math.Clamp(dt, 1, 17);
+        while (recent.Count > 0 && t - recent.Peek().T > window) recent.Dequeue();
+        double rest = target - offset;
+        // La velocità dell'ingresso nella finestra, e il resto da scaricare in circa mezza finestra.
+        double input = recent.Sum(r => r.Px) / window;
+        double want = input + rest / window * 0.5;
+        // Filtro sulla velocità (costante di 25 ms), il segno del resto comanda: mai oltre la meta.
+        speed += (want - speed) * (1 - Math.Exp(-dt / 25));
+        double step = speed * dt;
+        if (Math.Sign(step) != Math.Sign(rest)) step = 0;
+        if (Math.Abs(step) > Math.Abs(rest)) step = rest;
+        double next = offset + step;
+        if (Math.Abs(target - next) < 0.5) { next = target; has = false; }
+        return next;
+    }
+}
+
+/// <summary>Molla smorzata criticamente: la velocità sale piano all'inizio del gesto e scende piano alla fine.</summary>
+sealed class Spring(double tau) : Algo
+{
+    double target, velocity;
+    bool has;
+
+    public override void Event(double t, double px, double offset)
+    {
+        if (!has) { has = true; target = offset; velocity = 0; }
+        target += px;
+    }
+
+    public override double Frame(double t, double dt, double offset)
+    {
+        if (!has) return offset;
+        dt = Math.Clamp(dt, 1, 17);
+        double w = 1 / tau, x = offset, v = velocity;
+        for (double left = dt; left > 0; left -= 0.5)
+        {
+            double h = Math.Min(0.5, left);
+            v += (w * w * (target - x) - 2 * w * v) * h;
+            x += v * h;
+        }
+        velocity = v;
+        if (Math.Abs(target - x) < 0.5 && Math.Abs(v) < 0.02) { x = target; velocity = 0; has = false; }
+        return x;
+    }
+}

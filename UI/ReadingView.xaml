@@ -1,0 +1,28 @@
+<UserControl x:Class="Missiva.UI.ReadingView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <StackPanel x:Name="EmptyPanel" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="&#xE715;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="48" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+            <TextBlock x:Name="EmptyText" Text="Seleziona un elemento da leggere" Margin="0,12,0,0" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+
+        <!-- Nascosto ma disposto (Hidden, non Collapsed): WebView2 ha già la sua misura quando arriva il primo messaggio.
+             Oggetto e avviso delle immagini sono nella pagina (ReadingPage), così cambiano insieme al corpo. -->
+        <DockPanel x:Name="ContentPanel" Visibility="Hidden">
+            <!-- La conversazione: WebView2 con JavaScript spento e rete bloccata, messo qui dal codice alla prima necessità
+                 (ReadingView.Web): le sue librerie non rallentano l'avvio, e nell'area di notifica si chiude davvero. -->
+            <Border x:Name="Paper" Margin="12,6,12,12">
+                <Grid x:Name="WebSlot">
+                    <TextBlock x:Name="StatusText" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextWrapping="Wrap" Margin="24" Visibility="Collapsed" />
+                </Grid>
+            </Border>
+        </DockPanel>
+
+        <!-- Anteprima di un allegato (AttachmentPreview), sopra il messaggio: WebView2 intanto è nascosto -->
+        <ContentControl x:Name="PreviewHost" Visibility="Collapsed" Focusable="False" />
+    </Grid>
+</UserControl>
