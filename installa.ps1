@@ -9,7 +9,6 @@ param([string]$InCartella)
 $ErrorActionPreference = "Stop"
 $dir = if ($InCartella) { $InCartella } else { Join-Path $env:LOCALAPPDATA "Programs\Missiva" }
 $exe = Join-Path $dir "Missiva.exe"
-$version = ([xml](Get-Content (Join-Path $PSScriptRoot "Missiva.csproj"))).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
 
 # Prima si compila e si prova, in una cartella a parte, e solo dopo si tocca la Missiva installata: se la compilazione
 # non riesce o l'eseguibile nuovo non parte, quella di prima resta dov'è. Fino al 13 ottobre 2026 la cartella di
@@ -22,7 +21,7 @@ if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 Get-ChildItem (Join-Path $PSScriptRoot "obj\Release") -Recurse -Directory -Filter R2R -ErrorAction SilentlyContinue |
     Remove-Item -Recurse -Force
 
-Write-Host "Compilo Missiva $version..."
+Write-Host "Compilo Missiva..."
 dotnet publish (Join-Path $PSScriptRoot "Missiva.csproj") -c Release -o $staging --nologo -v q
 if ($LASTEXITCODE -ne 0) { throw "Compilazione non riuscita. La Missiva installata non è stata toccata." }
 
@@ -38,6 +37,15 @@ if (-not $check.WaitForExit(120000)) {
 if ($check.ExitCode -ne 0) {
     throw ("L'eseguibile appena compilato non parte (codice 0x{0:X8}). La Missiva installata non è stata toccata." -f $check.ExitCode)
 }
+
+# La versione la dice l'eseguibile appena compilato (Missiva.csproj, MissivaGitVersion): il numero per App installate e
+# il testo con la data e il commit dell'ultima modifica compresa. Quella di prima, se c'è, dall'eseguibile installato.
+$info = (Get-Item (Join-Path $staging "Missiva.exe")).VersionInfo
+$version = "{0}.{1}.{2}" -f $info.FileMajorPart, $info.FileMinorPart, $info.FileBuildPart
+$described = if ($info.ProductVersion) { $info.ProductVersion } else { $version }
+# (Fino al 14 ottobre 2026 era "0.3.0+" con il commit intero: se ne tengono sette cifre.)
+$previous = if (Test-Path $exe) { (Get-Item $exe).VersionInfo.ProductVersion -replace '\+([0-9a-f]{7})[0-9a-f]{33}$', ' ($1)' }
+Write-Host "Compilata e provata: Missiva $described."
 
 # Missiva aperta dalla cartella di installazione blocca i file: le si chiede di uscire come con Esci, anche quando è
 # nascosta nell'area di notifica (senza finestra CloseMainWindow non la trova), con "esci" sul suo canale con nome
@@ -74,7 +82,7 @@ Get-ChildItem $staging | Move-Item -Destination $dir -Force
 Remove-Item $staging -Recurse -Force
 Copy-Item (Join-Path $PSScriptRoot "disinstalla.ps1") $dir -Force
 if ($InCartella) {
-    Write-Host "Missiva $version compilata e provata in $dir. Quella installata non è stata toccata."
+    Write-Host "Missiva $described compilata e provata in $dir. Quella installata non è stata toccata."
     return
 }
 
@@ -127,5 +135,6 @@ $registered = "HKCU:\Software\RegisteredApplications"
 if (-not (Test-Path $registered)) { New-Item $registered | Out-Null }
 New-ItemProperty $registered -Name Missiva -Value "Software\Missiva\Capabilities" -PropertyType String -Force | Out-Null
 
-Write-Host "Missiva $version installata in $dir. La trovi nel menu Start."
+Write-Host "Missiva $described installata in $dir. La trovi nel menu Start."
+if ($previous) { Write-Host "Prima c'era Missiva $previous." }
 Write-Host "Per aprire con Missiva i link mailto: sceglila in Impostazioni, App, App predefinite, Missiva."

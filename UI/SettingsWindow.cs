@@ -91,7 +91,7 @@ public sealed class SettingsWindow : Window
         sections.Items.Clear();
         var names = ((categories.SelectedItem as ListBoxItem)?.Tag as string) switch
         {
-            "Generali" => new[] { "Aspetto", "Notifiche", "Avvio e chiusura", "Copia di sicurezza" },
+            "Generali" => new[] { "Aspetto", "Notifiche", "Avvio e chiusura", "Copia di sicurezza", "Informazioni" },
             "Account" => new[] { "Account di posta", "Firme" },
             _ => new[] { "Elenco messaggi", "Riquadro di lettura", "Gestione messaggi", "Regole", "Scrittura e risposta", "Modelli" },
         };
@@ -118,6 +118,7 @@ public sealed class SettingsWindow : Window
             "Notifiche" => NotificationsPage(),
             "Avvio e chiusura" => StartupPage(),
             "Copia di sicurezza" => BackupPage(),
+            "Informazioni" => AboutPage(),
             "Account di posta" => AccountsPage(),
             "Firme" => SignaturesPage(),
             "Modelli" => TemplatesPage(),
@@ -148,6 +149,28 @@ public sealed class SettingsWindow : Window
     {
         Store.Save();
         changed();
+    }
+
+    // ---------------------------------------------------------------- Generali, Informazioni
+
+    /// <summary>
+    /// Quale Missiva è questa: il numero di versione, con la data e il commit dell'ultima modifica compresa (AppVersion; 14
+    /// ottobre 2026, richiesta dell'autore). Il testo si seleziona e si copia, per dirlo a chi aiuta.
+    /// </summary>
+    StackPanel AboutPage()
+    {
+        var p = new StackPanel();
+        p.Children.Add(Heading("Informazioni"));
+        var version = new TextBox
+        {
+            Text = "Missiva " + AppVersion.Text, IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent,
+            Padding = new Thickness(0), FontSize = 15, TextWrapping = TextWrapping.Wrap,
+        };
+        AutomationProperties.SetName(version, "Versione di Missiva");
+        p.Children.Add(version);
+        p.Children.Add(Question("Il terzo numero cresce a ogni modifica di Missiva. La data e il codice fra parentesi sono quelli dell'ultima " +
+                                "modifica compresa in questa versione: per sapere se una correzione c'è, si confronta con la data in cui è stata fatta."));
+        return p;
     }
 
     // ---------------------------------------------------------------- pezzi comuni

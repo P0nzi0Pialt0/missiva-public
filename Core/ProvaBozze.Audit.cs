@@ -155,9 +155,16 @@ static partial class ProvaBozze
             Report.Add("      (sorgenti non trovati accanto all'eseguibile: versione del manifesto e script di disinstallazione non controllati)");
             return;
         }
-        var project = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(source, "Missiva.csproj")), @"<Version>([\d.]+)</Version>").Groups[1].Value;
+        // Dal 14 ottobre 2026 il progetto scrive solo i primi due numeri (MissivaVersion); il terzo lo conta git a ogni
+        // compilazione (MissivaGitVersion), e il manifesto, che non cambia a ogni compilazione, tiene i primi due.
+        var project = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(source, "Missiva.csproj")), @"<MissivaVersion>(\d+\.\d+)</MissivaVersion>").Groups[1].Value;
         var manifest = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(source, "app.manifest")), "assemblyIdentity version=\"([\\d.]+)\"").Groups[1].Value;
-        Check(project.Length > 0 && manifest == project + ".0", $"versione: app.manifest ({manifest}) dice la stessa di Missiva.csproj ({project})");
+        Check(project.Length > 0 && manifest == project + ".0.0", $"versione: app.manifest ({manifest}) dice i primi due numeri di Missiva.csproj ({project})");
+        // L'eseguibile della suite gira dalla cartella di compilazione, che è un repository git: il terzo numero c'è.
+        var built = typeof(AppVersion).Assembly.GetName().Version;
+        Check(built != null && $"{built.Major}.{built.Minor}" == project && built.Build > 0 && AppVersion.Number == $"{project}.{built.Build}"
+              && System.Text.RegularExpressions.Regex.IsMatch(AppVersion.Text, $@"^{System.Text.RegularExpressions.Regex.Escape(AppVersion.Number)} del \d\d/\d\d/\d{{4}} \([0-9a-f]{{7,}}\)(, con modifiche non ancora in un commit)?$"),
+              $"versione: l'eseguibile dice \"{AppVersion.Text}\": i due numeri del progetto, il terzo dai commit, la data e il commit dell'ultima modifica compresa");
         var uninstall = File.ReadAllBytes(Path.Combine(source, "disinstalla.ps1"));
         var uninstallText = Encoding.UTF8.GetString(uninstall);
         var install = File.ReadAllText(Path.Combine(source, "installa.ps1"));

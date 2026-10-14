@@ -12,7 +12,11 @@
     <StartupObject>Missiva.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\missiva.ico</ApplicationIcon>
-    <Version>0.3.0</Version>
+    <!-- I primi due numeri della versione si scrivono qui; il terzo lo conta git a ogni compilazione (MissivaGitVersion,
+         più sotto). Senza git resta 0. -->
+    <MissivaVersion>0.3</MissivaVersion>
+    <Version>$(MissivaVersion).0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>Missiva</AssemblyTitle>
     <Product>Missiva</Product>
     <Description>Client di posta nativo per Windows</Description>
@@ -62,6 +66,36 @@
   <PropertyGroup Condition="'$(MissivaProva)' == 'true'">
     <DefineConstants>$(DefineConstants);PROVA</DefineConstants>
   </PropertyGroup>
+
+  <!-- La versione che cambia da sola (14 ottobre 2026, richiesta dell'autore: "missiva è ferma sempre alla versione 0.3.0,
+       così non si capisce mai a che punto siamo"). Dal 25 settembre 2026 era 0.3.0, scritta a mano e mai cambiata. Ora il
+       terzo numero è quello dei commit del ramo compilato, che cresce a ogni modifica; il testo della versione
+       (InformationalVersion: "Versione prodotto" nelle proprietà del file, Impostazioni, Generali, Informazioni, il
+       registro, installa.ps1) dice anche la data e il commit dell'ultima modifica compresa, e se nella cartella c'erano
+       modifiche non ancora in un commit. Prima di GetAssemblyVersion, che da Version ricava AssemblyVersion e FileVersion.
+       Senza git (una copia scaricata come ZIP) la versione resta MissivaVersion.0. Nei comandi "%%" è un "%" per cmd. -->
+  <Target Name="MissivaGitVersion" BeforeTargets="GetAssemblyVersion">
+    <Exec Command="git rev-list --count HEAD" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true" IgnoreExitCode="true"
+          IgnoreStandardErrorWarningFormat="true" EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="MissivaCommits" />
+      <Output TaskParameter="ExitCode" PropertyName="MissivaCommitsExit" />
+    </Exec>
+    <Exec Command="git log -1 --format=%%cs_%%h" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true" IgnoreExitCode="true"
+          IgnoreStandardErrorWarningFormat="true" EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="MissivaLast" />
+      <Output TaskParameter="ExitCode" PropertyName="MissivaLastExit" />
+    </Exec>
+    <Exec Command="git status --porcelain --untracked-files=no" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true" IgnoreExitCode="true"
+          IgnoreStandardErrorWarningFormat="true" EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="MissivaChanged" />
+      <Output TaskParameter="ExitCode" PropertyName="MissivaChangedExit" />
+    </Exec>
+    <PropertyGroup Condition="'$(MissivaCommitsExit)' == '0' and '$(MissivaLastExit)' == '0' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(MissivaCommits)', '^\d+$')) and $([System.Text.RegularExpressions.Regex]::IsMatch('$(MissivaLast)', '^\d{4}-\d\d-\d\d_[0-9a-f]+$'))">
+      <Version>$(MissivaVersion).$(MissivaCommits)</Version>
+      <InformationalVersion>$(Version) del $(MissivaLast.Substring(8,2))/$(MissivaLast.Substring(5,2))/$(MissivaLast.Substring(0,4)) ($(MissivaLast.Substring(11)))</InformationalVersion>
+      <InformationalVersion Condition="'$(MissivaChangedExit)' == '0' and '$(MissivaChanged)' != ''">$(InformationalVersion), con modifiche non ancora in un commit</InformationalVersion>
+    </PropertyGroup>
+  </Target>
 
   <ItemGroup>
     <Resource Include="Assets\*.ico" />

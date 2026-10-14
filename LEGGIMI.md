@@ -18,6 +18,12 @@ non è mai stato eseguito). Dalla cartella dei sorgenti: `pwsh -ExecutionPolicy 
 `%LOCALAPPDATA%\Programs\Missiva`, compare nel menu Start e in Impostazioni, App installate (da dove si disinstalla).
 Per aggiornarla basta rilanciare lo stesso comando.
 
+La versione cambia a ogni modifica: i primi due numeri si scrivono a mano nel progetto, il terzo è il numero delle
+modifiche (i commit di git) e cresce da solo, e accanto ci sono la data e il codice dell'ultima modifica compresa, per
+esempio "0.3.526 del 14/10/2026 (1a2b3c4)". La dicono `installa.ps1` (anche quella che c'era prima), Impostazioni,
+Generali, Informazioni, App installate e la prima riga del registro a ogni avvio. Compilata da una copia senza git (uno
+ZIP) resta "0.3.0".
+
 Per aprire con Missiva i link di posta (mailto:) delle pagine web e dei PDF, dopo l'installazione sceglila in
 Impostazioni, App, App predefinite, Missiva, MAILTO: Windows non lascia farlo ai programmi.
 
@@ -151,7 +157,7 @@ che serve a chi arriva: se i passi cambiano, si correggono in quel file.
 - Tema scuro: le email che hanno una versione scura la usano, le altre vengono adattate ai colori scuri come in
   Outlook; il pulsante con il sole le mostra su fondo chiaro, e in Visualizza c'è "Riquadro di lettura chiaro" per
   averle sempre così. Zoom del testo dei messaggi.
-- Impostazioni come in Outlook (Generali: Aspetto, Notifiche, Avvio e chiusura, Copia di sicurezza; Account: Account di
+- Impostazioni come in Outlook (Generali: Aspetto, Notifiche, Avvio e chiusura, Copia di sicurezza, Informazioni; Account: Account di
   posta e Firme; Posta: Elenco messaggi, Riquadro di lettura, Gestione messaggi, Regole, Scrittura e risposta e Modelli): tema, notifiche per account e suono, dimensioni del testo, conversazioni, anteprima di
   0, 1 o 2 righe, mittente o oggetto all'inizio, immagini dei mittenti, anteprima degli allegati, intestazioni per
   data, quando segnare letti i messaggi aperti. Si applicano subito.

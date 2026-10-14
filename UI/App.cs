@@ -136,6 +136,8 @@ public sealed class App : Application
         // Nell'area di notifica nessuna finestra di Microsoft si apre da sola: un token scaduto accende la barra sotto l'account.
         MicrosoftAuth.Quiet = () => WindowHidden;
         StallLog.Start(Dispatcher); // blocchi oltre 50 ms e fotogrammi oltre 33 ms nel registro, anche nella versione installata
+        // Quale Missiva gira, in testa alle righe di questa sessione (AppVersion): a interfaccia ferma, fuori dai tempi dell'avvio.
+        _ = Dispatcher.BeginInvoke(() => Log.Write($"Missiva {AppVersion.Text} avviata"), DispatcherPriority.ApplicationIdle);
 
         ReadingView.ResetDark();
         dark = ReadingView.Dark;
