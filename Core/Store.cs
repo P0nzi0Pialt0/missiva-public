@@ -146,28 +146,48 @@ public sealed class Settings
 
     /// <summary>
     /// Le versioni precedenti ricordavano solo indirizzi interi: diventano domini dove serve. Il segnaposto di un elenco che
-    /// non si decifra resta com'è, così al salvataggio torna nel file il cifrato di prima.
+    /// non si decifra resta com'è, così al salvataggio torna nel file il cifrato di prima. Escono le voci larghe
+    /// (IsBroadImageKey), che valevano per chiunque scrivesse da lì: un suffisso da solo (pd.it, gov.it, co.uk) e un
+    /// servizio di posta personale intero (gmail.com). "Mostra immagini" oggi non le scrive mai; ci sono se scritte a mano,
+    /// arrivate con una copia importata prima di T-17 o scritte da una versione di prima (fino alla revisione del 13 ottobre
+    /// 2026, K-02, "Mostra immagini" su un comune ricordava tutta la provincia, e su un messaggio di x@co.uk ricordava
+    /// co.uk). Per quei mittenti le immagini tornano bloccate finché non si preme di nuovo, e allora si ricorda il suo ente
+    /// o il suo indirizzo. Fino alle scelte del 14 ottobre 2026 (scelta 25) all'avvio uscivano solo i suffissi italiani, e
+    /// le altre voci larghe solo da una copia importata (DropBroadImageSenders).
     /// </summary>
-    public void UpgradeImageSenders() => ImageSenders = ImageSenders.Select(k => ProtectedTextConverter.IsUnreadable(k) ? k : ImageKey(k)).Where(k => k.Length > 0).Distinct().ToList();
+    /// <returns>Le voci uscite perché larghe.</returns>
+    public List<string> UpgradeImageSenders()
+    {
+        var keys = ImageSenders.Select(k => ProtectedTextConverter.IsUnreadable(k) ? k : ImageKey(k)).Where(k => k.Length > 0).Distinct().ToList();
+        static bool Out(string key) => !ProtectedTextConverter.IsUnreadable(key) && IsBroadImageKey(key);
+        ImageSenders = keys.Where(k => !Out(k)).ToList();
+        return keys.Where(Out).ToList();
+    }
 
     /// <summary>
     /// Per le impostazioni che arrivano da una copia di sicurezza (Backup): le voci diventano come le scrive ImageKey, ed
-    /// escono quelle che "Mostra sempre le immagini" non scrive mai e che valgono per tutti i mittenti di un servizio: un
-    /// servizio di posta personale intero ("gmail.com": lì si ricorda l'indirizzo) e un suffisso nazionale da solo
-    /// ("co.uk"). Una copia preparata da altri con "gmail.com" faceva caricare da sole le immagini di chiunque scrivesse
-    /// da Gmail (audit dell'11 ottobre, T-17). Quante ne sono uscite.
+    /// escono quelle larghe (IsBroadImageKey). Una copia preparata da altri con "gmail.com" faceva caricare da sole le
+    /// immagini di chiunque scrivesse da Gmail (audit dell'11 ottobre, T-17). Quante ne sono uscite.
     /// </summary>
     internal int DropBroadImageSenders()
     {
-        static bool Broad(string key)
-        {
-            if (key.Contains('@')) return false;
-            var labels = key.Split('.');
-            return labels.Length < 2 || PersonalMail.Contains(labels[0]) || labels.Length == 2 && labels[1].Length == 2 && SecondLevels.Contains(labels[0]);
-        }
         var keys = ImageSenders.Select(ImageKey).Distinct().ToList();
-        ImageSenders = keys.Where(k => k.Length > 0 && !Broad(k)).ToList();
+        ImageSenders = keys.Where(k => k.Length > 0 && !IsBroadImageKey(k)).ToList();
         return keys.Count - ImageSenders.Count;
+    }
+
+    /// <summary>
+    /// Una voce di "Mostra immagini" (com'è dopo ImageKey) che vale per tutti i mittenti di un servizio, e che "Mostra
+    /// immagini" non scrive mai: un servizio di posta personale intero ("gmail.com": lì si ricorda l'indirizzo), un suffisso
+    /// da solo ("co.uk", "gov.it", "pd.it"), un nome senza punto. Un indirizzo intero non è mai largo, un'organizzazione
+    /// (amazon.it, unibo.it, un comune sotto pd.it) nemmeno. Una regola sola per l'avvio (UpgradeImageSenders) e per una
+    /// copia importata (DropBroadImageSenders).
+    /// </summary>
+    internal static bool IsBroadImageKey(string key)
+    {
+        if (key.Contains('@')) return false;
+        var labels = key.Split('.');
+        return labels.Length < 2 || PersonalMail.Contains(labels[0]) || IsSuffix(labels);
     }
 
     /// <summary>Servizi di posta personale: accettare un indirizzo non deve valere per tutti i loro utenti.</summary>
@@ -182,7 +202,15 @@ public sealed class Settings
     /// <summary>Secondi livelli dei domini nazionali (amazon.co.uk): l'organizzazione è il livello sotto.</summary>
     static readonly HashSet<string> SecondLevels = new(StringComparer.OrdinalIgnoreCase) { "co", "com", "net", "org", "gov", "ac", "edu", "ne", "or", "go" };
 
-    /// <summary>Quello che si ricorda per un mittente: il dominio dell'organizzazione o, per la posta personale, l'indirizzo.</summary>
+    /// <summary>Un suffisso da solo (co.uk, gov.it, pd.it): due etichette sotto cui ognuno registra il suo nome.</summary>
+    static bool IsSuffix(string[] labels) => labels.Length == 2 && (labels[1].Length == 2 && SecondLevels.Contains(labels[0]) || Safety.IsItalianSuffix(labels[0], labels[1]));
+
+    /// <summary>
+    /// Quello che si ricorda per un mittente: il dominio dell'organizzazione o, per la posta personale, l'indirizzo. Dalla
+    /// revisione del 13 ottobre 2026 (K-02) sotto un suffisso di .it (Safety.IsItalianSuffix: i nomi geografici come pd.it e
+    /// veneto.it; gov.it e edu.it li divideva già la regola dei secondi livelli) l'organizzazione è il livello sotto, e di
+    /// chi scrive proprio da un suffisso (x@gov.it, x@co.uk) si ricorda l'indirizzo: prima il suffisso, per tutti.
+    /// </summary>
     public static string ImageKey(string email)
     {
         var address = email.Trim().ToLowerInvariant();
@@ -190,9 +218,9 @@ public sealed class Settings
         var host = at >= 0 ? address[(at + 1)..] : address;
         var labels = host.Split('.', StringSplitOptions.RemoveEmptyEntries);
         if (labels.Length < 2) return at >= 0 ? address : "";
-        int take = labels.Length > 2 && labels[^1].Length == 2 && SecondLevels.Contains(labels[^2]) ? 3 : 2;
+        int take = labels.Length > 2 && IsSuffix(labels[^2..]) ? 3 : 2;
         var organization = labels[^take..];
-        if (at >= 0 && PersonalMail.Contains(organization[0])) return address;
+        if (at >= 0 && (PersonalMail.Contains(organization[0]) || IsSuffix(organization))) return address;
         return string.Join('.', organization);
     }
 
@@ -763,8 +791,17 @@ public static class Store
         var (texts, dpapi) = ProtectedTextConverter.OpenCost;
         Log.Time($"impostazioni lette ({texts} testi decifrati con DPAPI in {dpapi:0.0} ms; {Settings.Flags.Count} contrassegni, {Settings.Snoozed.Count} posposti, {Settings.Rules.Count} regole, {Settings.Templates.Count} modelli)", clock);
         if (recovery != null) Log.Write($"impostazioni non lette ({recovery.Why}): {recovery.Body.Replace("\n\n", " ").Replace('\n', ' ')}");
-        Settings.UpgradeImageSenders();
+        if (Settings.UpgradeImageSenders() is { Count: > 0 } broad) Log.Write(BroadImagesLine(broad));
     }
+
+    /// <summary>
+    /// La riga del registro per le voci larghe di "Mostra immagini" uscite all'avvio (Settings.UpgradeImageSenders): quante
+    /// e quali (sono servizi e suffissi, mai indirizzi), e che per quei mittenti le immagini restano bloccate.
+    /// </summary>
+    internal static string BroadImagesLine(List<string> broad) =>
+        $"immagini: {(broad.Count == 1 ? "1 voce" : $"{broad.Count} voci")} di \"Mostra immagini\" ({string.Join(", ", broad)}) " +
+        $"{(broad.Count == 1 ? "valeva" : "valevano")} per chiunque scriva da un intero servizio di posta o da un intero suffisso e {(broad.Count == 1 ? "è uscita" : "sono uscite")}; " +
+        "per quei mittenti le immagini restano bloccate finché non si preme di nuovo \"Mostra immagini\"";
 
     /// <summary>
     /// Le impostazioni della cartella. Un file che non si legge (vuoto, troncato, di zeri dopo un'interruzione di corrente,

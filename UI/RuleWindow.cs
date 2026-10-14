@@ -366,15 +366,16 @@ public sealed class RuleWindow : Window
     {
         error.Visibility = Visibility.Collapsed;
         if (Read() is not { } rule) return;
-        // Le condizioni di Outlook che Missiva non mostra (oggetto o testo, eccezioni...) contano: la regola non vale per tutti.
-        if (!rule.HasConditions && rule.HiddenConditions.Count == 0 && Dialog.Ask(this, "La regola vale per tutti i messaggi", "Non hai scelto condizioni: la regola agirà su ogni messaggio che arriva " +
-                                             "nella Posta in arrivo. Salvarla lo stesso?", "Salva") != Choice.Primary) return;
-        // Il trucco di chi entra in una casella: una regola che inoltra tutto altrove, di nascosto. Si crea solo sapendolo.
-        var outside = Rules.ExternalForwards(rule, provider.Account)
-            .Where(e => editing == null || !Rules.ExternalForwards(editing, provider.Account).Contains(e, StringComparer.OrdinalIgnoreCase)).ToList();
-        if (outside.Count > 0 && Dialog.Ask(this, "La regola manda la tua posta fuori", $"I messaggi che corrispondono verranno inoltrati a {string.Join(", ", outside)}, " +
-                                             "fuori dalla tua organizzazione, anche quando non guardi. Chi entra di nascosto in una casella crea proprio regole così: " +
-                                             "salvala solo se l'indirizzo è tuo o di qualcuno di cui ti fidi.", "Inoltra a " + outside[0]) != Choice.Primary) return;
+        // Il trucco di chi entra in una casella: una regola che inoltra tutto altrove, di nascosto. Si crea solo sapendolo:
+        // quando chiedere, e con quali indirizzi in vista (tutti, anche quelli che questa finestra non mostra), lo dice
+        // Rules.ForwardQuestion. La finestra non accende e non spegne: quello lo fa la casella dell'elenco, che chiede lì.
+        // Il pulsante predefinito è Annulla (scelte del 14 ottobre 2026, U-02): prima Invio due volte salvava e confermava.
+        var question = Rules.ForwardQuestion(editing, rule, provider.Account);
+        if (question is { } forward && Dialog.AskCancelFirst(this, forward.Heading, forward.Body, forward.Confirm) != Choice.Primary) return;
+        // Senza condizioni (anche quelle di Outlook che Missiva non mostra) la regola agisce su ogni messaggio. Una domanda
+        // sola: se c'era quella sugli inoltri lo diceva già; altrimenti questa, che ricorda gli inoltri verso fuori che ci
+        // sono (scelte del 14 ottobre 2026, U-02: prima le due domande venivano di fila, e questa non nominava gli inoltri).
+        if (question == null && Rules.AllMessagesQuestion(rule, provider.Account) is { } all && Dialog.Ask(this, all.Heading, all.Body, all.Confirm) != Choice.Primary) return;
         form.IsEnabled = save.IsEnabled = false;
         try
         {

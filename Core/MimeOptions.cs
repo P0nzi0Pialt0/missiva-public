@@ -37,6 +37,21 @@ public static class MimeOptions
         return string.Join("\n", MailHtml.ToText(h).Split('\n').Select(l => "> " + l));
     });
 
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, string> htmlQuotes = new();
+    /// <summary>Quante volte l'HTML di una citazione è stato pulito davvero (per le prove).</summary>
+    internal static int QuoteHtmlRuns;
+
+    /// <summary>
+    /// L'HTML dell'originale come entra nella citazione di una risposta o di un inoltro: senza quello che esegue o invia
+    /// (MailHtml.Outgoing; revisione del 13 ottobre 2026, K-04), e uguale a com'era per un messaggio normale. Come
+    /// <see cref="QuoteText"/>, una volta sola per l'HTML dell'originale, non a ogni salvataggio della bozza.
+    /// </summary>
+    public static string QuoteHtml(string html) => htmlQuotes.GetValue(html, static h =>
+    {
+        Interlocked.Increment(ref QuoteHtmlRuns);
+        return MailHtml.Outgoing(h);
+    });
+
     /// <summary>
     /// Il mittente: l'indirizzo dell'account o l'identità scelta nel Da (alias, "Invia come"), con il suo Rispondi a. Via SMTP
     /// l'identità è anche il mittente della busta (MAIL FROM), come in Thunderbird: il server deve accettarla.
@@ -105,7 +120,7 @@ public static class MimeOptions
             }
             var header = $"Il {original.Date:dddd d MMMM yyyy HH:mm}, {original.From} ha scritto:";
             html += $"<br><div>{System.Net.WebUtility.HtmlEncode(header)}</div><blockquote style=\"margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1ex\">" +
-                    quoted.Html + "</blockquote>";
+                    QuoteHtml(quoted.Html) + "</blockquote>";
             text += "\n\n" + header + "\n" + QuoteText(quoted.Html);
 
             // Le immagini incorporate della citazione (cid:): senza, arrivano rotte.

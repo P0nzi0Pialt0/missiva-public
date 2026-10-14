@@ -139,10 +139,16 @@ public partial class AccountWindow : Window
 
     void OnBack(object sender, RoutedEventArgs e) => ShowAddress();
 
+    /// <summary>
+    /// I due link della finestra (Microsoft Entra, Google Cloud), scritti nel XAML: si aprono nel browser solo se sono
+    /// https. Oggi lo sono tutti e due, e nessun altro indirizzo arriva qui: è una difesa in più, perché quello che si
+    /// passa a Windows da aprire sia sempre una pagina web (revisione del 14 ottobre 2026, U-05).
+    /// </summary>
     void OnLink(object sender, RequestNavigateEventArgs e)
     {
-        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
         e.Handled = true;
+        if (e.Uri is not { IsAbsoluteUri: true } uri || uri.Scheme != Uri.UriSchemeHttps) return;
+        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
     }
 
     void OnOwnApp(object sender, RoutedEventArgs e) => UpdateWork();

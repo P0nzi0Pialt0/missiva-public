@@ -206,6 +206,61 @@ public static class Rules
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>
+    /// La conferma da chiedere prima di salvare una regola al posto di quella di prima (null: una regola nuova), o null se
+    /// non c'è nulla da chiedere (revisione del 14 ottobre 2026, U-02). Si chiede ogni volta che un inoltro verso fuori
+    /// diventa attivo e prima non lo era: una regola nuova, un indirizzo esterno nuovo, una regola spenta che si accende
+    /// (dalla casella dell'elenco: prima si riaccendeva senza domande, anche una regola di Outlook creata altrove, da chi
+    /// era entrato nella casella). La domanda nomina tutti gli indirizzi esterni della regola, anche quelli che la finestra
+    /// non mostra (reindirizza, inoltra come allegato): prima solo quelli appena aggiunti. Una regola già accesa salvata
+    /// con gli stessi inoltri non chiede di nuovo (l'elenco la segna già in rosso), e spegnere non chiede mai. Un indirizzo
+    /// nuovo in una regola spenta si chiede lo stesso, come prima, dicendo che è spenta. Dalla finestra, una regola senza
+    /// condizioni ha questa domanda sola, che dice anche che la regola vale per ogni messaggio (scelte del 14 ottobre 2026,
+    /// U-02): prima la finestra chiedeva "La regola vale per tutti i messaggi" e subito dopo questa, per la stessa regola.
+    /// </summary>
+    public static (string Heading, string Body, string Confirm)? ForwardQuestion(MailRule? before, MailRule after, MailAccount account)
+    {
+        var outside = ExternalForwards(after, account);
+        if (outside.Count == 0) return null;
+        // Di una regola nuova, o spenta che si accende, nessun inoltro era attivo: sono tutti nuovi.
+        bool turnedOn = before is { Enabled: false } && after.Enabled;
+        List<string> known = before == null || turnedOn ? [] : ExternalForwards(before, account);
+        if (!outside.Except(known, StringComparer.OrdinalIgnoreCase).Any()) return null;
+        bool all = !after.HasConditions && after.HiddenConditions.Count == 0;
+        string which = all ? "tutti i messaggi che arrivano" : "i messaggi che corrispondono";
+        string sent = $"verranno inoltrati a {string.Join(", ", outside)}, fuori {Outside(account)}, anche quando non guardi";
+        string trusted = outside.Count == 1 ? "l'indirizzo è tuo" : "gli indirizzi sono tuoi";
+        string heading = all && !turnedOn ? "La regola vale per tutti i messaggi e li manda fuori" : "La regola manda la tua posta fuori";
+        if (turnedOn)
+            return (heading, $"Con la regola \"{after.Name}\" accesa, {which} {sent}. Chi entra di nascosto in una casella lascia proprio regole così: " +
+                             $"accendila solo se l'hai creata tu e {trusted} o di qualcuno di cui ti fidi.", "Accendi la regola");
+        // Dalla finestra della regola.
+        const string every = "agirà su ogni messaggio che arriva nella Posta in arrivo";
+        string tail = $"Chi entra di nascosto in una casella crea proprio regole così: salvala solo se {trusted} o di qualcuno di cui ti fidi.";
+        if (!after.Enabled)
+            return (heading, $"La regola è spenta: quando la accendi, {(all ? $"{every} (non hai scelto condizioni), e tutti" : which)} {sent}. {tail}", "Salva");
+        return (heading, $"{(all ? $"Non hai scelto condizioni: la regola {every}, e tutti" : "I messaggi che corrispondono")} {sent}. {tail}",
+                outside.Count == 1 ? "Inoltra a " + outside[0] : $"Inoltra a {outside.Count} indirizzi");
+    }
+
+    /// <summary>
+    /// La domanda della finestra prima di salvare una regola senza condizioni (nemmeno di quelle di Outlook che Missiva non
+    /// mostra), o null se ne ha: la regola agirà su ogni messaggio. Se manda anche la posta fuori lo dice, con gli indirizzi
+    /// (scelte del 14 ottobre 2026, U-02): prima una regola accesa che inoltrava fuori, a cui si toglievano tutte le
+    /// condizioni, chiedeva solo "vale per tutti i messaggi", senza ricordare l'inoltro. Quando c'è anche da chiedere per
+    /// gli inoltri (ForwardQuestion) la finestra fa solo quella, che dice anche questo.
+    /// </summary>
+    public static (string Heading, string Body, string Confirm)? AllMessagesQuestion(MailRule rule, MailAccount account)
+    {
+        if (rule.HasConditions || rule.HiddenConditions.Count > 0) return null;
+        var outside = ExternalForwards(rule, account);
+        string sent = outside.Count == 0 ? "" : $", e lo manderà a {string.Join(", ", outside)}, fuori {Outside(account)}";
+        return ("La regola vale per tutti i messaggi", $"Non hai scelto condizioni: la regola agirà su ogni messaggio che arriva nella Posta in arrivo{sent}. Salvarla lo stesso?", "Salva");
+    }
+
+    /// <summary>Dove va la posta inoltrata fuori: fuori dall'organizzazione per un account di lavoro, dalla casella per uno personale.</summary>
+    static string Outside(MailAccount account) => AccountTypes.IsWork(account) ? "dalla tua organizzazione" : "dalla tua casella";
+
     // ---------------------------------------------------------------- regole di Outlook (Graph messageRule)
 
     static string Str(JsonNode? n, string key) => n?[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : "";

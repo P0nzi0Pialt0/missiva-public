@@ -116,8 +116,8 @@ public sealed class EmlProvider(MimeMessage message, IMailProvider sender) : IMa
         {
             Mode = ComposeMode.New,
             To = mail.To, Cc = mail.Cc, Bcc = mail.Bcc, Subject = mail.Subject,
-            Html = mail.Html + $"<br><div>{WebUtility.HtmlEncode(header)}</div><blockquote style=\"margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1ex\">{body.Html}</blockquote>",
-            Text = mail.Text + "\n\n" + header + "\n" + string.Join("\n", MailHtml.ToText(body.Html).Split('\n').Select(l => "> " + l)),
+            Html = mail.Html + $"<br><div>{WebUtility.HtmlEncode(header)}</div><blockquote style=\"margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1ex\">{MimeOptions.QuoteHtml(body.Html)}</blockquote>",
+            Text = mail.Text + "\n\n" + header + "\n" + MimeOptions.QuoteText(body.Html),
             AttachmentPaths = mail.AttachmentPaths, Images = mail.Images, Draft = mail.Draft, KeptAttachments = mail.KeptAttachments,
             Calendar = mail.Calendar, CalendarMethod = mail.CalendarMethod,
             Importance = mail.Importance, ReadReceipt = mail.ReadReceipt, DeliveryReceipt = mail.DeliveryReceipt, SendAt = mail.SendAt,

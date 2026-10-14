@@ -301,7 +301,7 @@ public sealed class BackupExportWindow : Window
             var owner = Owner;
             Close();
             if (Dialog.Show(owner, "Copia di sicurezza salvata", BackupUi.ExportedText(path, summary, notes), "Apri la cartella") == Choice.Secondary)
-                try { System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\""); }
+                try { Safety.ShowInFolder(path); }
                 catch (Exception ex) { Log.Error("apertura della cartella della copia di sicurezza", ex); }
         }
         catch (Exception ex)

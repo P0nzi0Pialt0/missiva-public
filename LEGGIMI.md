@@ -167,6 +167,10 @@ che serve a chi arriva: se i passi cambiano, si correggono in quel file.
   messaggi allegati, i file .eml, dove non si caricano mai da sole, nemmeno per i mittenti consentiti: lì Mostra
   immagini vale solo per quella volta). Per le aziende vale tutto il
   dominio (google.com comprende accounts.google.com), per la posta personale come gmail.com solo quell'indirizzo.
+  Per gli enti che stanno sotto gov.it, edu.it o un nome geografico (il comune di un paese sotto pd.it, un ente sotto
+  veneto.it o padova.it) vale quell'ente, non tutti quelli sotto lo stesso suffisso. Una voce che vale per tutto un
+  servizio di posta (gmail.com) o per tutto un suffisso (co.uk, pd.it), che Missiva non scrive, all'avvio esce, e il
+  registro dice quale: per quei mittenti premi di nuovo Mostra immagini.
   L'elenco è in Impostazioni, Riquadro di lettura.
 - I link mailto: nelle email aprono un nuovo messaggio in Missiva, e anche quelli delle pagine web e dei PDF se scegli
   Missiva come app di posta (vedi Installare).
@@ -235,13 +239,16 @@ che serve a chi arriva: se i passi cambiano, si correggono in quel file.
   resta in Impostazioni, Posta, Modelli, dove si elimina.
 - Regole, come Impostazioni, Posta, Regole del nuovo Outlook: l'elenco nell'ordine in cui si applicano, ognuna accesa o
   spenta, con Modifica, Elimina, Su, Giù ed "Esegui ora" su una cartella (gli ultimi 500 messaggi, dopo una conferma con
-  quanti ne cambiano). Condizioni: mittente (indirizzi o parole), inviato a me, in Cc, oggetto, testo, allegati,
+  quanti ne cambiano o, se la regola elimina, con quanti ne vanno nel Cestino). Condizioni: mittente (indirizzi o parole), inviato a me, in Cc, oggetto, testo, allegati,
   importanza; azioni: sposta, copia, elimina (nel
   Cestino), segna come letto, contrassegna, categoria, non applicare altre regole. "Crea regola" nel menu del tasto
   destro di un messaggio parte con il suo mittente. Con gli account Microsoft sono le regole di Outlook, le stesse di
   Outlook sul web: girano sul server anche a Missiva chiusa (la prima volta "Consenti l'accesso alle impostazioni della
   casella", solo quando lo premi). Una regola che inoltra la posta fuori dalla tua organizzazione (il trucco di chi entra
-  di nascosto in una casella) è in rosso con Spegni, e Missiva la crea solo dopo una conferma con l'indirizzo in vista.
+  di nascosto in una casella) è in rosso con Spegni, e Missiva la crea, e la riaccende se era spenta, solo dopo una
+  conferma con tutti gli indirizzi in vista, anche quelli che la finestra della regola non mostra; lì Invio annulla, e
+  per confermare si sceglie il pulsante. Salvando una regola senza condizioni, la domanda ricorda gli indirizzi a cui
+  manda la posta.
   Le regole di Outlook con condizioni che Missiva non mostra (oggetto o testo, destinatari, eccezioni) non hanno Esegui
   ora: le applica Outlook ai messaggi che arrivano.
   Con Gmail e gli altri account sono regole di Missiva, cifrate sul PC: agiscono sui nuovi messaggi della Posta in
@@ -357,8 +364,10 @@ che serve a chi arriva: se i passi cambiano, si correggono in quel file.
   "Mostra immagini" valgono per il mittente vero, non per il gestore. Anche i messaggi firmati (S/MIME) dicono chi li ha
   firmati, e sono rossi se il certificato non è del mittente.
 - File firmati .p7m (fatture elettroniche, documenti firmati digitalmente): un clic li apre in Missiva con il
-  firmatario, la data e lo stato della firma; le fatture (XML) si leggono come testo, gli altri documenti si salvano o
-  si aprono con il loro programma.
+  firmatario, la data e lo stato della firma; se le firme sono più di una si leggono tutti i firmatari, e basta una
+  firma che non va (un certificato scaduto, o non adatto a firmare documenti) perché la fascia lo dica, con il nome di
+  chi l'ha messa; le fatture (XML) si leggono come testo, gli altri documenti si salvano o si aprono con il loro
+  programma.
 - Anteprima degli allegati nel riquadro, come nel nuovo Outlook: un clic su un PDF, un'immagine (PNG, JPEG, GIF, BMP) o
   un testo (.txt, .csv, .xml, .json, .log), sulla scheda nel riquadro, sulla pastiglia nell'elenco o su un file dei
   suggerimenti della ricerca, lo mostra al posto del messaggio, con zoom, frecce per gli altri allegati, Scarica, Apri e
@@ -406,7 +415,9 @@ che serve a chi arriva: se i passi cambiano, si correggono in quel file.
 ## Sicurezza
 
 - Nessun codice delle email viene eseguito: JavaScript è spento nel riquadro di lettura, e script, frame e moduli
-  vengono tolti dall'email prima ancora di mostrarla.
+  vengono tolti dall'email prima ancora di mostrarla. Anche quando rispondi o inoltri da un account Gmail o IMAP (con
+  gli account Microsoft la citazione la prepara il server di Outlook): il messaggio citato parte senza script, moduli
+  e link che eseguono qualcosa, e con le sue immagini com'erano.
 - Il riquadro non si collega a Internet da solo: ogni richiesta passa da Missiva, che lascia passare solo le immagini
   dei mittenti per cui hai premuto Mostra immagini. Così il mittente non sa se e quando hai letto.
 - Fuori dal riquadro, l'unica richiesta che Missiva fa da sola verso un mittente è quella del suo logo (vedi "Loghi dei

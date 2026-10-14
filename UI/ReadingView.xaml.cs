@@ -561,19 +561,19 @@ public partial class ReadingView : UserControl
         // fa Chromium erano #8D8D8D e #616161, molto più scuri).
         static double Linear(byte v) { var c = v / 255.0; return c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4); }
         static byte Encoded(double l) => (byte)Math.Round(Math.Clamp(l <= 0.0031308 ? l * 12.92 : 1.055 * Math.Pow(l, 1 / 2.4) - 0.055, 0, 1) * 255);
-        string On(string key)
+        Color On(string key)
         {
             var brush = Application.Current.TryFindResource(key) as SolidColorBrush;
             var c = brush?.Color ?? Colors.Gray;
             double a = c.A / 255.0 * (brush?.Opacity ?? 1);
             byte Mix(byte fore, byte back) => Encoded(a * Linear(fore) + (1 - a) * Linear(back));
-            return $"#{Mix(c.R, paper.R):X2}{Mix(c.G, paper.G):X2}{Mix(c.B, paper.B):X2}";
+            return Color.FromRgb(Mix(c.R, paper.R), Mix(c.G, paper.G), Mix(c.B, paper.B));
         }
         var label = EmptyText;
-        var fonts = string.Join(",", label.FontFamily.Source.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(f => $"'{f}'"));
         // Il centro del riquadro sta sotto quello della pagina di metà della differenza fra i margini sopra e sotto (Paper).
         var margin = FullPaper ? Paper.Padding : Paper.Margin;
-        page = ReadingPage.Empty(light, new EmptyLook(fonts + ",'Segoe UI',sans-serif", label.FontSize,
+        // I nomi dei caratteri come li dà WPF e i colori come colori: il CSS lo scrive la pagina (ReadingPage.CssFonts).
+        page = ReadingPage.Empty(light, new EmptyLook(label.FontFamily.Source, label.FontSize,
             On("TextFillColorTertiaryBrush"), On("TextFillColorSecondaryBrush"), web.ZoomFactor, (margin.Bottom - margin.Top) / 2));
         // Il fondo intorno a WebView2 cambia quando il segnaposto è disegnato (NavigationCompleted), non subito: finché
         // Chromium tiene il messaggio (bianco con il riquadro chiaro) una cornice scura intorno si vedrebbe.
@@ -1827,28 +1827,28 @@ public partial class ReadingView : UserControl
                 EmlRequested(provider, await AttachmentBytesAsync(provider, entry, attachment), name, InJunk(entry.Summary, junk));
                 return;
             }
-            string path;
             if (save)
             {
+                // Dove e con che nome l'ha scelto l'utente nella finestra di Windows (che chiede prima di sovrascrivere): si
+                // scrive lì com'è, e il marchio web si prova a mettere.
                 var dialog = new SaveFileDialog { FileName = name };
                 if (dialog.ShowDialog(owner) != true) return;
-                path = dialog.FileName;
-            }
-            else
-            {
-                var dir = Path.Combine(Safety.TempDir, Guid.NewGuid().ToString("N")[..8]);
-                Directory.CreateDirectory(dir);
-                path = Path.Combine(dir, name);
-            }
-            await File.WriteAllBytesAsync(path, await AttachmentBytesAsync(provider, entry, attachment));
-            // Visualizzazione protetta di Office e controllo di SmartScreen. Se il marchio non si scrive (cartella temporanea
-            // senza flussi alternativi) un documento di Office o un tipo pericoloso non si apre in silenzio (audit, S-10).
-            if (!Safety.MarkFromInternet(path) && !save && !Dialog.ConfirmOpenUnmarked(owner, name))
-            {
-                try { Directory.Delete(Path.GetDirectoryName(path)!, true); } catch { }
+                await File.WriteAllBytesAsync(dialog.FileName, await AttachmentBytesAsync(provider, entry, attachment));
+                Safety.MarkFromInternet(dialog.FileName);
                 return;
             }
-            if (!save) Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            // In una cartella temporanea nuova, con un nome neutro finché non si apre (Safety.WriteTemp; revisione del 14
+            // ottobre, U-03). Il marchio web: Visualizzazione protetta di Office e controllo di SmartScreen. Se non si scrive
+            // (cartella temporanea senza flussi alternativi) un documento di Office o un tipo pericoloso non si apre in
+            // silenzio (audit, S-10), e se la risposta è no il file non ha mai avuto il suo nome.
+            var bytes = await AttachmentBytesAsync(provider, entry, attachment);
+            var temp = await Task.Run(() => Safety.WriteTemp(name, bytes));
+            if (!temp.Marked && !Dialog.ConfirmOpenUnmarked(owner, name))
+            {
+                temp.Discard();
+                return;
+            }
+            Process.Start(new ProcessStartInfo(temp.Release()) { UseShellExecute = true });
         }
         catch (Exception ex)
         {
@@ -1895,11 +1895,8 @@ public partial class ReadingView : UserControl
         {
             foreach (var attachment in attachments)
             {
-                var name = Safety.SafeFileName(attachment.Name);
-                var path = Path.Combine(dialog.FolderName, name);
-                for (int n = 2; File.Exists(path); n++)
-                    path = Path.Combine(dialog.FolderName, $"{Path.GetFileNameWithoutExtension(name)} ({n}){Path.GetExtension(name)}");
-                await File.WriteAllBytesAsync(path, await AttachmentBytesAsync(provider, entry, attachment));
+                // Mai sopra un file che c'è già: " (2)", " (3)"... (Safety.WriteNewAsync).
+                var path = await Safety.WriteNewAsync(dialog.FolderName, Safety.SafeFileName(attachment.Name), await AttachmentBytesAsync(provider, entry, attachment));
                 Safety.MarkFromInternet(path);
             }
         }

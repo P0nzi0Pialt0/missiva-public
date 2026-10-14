@@ -571,8 +571,10 @@ static partial class ProvaBozze
             string open = Method(reading, "async Task OpenAttachmentAsync(", "bool savingAll;"), signedOpen = Method(signed, "void Open()", "catch (Exception ex)");
             int Before(string text, string first, string then) => text.IndexOf(first, StringComparison.Ordinal) is >= 0 and var a && text.IndexOf(then, StringComparison.Ordinal) > a ? 1 : 0;
             const string ask = "if (!save && !Dialog.ConfirmOpenWebPage(owner, name)) return;", askSigned = "if (!Dialog.ConfirmOpenWebPage(this, name)) return;";
-            bool fromPane = Before(open, ask, "File.WriteAllBytesAsync(path") == 1 && Before(open, ask, "Process.Start(") == 1 && Before(open, "Safety.IsDangerous(name)", ask) == 1;
-            bool fromSigned = Before(signedOpen, askSigned, "File.WriteAllBytes(path") == 1 && Before(signedOpen, askSigned, "Process.Start(") == 1;
+            // Dalla revisione del 14 ottobre (U-03) il file da aprire lo scrive Safety.WriteTemp, dal riquadro e dalla finestra dei file firmati.
+            const string write = "Safety.WriteTemp(name";
+            bool fromPane = Before(open, ask, write) == 1 && Before(open, ask, "Process.Start(") == 1 && Before(open, "Safety.IsDangerous(name)", ask) == 1;
+            bool fromSigned = Before(signedOpen, askSigned, write) == 1 && Before(signedOpen, askSigned, "Process.Start(") == 1;
             bool rule = Method(dialog, "public static bool ConfirmOpenWebPage(", "public static Choice AskCancelFirst(") is var confirm && confirm.Contains("if (!Safety.IsWebPage(fileName)) return true;")
                         && confirm.Contains("Safety.WebPageQuestion(fileName)") && confirm.Contains("== Choice.Primary");
             Check(fromPane && fromSigned && rule,

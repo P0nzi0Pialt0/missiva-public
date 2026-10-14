@@ -219,6 +219,9 @@ public static class Pec
     /// <summary>
     /// La firma S/MIME (multipart/signed) del messaggio: l'integrità con MimeKit, poi il certificato (per firmare la posta) e
     /// la sua catena con quelli di Windows e gli intermedi della firma. Il certificato serve a chi chiama per il firmatario.
+    /// Con più firme sulla stessa busta vale la peggiore, con il suo certificato; alla pari, la prima (revisione del 13
+    /// ottobre 2026, K-06): prima contava solo la prima, e una firma buona davanti a una con il certificato scaduto dava
+    /// "firma verificata". La busta di un gestore PEC ha una firma sola.
     /// </summary>
     static (SignatureState, X509Certificate2?) Verify(MimeMessage message)
     {
@@ -226,23 +229,38 @@ public static class Pec
         try
         {
             using var context = new TemporarySecureMimeContext();
-            var signature = signed.Verify(context).FirstOrDefault();
-            if (signature == null) return (SignatureState.Missing, null);
-            var leaf = signature.SignerCertificate is SecureMimeDigitalCertificate certificate
-                ? X509CertificateLoader.LoadCertificate(certificate.Certificate.GetEncoded()) : null;
-            bool intact;
-            try { intact = signature.Verify(true); }
-            catch (DigitalSignatureVerifyException) { intact = false; }
-            if (!intact) return (SignatureState.Invalid, leaf);
-            if (leaf == null) return (SignatureState.Untrusted, null);
-            var extra = new X509Certificate2Collection();
-            if (signed.OfType<MimePart>().FirstOrDefault(p => p is ApplicationPkcs7Signature) is { Content: not null } p7s)
+            var signatures = signed.Verify(context);
+            if (signatures.Count == 0) return (SignatureState.Missing, null);
+            X509Certificate2Collection? extra = null;
+            (SignatureState State, X509Certificate2? Leaf) worst = default;
+            for (int i = 0; i < signatures.Count; i++)
             {
-                var cms = new SignedCms();
-                cms.Decode(Bytes(p7s));
-                extra.AddRange(cms.Certificates);
+                var signature = signatures[i];
+                var leaf = signature.SignerCertificate is SecureMimeDigitalCertificate certificate
+                    ? X509CertificateLoader.LoadCertificate(certificate.Certificate.GetEncoded()) : null;
+                bool intact;
+                try { intact = signature.Verify(true); }
+                catch (DigitalSignatureVerifyException) { intact = false; }
+                SignatureState state;
+                if (!intact) state = SignatureState.Invalid;
+                else if (leaf == null) state = SignatureState.Untrusted;
+                else
+                {
+                    if (extra == null)
+                    {
+                        extra = new X509Certificate2Collection();
+                        if (signed.OfType<MimePart>().FirstOrDefault(p => p is ApplicationPkcs7Signature) is { Content: not null } p7s)
+                        {
+                            var cms = new SignedCms();
+                            cms.Decode(Bytes(p7s));
+                            extra.AddRange(cms.Certificates);
+                        }
+                    }
+                    state = Check(leaf, extra, CertificateUse.Mail);
+                }
+                if (i == 0 || P7m.Rank(state) > P7m.Rank(worst.State)) worst = (state, leaf);
             }
-            return (Check(leaf, extra, CertificateUse.Mail), leaf);
+            return worst;
         }
         catch (Exception ex)
         {

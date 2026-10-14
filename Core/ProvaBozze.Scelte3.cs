@@ -83,7 +83,7 @@ static partial class ProvaBozze
     {
         try
         {
-            var start = new System.Diagnostics.ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+            var start = new System.Diagnostics.ProcessStartInfo(DotnetExe()) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
             foreach (var a in (string[])["msbuild", project, "-nologo", .. names.Select(n => "-getProperty:" + n), .. properties]) start.ArgumentList.Add(a);
             using var process = System.Diagnostics.Process.Start(start)!;
             var output = process.StandardOutput.ReadToEndAsync();

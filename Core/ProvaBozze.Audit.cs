@@ -3753,8 +3753,14 @@ static partial class ProvaBozze
               "le forme di url(...) riconosciute anche prima danno lo stesso risultato di prima (si fermano alla prima parentesi chiusa); con \\) o \\' dentro, bloccato comunque");
 
         // V-02: più di 64 "<" sciolti si riscrivono come &lt; prima dell'analisi; l'albero, e quindi la pagina, è lo stesso.
-        Check(MailHtml.Prepare("<p>" + Repeat("a < b <3 << ", 40) + "</p><!-- c < d --><p title=\"e < f\">g</p><xmp>h < i</xmp>", false, false, NoCid).Fragment
-              == "<div class=\"missiva-body\"><p>" + Repeat("a &lt; b &lt;3 &lt;&lt; ", 40) + "</p><!-- c < d --><p title=\"e < f\">g</p><xmp>h < i</xmp></div>"
+        // Dalla revisione del 14 ottobre (U-01) la pagina del riquadro non ha più commenti, e un xmp ci sta come pre con il
+        // suo testo scritto come testo: che l'analisi non abbia toccato né il commento né il contenuto grezzo si legge
+        // dall'HTML in uscita (MailHtml.Outgoing: stessa analisi, e lì restano come sono), riscritto dall'albero perché c'è
+        // uno script da togliere.
+        const string strayTail = "</p><!-- c < d --><p title=\"e < f\">g</p><xmp>h < i</xmp>";
+        Check(MailHtml.Prepare("<p>" + Repeat("a < b <3 << ", 40) + strayTail, false, false, NoCid).Fragment
+              == "<div class=\"missiva-body\"><p>" + Repeat("a &lt; b &lt;3 &lt;&lt; ", 40) + "</p><p title=\"e < f\">g</p><pre>h &lt; i</pre></div>"
+              && MailHtml.Outgoing("<script>x</script><p>" + Repeat("a < b <3 << ", 40) + strayTail) == "<html><head></head><body><p>" + Repeat("a &lt; b &lt;3 &lt;&lt; ", 40) + strayTail + "</body></html>"
               && MailHtml.ReadableText("<p>" + Repeat("a < b ", 70) + "</p>") == Repeat("a < b ", 70).Trim(),
               "160 \"<\" sciolti nel testo: la stessa pagina e lo stesso testo; commenti, attributi e contenuti grezzi non si toccano");
 
@@ -3770,7 +3776,7 @@ static partial class ProvaBozze
         const string invoiceBody =
             "<tbody><tr><td style=\"{1}\">Gentile cliente,<br>la fattura <b>n. 12</b> è pronta &amp; allegata.</td></tr></tbody></table><p>Vai al <a href=\"https://www.esempio-prova.example/fatture?id=12&amp;x=1\">" +
             "sito <i>di prova</i></a> o scrivi a <a href=\"mailto:info@esempio-prova.example\">info</a>.</p><img src=\"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7\" width=\"1\" height=\"1\">" +
-            "<!-- commento --><pre>\n\nriga 1\n  riga 2</pre></div>";
+            "<pre>\n\nriga 1\n  riga 2</pre></div>"; // dalla revisione del 14 ottobre (U-01) senza "<!-- commento -->": nella pagina del riquadro i commenti non si scrivono
         var invoiceLight = MailHtml.Prepare(invoice, false, false, Cid);
         var invoiceDark = MailHtml.Prepare(invoice, true, false, Cid);
         Check(invoiceLight.Fragment == "<style>.missiva-body { color: #333333; background: white none } .box { border: 1px solid #cccccc } \n</style><div class=\"missiva-body corpo\" style=\"background-color:#ffffff;color:black\">" +
@@ -3781,7 +3787,7 @@ static partial class ProvaBozze
               && invoiceLight.Links.SequenceEqual([new("https://www.esempio-prova.example/fatture?id=12&x=1", "sito di prova"), new("mailto:info@esempio-prova.example", "info")])
               && MailHtml.ToText(invoice) == "Gentile cliente,\nla fattura n. 12 è pronta & allegata.\n\nVai al sito di prova o scrivi a info.\n\nriga 1\nriga 2"
               && MailHtml.ReadableText(invoice) == MailHtml.ToText(invoice),
-              "messaggio con foglio di stile, tabella, link, pixel, script, modulo, commento e pre: pagina chiara e scura, link e testo uguali a prima");
+              "messaggio con foglio di stile, tabella, link, pixel, script, modulo, commento e pre: pagina chiara e scura, link e testo uguali a prima (dal 14 ottobre, U-01, senza il commento)");
         const string drawing =
             "<p>Logo: <img src=\"cid:logo@prova\" alt=\"Logo\"> <svg width=\"10\" height=\"10\"><image href=\"https://img.esempio-prova.example/a.png\"/><rect fill=\"url(#g)\" width=\"10\" height=\"10\"/>" +
             "<a xlink:href=\"https://www.esempio-prova.example/\"><text>apri</text></a></svg></p>" +

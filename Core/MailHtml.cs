@@ -30,15 +30,66 @@ public static partial class MailHtml
         "audio", "video", "source", "track", "portal", "template", "slot", "form", "input", "select", "textarea", "dialog",
         // Tutto quello che segue <plaintext> diventa testo, anche il resto della pagina del riquadro dopo l'email.
         "plaintext",
+        // Il loro contenuto è testo grezzo, che il motore non mostra mai (display: none): vedi NeverWritten.
+        "noembed", "noframes",
+    };
+
+    /// <summary>
+    /// Gli elementi che nella pagina del riquadro non si scrivono mai, comunque siano arrivati fino a <see cref="InnerHtml"/>
+    /// e in qualunque spazio dei nomi (revisione del 14 ottobre 2026, U-01): template, che chiuderebbe quello della shadow
+    /// root dell'email, e quelli che per l'HTML hanno un contenuto grezzo, letto come testo fino al tag di chiusura. Chi
+    /// rilegge la pagina non è AngleSharp ma il motore del riquadro, e non sempre nello stesso contesto: un mglyph che
+    /// l'analisi ha messo fuori da una tabella dentro un mtext qui è un elemento dell'HTML, e riletto lì è della formula, con
+    /// tutto quello che contiene. Il testo grezzo di un xmp al suo interno diventava allora elementi che la pulizia non aveva
+    /// mai visto, e il primo era un &lt;/template&gt;: il resto dell'email finiva nella pagina, fuori dalla shadow root, con i
+    /// suoi stili sulle fasce vere (misurato nel WebView2 vero, ProvaBozze.Interfaccia.cs). Nell'altro verso, un xmp di un
+    /// disegno riletto come quello dell'HTML si chiudeva a metà di un attributo. Senza questi nomi nella pagina dell'email non
+    /// c'è contenuto grezzo, tranne il foglio di stile che la apre: ogni tag che il motore legge è uno scritto da qui per un
+    /// elemento già pulito, in qualunque contesto lo rilegga. xmp, l'unico che si vede, resta come pre (PaneTag).
+    /// </summary>
+    static readonly HashSet<string> NeverWritten = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "template", "script", "style", "title", "textarea", "iframe", "noembed", "noframes", "noscript", "plaintext",
     };
 
     public sealed record Link(string Href, string Text);
 
+    /// <param name="Fragment">Il frammento per la shadow root dell'email, dopo la guardia finale (<see cref="Sealed"/>).</param>
     /// <param name="PlainOnly">
     /// Il messaggio supera i tetti dell'analisi (<see cref="ParseGuard"/>) ed è mostrato come solo testo: il riquadro lo dice
     /// con una fascia (ReadingPage.Warnings).
     /// </param>
-    public sealed record Result(string Fragment, int BlockedImages, List<Link> Links, bool PlainOnly = false);
+    public sealed record Result(string Fragment, int BlockedImages, List<Link> Links, bool PlainOnly = false)
+    {
+        /// <summary>
+        /// Nasce già passato dalla guardia e non si riassegna: qualunque strada porti a un Result (la pulizia, il solo testo,
+        /// il ripiego), nella pagina del riquadro non entra un frammento che non ci sia passato.
+        /// </summary>
+        public string Fragment { get; } = Sealed(Fragment);
+    }
+
+    /// <summary>
+    /// La guardia finale sul frammento di un'email, prima che entri nel template della sua shadow root (ReadingPage.Body):
+    /// la sequenza "&lt;/template", maiuscola o minuscola, non c'è mai, qualunque cosa abbia fatto la pulizia a monte
+    /// (revisione del 14 ottobre 2026, U-01). Dopo la pulizia può stare solo nel valore di un attributo, dove "&amp;lt;" si
+    /// legge come lo stesso carattere: il significato non cambia. Un frammento senza quella sequenza, cioè quello di ogni
+    /// messaggio normale, torna com'è, la stessa stringa. Sta qui, dove nasce il frammento, e non dove la pagina lo scrive:
+    /// si fa una volta per corpo e non a ogni disegno, e chi costruisce la pagina non può dimenticarla.
+    /// </summary>
+    internal static string Sealed(string fragment)
+    {
+        const string closing = "</template";
+        int at = fragment.IndexOf(closing, StringComparison.OrdinalIgnoreCase);
+        if (at < 0) return fragment;
+        var safe = new StringBuilder(fragment.Length + 16);
+        int copied = 0;
+        for (; at >= 0; at = fragment.IndexOf(closing, copied, StringComparison.OrdinalIgnoreCase))
+        {
+            safe.Append(fragment, copied, at - copied).Append("&lt;");
+            copied = at + 1;
+        }
+        return safe.Append(fragment, copied, fragment.Length - copied).ToString();
+    }
 
     /// <summary>
     /// Il messaggio finto con cui il riquadro riscalda la pulizia prima del primo clic (ReadingView.Prepare, in sottofondo):
@@ -219,7 +270,7 @@ public static partial class MailHtml
         if (body?.GetAttribute("background") is { Length: > 0 } bodyImage) bodyAttributes.Append(";background-image:url('").Append(bodyImage.Replace("'", "%27")).Append("')");
         if (bodyAttributes.Length > 0) bodyStyle.Append(Css(bodyAttributes.ToString(), false, allowRemote, cidUrl, ref blocked, keepText: false));
         if (bodyStyle.Length > 0) wrapper.Append(" style=\"").Append(WebUtility.HtmlEncode(bodyStyle.ToString().TrimStart(';'))).Append('"');
-        wrapper.Append('>').Append(InnerHtml(body ?? dom.DocumentElement, gone)).Append("</div>");
+        wrapper.Append('>').Append(InnerHtml(body ?? dom.DocumentElement, gone, pane: true)).Append("</div>");
 
         // I fogli di stile vanno nella pagina come testo grezzo, senza la protezione che l'HTML dà al resto: un "</style>"
         // arrivato dalle entità di un <style> dei disegni SVG, o formato togliendo @import, chiuderebbe il foglio, e quello
@@ -229,6 +280,113 @@ public static partial class MailHtml
         var fragment = css.Length > 0 ? $"<style>{css}</style>{wrapper}" : wrapper.ToString();
         return new Result(fragment, blocked, links);
     }
+
+    // ---------------------------------------------------------------- l'originale dentro una risposta o un inoltro
+
+    /// <summary>
+    /// Quello che una citazione non porta, con tutto il contenuto: ciò che esegue, i frame, gli oggetti, i campi di un
+    /// modulo, e dalle scelte del 14 ottobre 2026 (U-01) i template: la visita di <see cref="Outgoing"/> non entra nel loro
+    /// contenuto, che ripartiva non pulito (inerte per chi riceve, ma con script e attributi di evento com'erano).
+    /// </summary>
+    static readonly HashSet<string> NotQuoted = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "script", "iframe", "frame", "frameset", "noframes", "object", "embed", "noembed", "applet", "portal", "input", "select", "textarea", "template",
+    };
+
+    /// <summary>Gli attributi che portano un indirizzo (href anche con uno spazio dei nomi: xlink:href nei disegni SVG).</summary>
+    static readonly HashSet<string> AddressAttributes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "href", "src", "action", "formaction", "background", "poster", "data", "codebase", "cite", "longdesc", "lowsrc", "dynsrc", "manifest", "usemap", "classid", "archive",
+    };
+
+    /// <summary>
+    /// L'HTML di un messaggio ricevuto come può ripartire dentro la citazione di una risposta o di un inoltro (Gmail, IMAP,
+    /// file .eml; con Graph la citazione la fa il server): senza quello che esegue o invia (revisione del 13 ottobre 2026,
+    /// K-04). Prima ripartiva com'era arrivato, con script, moduli, attributi di evento e link javascript:. Non è la
+    /// pulizia del riquadro (<see cref="Prepare"/>), che blocca le immagini esterne e riscrive stili e colori: un inoltro
+    /// deve arrivare al destinatario com'era l'originale, immagini comprese, anche quelle di un pixel (lo fa ogni
+    /// programma di posta). Si tolgono: script, frame, oggetti, template e i campi di un modulo, con il contenuto; il
+    /// modulo e il pulsante, lasciando quello che contengono; il meta che manda a un'altra pagina; gli attributi di evento
+    /// (on...); gli indirizzi che non sono http, https, mailto, tel, cid o un'immagine data: (quelli senza schema restano:
+    /// non portano da nessuna parte); le animazioni dei disegni che cambiano un indirizzo. Il resto non si tocca: se non
+    /// c'è nulla da togliere torna la stessa stringa, e la citazione di un messaggio normale resta quella di prima, byte per
+    /// byte.
+    /// Solo quando c'è qualcosa da togliere l'HTML si riscrive dall'albero. Oltre i tetti dell'analisi
+    /// (<see cref="ParseGuard"/>) va il solo testo, come lo mostra il riquadro.
+    /// </summary>
+    public static string Outgoing(string html)
+    {
+        AngleSharp.Html.Dom.IHtmlDocument dom;
+        try
+        {
+            dom = Parse(html);
+        }
+        catch (TooComplexException)
+        {
+            return FromText(Lines(RoughText(html)));
+        }
+        HashSet<IElement> gone = new(), bare = new();
+        bool changed = false;
+        var stack = new Stack<INode>();
+        stack.Push(dom);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            if (node is IElement e)
+            {
+                var name = e.LocalName;
+                if (NotQuoted.Contains(name) || AnimatesAddress(e)
+                    || name.Equals("meta", StringComparison.OrdinalIgnoreCase) && (e.GetAttribute("http-equiv")?.Trim().Equals("refresh", StringComparison.OrdinalIgnoreCase) ?? false))
+                {
+                    gone.Add(e);
+                    changed = true;
+                    continue;
+                }
+                if (name.Equals("form", StringComparison.OrdinalIgnoreCase) || name.Equals("button", StringComparison.OrdinalIgnoreCase))
+                {
+                    bare.Add(e);
+                    changed = true;
+                }
+                else if (e.Attributes.Length > 0)
+                {
+                    foreach (var a in e.Attributes.Where(a => !QuotedAttribute(e, a)).ToList())
+                    {
+                        e.RemoveAttribute(a.NamespaceUri, a.LocalName);
+                        changed = true;
+                    }
+                }
+            }
+            var children = node.ChildNodes;
+            for (int i = children.Length - 1; i >= 0; i--)
+                if (children[i] is IElement) stack.Push(children[i]);
+        }
+        return changed ? InnerHtml(dom, gone, bare) : html;
+    }
+
+    /// <summary>L'attributo può restare in una citazione: non è un attributo di evento, e se porta un indirizzo è di quelli che non eseguono.</summary>
+    static bool QuotedAttribute(IElement e, IAttr a)
+    {
+        if (a.LocalName.StartsWith("on", StringComparison.OrdinalIgnoreCase)) return false;
+        if (a.LocalName.Equals("srcset", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var candidate in a.Value.Split(','))
+                if (!QuotedAddress(candidate.Trim().Split(' ', '\t', '\n', '\r', '\f')[0], link: false)) return false;
+            return true;
+        }
+        if (!AddressAttributes.Contains(a.LocalName)) return true;
+        return QuotedAddress(a.Value, link: e.LocalName is "a" or "area");
+    }
+
+    /// <summary>
+    /// L'indirizzo può restare in una citazione, letto come lo legge un motore (<see cref="KindOf(string?)"/>): il web, cid:,
+    /// mailto: e tel:, quelli senza schema, e un'immagine data: dove si carica un'immagine, non dove si apre un link.
+    /// </summary>
+    static bool QuotedAddress(string value, bool link) => KindOf(value) switch
+    {
+        UrlKind.Data => !link && Unpadded(value).StartsWith("data:image/", StringComparison.OrdinalIgnoreCase),
+        UrlKind.Other => Unpadded(value) is var read && (read.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase) || read.StartsWith("tel:", StringComparison.OrdinalIgnoreCase)),
+        _ => true,
+    };
 
     /// <summary>
     /// Il testo di un'email HTML, per la parte di solo testo delle risposte: gli spazi come li mostra il browser, un a
@@ -549,7 +707,18 @@ public static partial class MailHtml
     /// passata: AngleSharp a ogni foglia chiede il fratello successivo, che cerca fra i figli del genitore dal primo
     /// (un messaggio di 100.000 righe chiuse da br: 16 s di pulizia, ora 0,3).
     /// </summary>
-    static string InnerHtml(INode root, HashSet<IElement> gone)
+    /// <param name="bare">Gli elementi di cui resta solo il contenuto, senza il loro tag (<see cref="Outgoing"/>: un modulo, un pulsante).</param>
+    /// <param name="pane">
+    /// Per la pagina del riquadro (<see cref="Clean"/>), che il motore rilegge dentro il template di una shadow root: senza
+    /// commenti, che lì non servono a niente (quelli condizionali di Outlook il motore li ignora) e sono la strada classica
+    /// per cui due analisi dello stesso testo non coincidono; senza gli elementi di <see cref="NeverWritten"/> e con xmp
+    /// scritto come pre (<see cref="PaneTag"/>); e tutto il testo scritto come testo, mai grezzo. Falso per l'HTML che
+    /// riparte in una risposta o in un inoltro (<see cref="Outgoing"/>): lì i commenti condizionali devono restare, o una
+    /// newsletter inoltrata cambia aspetto in Outlook. Un template non si scrive in nessuno dei due: nel riquadro è fra
+    /// <see cref="NeverWritten"/>, in uscita fra gli elementi tolti (NotQuoted, dalle scelte del 14 ottobre 2026). Il ramo
+    /// che ne scriveva il contenuto non c'è più: un template che arrivasse fin qui si scriverebbe vuoto.
+    /// </param>
+    static string InnerHtml(INode root, HashSet<IElement> gone, HashSet<IElement>? bare = null, bool pane = false)
     {
         var formatter = AngleSharp.Html.HtmlMarkupFormatter.Instance;
         var html = new StringBuilder();
@@ -567,8 +736,10 @@ public static partial class MailHtml
             switch (node)
             {
                 case IElement e when close:
-                    html.Append(formatter.CloseTag(e, e.Flags.HasFlag(NodeFlags.SelfClosing)));
+                    html.Append(pane && PaneTag(e) is { } renamed ? $"</{renamed}>" : formatter.CloseTag(e, e.Flags.HasFlag(NodeFlags.SelfClosing)));
                     break;
+                case IComment or IProcessingInstruction or IDocumentType when pane:
+                    break; // nella pagina del riquadro nessun commento (e nessuna dichiarazione, che l'analisi dell'HTML non crea)
                 case IComment comment:
                     html.Append(formatter.Comment(comment));
                     break;
@@ -576,26 +747,42 @@ public static partial class MailHtml
                     html.Append(formatter.Processing(instruction));
                     break;
                 case ICharacterData data:
-                    html.Append(data.Parent?.Flags.HasFlag(NodeFlags.LiteralText) ?? false ? formatter.LiteralText(data) : formatter.Text(data));
+                    html.Append(!pane && (data.Parent?.Flags.HasFlag(NodeFlags.LiteralText) ?? false) ? formatter.LiteralText(data) : formatter.Text(data));
                     break;
                 case IDocumentType type:
                     html.Append(formatter.Doctype(type));
                     break;
+                case IElement e when bare != null && bare.Contains(e):
+                    Push(e);
+                    break;
+                case IElement e when pane && (NeverWritten.Contains(e.LocalName) || e.LocalName.Equals("xmp", StringComparison.OrdinalIgnoreCase) && PaneTag(e) == null):
+                    break; // con tutto quello che contiene
                 case IElement e:
                     bool selfClosing = e.Flags.HasFlag(NodeFlags.SelfClosing);
-                    html.Append(formatter.OpenTag(e, selfClosing));
+                    var open = formatter.OpenTag(e, selfClosing);
+                    // xmp come pre: cambia il nome, gli attributi restano; quello che conteneva, scritto come testo, si vede uguale.
+                    bool asPre = pane && PaneTag(e) != null;
+                    if (asPre && !open.StartsWith("<xmp", StringComparison.Ordinal)) break; // un xmp dell'HTML si scrive sempre così: altrimenti nulla
+                    if (asPre) html.Append("<pre").Append(open, "<xmp".Length, open.Length - "<xmp".Length);
+                    else html.Append(open);
                     stack.Push((e, true));
                     int before = stack.Count;
                     Push(e);
                     // pre, textarea e listing: chi rilegge l'HTML toglie il primo a capo, quindi se il testo comincia con uno se ne scrive un altro.
-                    if (!selfClosing && e.Flags.HasFlag(NodeFlags.LineTolerance) && stack.Count > before && stack.Peek().Node is IText first && first.Data.StartsWith('\n'))
+                    if (!selfClosing && (asPre || e.Flags.HasFlag(NodeFlags.LineTolerance)) && stack.Count > before && stack.Peek().Node is IText first && first.Data.StartsWith('\n'))
                         html.Append('\n');
-                    if (e is AngleSharp.Html.Dom.IHtmlTemplateElement template) template.Content.ToHtml(new System.IO.StringWriter(html), formatter);
                     break;
             }
         }
         return html.ToString();
     }
+
+    /// <summary>
+    /// Il nome con cui un xmp dell'HTML si scrive nella pagina del riquadro: pre, che il motore disegna allo stesso modo
+    /// (blocco, carattere a larghezza fissa, spazi e a capo tenuti) ma legge come testo normale e non come contenuto grezzo;
+    /// null per ogni altro elemento. Un xmp dentro un disegno o una formula non è quello dell'HTML e non si scrive affatto.
+    /// </summary>
+    static string? PaneTag(IElement e) => e is AngleSharp.Html.Dom.IHtmlElement && e.LocalName == "xmp" ? "pre" : null;
 
     /// <summary>
     /// Il testo di un messaggio senza costruirne l'albero, per quelli oltre i tetti dell'analisi: una passata sui tag. Niente

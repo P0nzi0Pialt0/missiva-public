@@ -64,7 +64,10 @@ public static class Dialog
         return Ask(owner, heading, body, primary) == Choice.Primary;
     }
 
-    /// <summary>Per le cose che non si disfano (eliminare un contatto di Google): predefinito Annulla, con il fuoco su Annulla; Invio non elimina.</summary>
+    /// <summary>
+    /// Per le cose che non si disfano (eliminare un contatto di Google) e per una regola che manda la posta fuori:
+    /// predefinito Annulla, con il fuoco su Annulla; Invio ed Esc annullano, per confermare si sceglie il pulsante.
+    /// </summary>
     public static Choice AskCancelFirst(Window? owner, string heading, string body, string primary) => Build(owner, heading, body, primary, true, cancelFirst: true);
 
     /// <summary>Con una seconda scelta fra Annulla e quella principale (Salva bozza, Scarta, Annulla).</summary>

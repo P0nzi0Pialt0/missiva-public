@@ -378,20 +378,34 @@ public sealed class RulesView : StackPanel
     async Task SetEnabledAsync(MailRule rule, bool on)
     {
         if (host == null || rules == null) return;
-        var after = rule.Copy();
-        after.Enabled = on;
         try
         {
-            if (host.Provider.HasServerRules) await host.Provider.SaveRuleAsync(rule, after);
-            else Rules.Put(after);
-            rules[rules.IndexOf(rule)] = after;
+            // Annulla è il pulsante predefinito, come nella finestra della regola (scelte del 14 ottobre 2026, U-02).
+            var after = await EnableAsync(host.Provider, rule, on, question => Dialog.AskCancelFirst(Owner, question.Heading, question.Body, question.Confirm) == Choice.Primary);
+            if (after != null) rules[rules.IndexOf(rule)] = after;
         }
         catch (Exception ex)
         {
             Log.Error("regola non cambiata", ex);
             Dialog.Show(Owner, on ? "Regola non accesa" : "Regola non spenta", ex.Message);
         }
-        Show();
+        Show(); // anche dopo un no: la casella torna com'era
+    }
+
+    /// <summary>
+    /// Accende o spegne una regola; la regola com'è dopo, o null se la conferma non è arrivata (nulla è cambiato). Accendere
+    /// una regola che manda la posta fuori è come crearla: prima si chiede, con tutti gli indirizzi in vista
+    /// (Rules.ForwardQuestion; revisione del 14 ottobre 2026, U-02). Prima la casella la riaccendeva senza domande.
+    /// Spegnere non chiede mai.
+    /// </summary>
+    internal static async Task<MailRule?> EnableAsync(IMailProvider provider, MailRule rule, bool on, Func<(string Heading, string Body, string Confirm), bool> confirm)
+    {
+        var after = rule.Copy();
+        after.Enabled = on;
+        if (Rules.ForwardQuestion(rule, after, provider.Account) is { } question && !confirm(question)) return null;
+        if (provider.HasServerRules) await provider.SaveRuleAsync(rule, after);
+        else Rules.Put(after);
+        return after;
     }
 
     /// <summary>
@@ -516,11 +530,7 @@ public sealed class RulesView : StackPanel
             active.Enabled = true;
             // Prima di agire la conferma, con quanti messaggi cambiano: una regola senza condizioni vale per tutti i 500.
             Task<bool> ConfirmAsync(int touched) => Dispatcher.InvokeAsync(() =>
-            {
-                var noConditions = !active.HasConditions ? " La regola non ha condizioni: vale per ogni messaggio." : "";
-                return Dialog.Ask(Owner, $"Eseguire ora \"{rule.Name}\"?",
-                    $"La regola cambia {touched} dei {messages.Count} messaggi di {folder.Name}.{noConditions}\n\n{Rules.Describe(active, FolderName)}", "Esegui") == Choice.Primary;
-            }).Task;
+                Dialog.Ask(Owner, $"Eseguire ora \"{rule.Name}\"?", RunQuestion(active, folder, touched, messages.Count, Rules.Describe(active, FolderName)), "Esegui") == Choice.Primary).Task;
             var outcome = await Rules.RunAsync(provider, messages, [active], () => Task.FromResult(host.Folders), confirm: ConfirmAsync);
             Log.Time($"regole: Esegui ora su {messages.Count} messaggi, {outcome.Matched} corrispondono, {outcome.Touched} da cambiare{(outcome.Canceled ? ", annullato" : "")}", clock);
             if (outcome.Canceled)
@@ -537,6 +547,20 @@ public sealed class RulesView : StackPanel
             Log.Error("Esegui ora", ex);
             result.Text = $"Esegui ora \"{rule.Name}\" non riuscito: {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// La domanda di "Esegui ora": quanti messaggi della cartella la regola cambia e, sotto, la regola in parole. Se li
+    /// elimina lo dice per prima cosa, con il numero: nel Cestino, mai per sempre (revisione del 14 ottobre 2026, U-02;
+    /// prima il numero era quello dei messaggi "cambiati" e il Cestino stava solo nella descrizione, fra parentesi). Con
+    /// una regola sola che elimina, i messaggi che cambia sono quelli che vanno nel Cestino (Rules.RunAsync).
+    /// </summary>
+    internal static string RunQuestion(MailRule rule, MailFolder folder, int touched, int total, string description)
+    {
+        bool toTrash = rule.Delete && rule.MoveTo.Length == 0 && folder.Kind != FolderKind.Deleted;
+        var what = toTrash ? $"La regola mette nel Cestino {touched} dei {total} messaggi di {folder.Name}: nel Cestino, non per sempre, da lì si riprendono."
+                           : $"La regola cambia {touched} dei {total} messaggi di {folder.Name}.";
+        return what + (rule.HasConditions ? "" : " La regola non ha condizioni: vale per ogni messaggio.") + "\n\n" + description;
     }
 
     /// <summary>

@@ -20,6 +20,41 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// altro modo: la casella si nomina con l'indirizzo).
     /// </summary>
     readonly string me = account.SharedOf != null ? "users/" + Uri.EscapeDataString(account.Email.Trim()) + "/" : "me/";
+
+    /// <summary>
+    /// Un identificativo come pezzo di un percorso di Graph: l'unico punto da cui un identificativo entra in un percorso
+    /// (revisione del 13 ottobre 2026, K-03). Arrivano da Graph, ma anche da posti che un altro può aver scritto: i
+    /// posposti e i contrassegni di una copia di sicurezza importata, la coda delle azioni, gli argomenti di una notifica.
+    /// Prima si mettevano nel percorso com'erano: con una barra, un punto di domanda, un cancelletto o ".." la richiesta,
+    /// con il token dell'account, andava a un altro percorso di Graph ("../mailFolders/archive" al posto di un messaggio
+    /// da eliminare eliminava una cartella). Quelli veri di Outlook sono lettere, cifre, "-", "_" e "=" in fondo, e passano
+    /// com'erano, byte per byte. Uno vuoto, fatto di soli punti, con caratteri non ASCII o di controllo, o (dove non si
+    /// codifica) con "/", "\", "?", "#" o "%" non è di Graph: nessuna richiesta parte, e vale come un elemento che non c'è
+    /// (NotFoundException: Posponi lo dà per eliminato, la coda toglie l'azione). Codificarli tutti con
+    /// Uri.EscapeDataString non basta e non è prudente: ".." non ha nulla da codificare, e "=" diventerebbe "%3D" in
+    /// ogni richiesta, cosa mai provata su Graph vero per messaggi e cartelle.
+    /// </summary>
+    /// <param name="escape">
+    /// Per contatti, eventi, calendari e regole, che già si codificavano (un identificativo di regola può avere "+" e "/"):
+    /// restano codificati allo stesso modo.
+    /// </param>
+    internal static string Segment(string? id, bool escape = false)
+    {
+        bool valid = !string.IsNullOrEmpty(id) && id.AsSpan().Trim('.').Length > 0;
+        for (int i = 0; valid && i < id!.Length; i++)
+            valid = id[i] is > ' ' and < (char)0x7F && (escape || id[i] is not ('/' or '\\' or '?' or '#' or '%'));
+        if (!valid)
+        {
+            // Solo la lunghezza: se un giorno Graph ne desse uno vero fatto così, dal registro si vede che è stato fermato qui.
+            Log.Write($"Graph: un identificativo di {id?.Length ?? 0} caratteri non è di Graph (vuoto, di soli punti o con caratteri che cambierebbero il percorso): la richiesta non parte");
+            throw new NotFoundException("L'identificativo non è di Microsoft Graph: la richiesta non è stata inviata.");
+        }
+        return escape ? Uri.EscapeDataString(id!) : id!;
+    }
+
+    /// <summary>Il percorso di un messaggio (me/messages/id) e quello di una cartella (me/mailFolders/id, anche con un alias come inbox).</summary>
+    string MessageUrl(string id) => me + "messages/" + Segment(id);
+    string FolderUrl(string id) => me + "mailFolders/" + Segment(id);
     /// <summary>Con i destinatari (A): in Posta inviata e Bozze la riga dell'elenco mostra loro, non il mittente.</summary>
     const string SummaryFields = "id,subject,from,toRecipients,replyTo,receivedDateTime,isRead,isDraft,flag,hasAttachments,bodyPreview,conversationId,parentFolderId,categories,importance,internetMessageId";
     const string AttachmentNamesExpand = "&$expand=attachments($select=name,isInline)";
@@ -363,7 +398,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         // di prima: ogni cartella per nome, seguita dalle sue.
         async Task<List<MailFolder>> Children(string parentId, int depth)
         {
-            var page = await GetAsync($"{me}mailFolders/{parentId}/childFolders?$top=250&$select={FolderFields}");
+            var page = await GetAsync($"{FolderUrl(parentId)}/childFolders?$top=250&$select={FolderFields}");
             var children = (page?["value"]?.AsArray() ?? new JsonArray()).OrderBy(c => Str(c, "displayName"), StringComparer.CurrentCultureIgnoreCase).ToList();
             var below = await Task.WhenAll(children.Select(c =>
                 (c?["childFolderCount"]?.GetValue<int>() ?? 0) > 0 && depth < 6 ? Children(Str(c, "id"), depth + 1) : Task.FromResult(new List<MailFolder>())));
@@ -391,7 +426,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         {
             if (w.Kind != FolderKind.Archive && cached.FirstOrDefault(f => f.Kind == w.Kind && f.ParentId == null)?.Id is { } known && folders.Any(f => f.Id == known))
                 return known;
-            try { return Str(await GetAsync($"{me}mailFolders/{w.Alias}?$select=id"), "id"); }
+            try { return Str(await GetAsync($"{FolderUrl(w.Alias)}?$select=id"), "id"); }
             catch (Exception ex)
             {
                 // Un account può non avere l'Archivio; per le altre si vede nel registro perché la cartella è diventata qualsiasi.
@@ -414,24 +449,24 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         return result;
     }
 
-    public Task DeleteFolderAsync(MailFolder folder) => SendAsync(HttpMethod.Delete, $"{me}mailFolders/{folder.Id}");
+    public Task DeleteFolderAsync(MailFolder folder) => SendAsync(HttpMethod.Delete, $"{FolderUrl(folder.Id)}");
 
     public async Task<MailFolder> CreateFolderAsync(string name, MailFolder? parent)
     {
-        var url = parent == null ? me + "mailFolders" : $"{me}mailFolders/{parent.Id}/childFolders";
+        var url = parent == null ? me + "mailFolders" : $"{FolderUrl(parent.Id)}/childFolders";
         var created = await SendAsync(HttpMethod.Post, url, new JsonObject { ["displayName"] = name.Trim() });
         return new MailFolder { Id = Str(created, "id"), Name = name.Trim(), Kind = FolderKind.Other, ParentId = parent?.Id };
     }
 
     public async Task<string> RenameFolderAsync(MailFolder folder, string name)
     {
-        await SendAsync(HttpMethod.Patch, $"{me}mailFolders/{folder.Id}", new JsonObject { ["displayName"] = name.Trim() });
+        await SendAsync(HttpMethod.Patch, $"{FolderUrl(folder.Id)}", new JsonObject { ["displayName"] = name.Trim() });
         return folder.Id;
     }
 
     public async Task<string> MoveFolderAsync(MailFolder folder, MailFolder? parent)
     {
-        var moved = await SendAsync(HttpMethod.Post, $"{me}mailFolders/{folder.Id}/move", new JsonObject { ["destinationId"] = parent?.Id ?? "msgfolderroot" });
+        var moved = await SendAsync(HttpMethod.Post, $"{FolderUrl(folder.Id)}/move", new JsonObject { ["destinationId"] = parent?.Id ?? "msgfolderroot" });
         return Str(moved, "id") is { Length: > 0 } id ? id : folder.Id;
     }
 
@@ -441,12 +476,12 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         bool permanent = folder.Kind is FolderKind.Deleted or FolderKind.Junk || trash == null;
         for (int round = 0; round < 400; round++)
         {
-            var page = await GetAsync($"{me}mailFolders/{folder.Id}/messages?$select=id&$top=50");
+            var page = await GetAsync($"{FolderUrl(folder.Id)}/messages?$select=id&$top=50");
             var ids = (page?["value"]?.AsArray() ?? new JsonArray()).Select(m => Str(m, "id")).ToList();
             if (ids.Count == 0) return;
             await EachAsync(ids, id => permanent
-                ? SendAsync(HttpMethod.Delete, $"{me}messages/{id}")
-                : SendAsync(HttpMethod.Post, $"{me}messages/{id}/move", new JsonObject { ["destinationId"] = trash!.Id }));
+                ? SendAsync(HttpMethod.Delete, $"{MessageUrl(id)}")
+                : SendAsync(HttpMethod.Post, $"{MessageUrl(id)}/move", new JsonObject { ["destinationId"] = trash!.Id }));
         }
     }
 
@@ -454,10 +489,10 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     {
         for (int round = 0; round < 400; round++)
         {
-            var page = await GetAsync($"{me}mailFolders/{folder.Id}/messages?$filter=isRead eq false&$select=id&$top=50");
+            var page = await GetAsync($"{FolderUrl(folder.Id)}/messages?$filter=isRead eq false&$select=id&$top=50");
             var ids = (page?["value"]?.AsArray() ?? new JsonArray()).Select(m => Str(m, "id")).ToList();
             if (ids.Count == 0) return;
-            await EachAsync(ids, id => SendAsync(HttpMethod.Patch, $"{me}messages/{id}", new JsonObject { ["isRead"] = true }));
+            await EachAsync(ids, id => SendAsync(HttpMethod.Patch, $"{MessageUrl(id)}", new JsonObject { ["isRead"] = true }));
         }
     });
 
@@ -517,7 +552,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             if (conditions.Count > 0) conditions.Insert(0, $"{sort} ne null");
         }
         var filter = conditions.Count > 0 ? "&$filter=" + Uri.EscapeDataString(string.Join(" and ", conditions)) : "";
-        return $"{me}mailFolders/{folder.Id}/messages?$top={PageSize}&$select={SummaryFields}{filter}&$orderby={sort} {(options.Ascending ? "asc" : "desc")}";
+        return $"{FolderUrl(folder.Id)}/messages?$top={PageSize}&$select={SummaryFields}{filter}&$orderby={sort} {(options.Ascending ? "asc" : "desc")}";
     }
 
     /// <summary>I nomi degli allegati nei risultati, per i suggerimenti dei file; si spegne se Graph non li dà insieme a $search.</summary>
@@ -533,7 +568,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         // sulla pagina (Matches), perché $search non si combina con $filter. Senza parole da cercare, $filter con le date esatte.
         var terms = SearchTerms.Parse(query);
         var kql = terms.ToKql();
-        var where = folder != null ? $"{me}mailFolders/{folder.Id}/messages" : me + "messages";
+        var where = folder != null ? $"{FolderUrl(folder.Id)}/messages" : me + "messages";
         var url = next ?? (kql.Length > 0
             ? $"{where}?$search={Uri.EscapeDataString("\"" + kql + "\"")}&$top={PageSize}&$select={SummaryFields}"
             : $"{where}?$filter={Uri.EscapeDataString(terms.Filter())}&$orderby=receivedDateTime desc&$top={PageSize}&$select={SummaryFields}");
@@ -576,7 +611,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     public async Task<List<MessageSummary>> GetRecentKeysAsync(MailFolder inbox, DateTime sinceUtc, int max)
     {
         var recent = new List<MessageSummary>();
-        string? url = $"{me}mailFolders/{inbox.Id}/messages?$select=id,isDraft,receivedDateTime&$filter=receivedDateTime ge {UtcText(sinceUtc)}" +
+        string? url = $"{FolderUrl(inbox.Id)}/messages?$select=id,isDraft,receivedDateTime&$filter=receivedDateTime ge {UtcText(sinceUtc)}" +
                       $"&$orderby=receivedDateTime desc&$top={Math.Min(max, 1000)}";
         while (url != null && recent.Count < max)
         {
@@ -733,7 +768,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     {
         var updated = message.Categories.Where(c => !c.Equals(category, StringComparison.OrdinalIgnoreCase)).ToList();
         if (on) updated.Add(category);
-        await SendAsync(HttpMethod.Patch, $"{me}messages/{message.Id}",
+        await SendAsync(HttpMethod.Patch, $"{MessageUrl(message.Id)}",
             new JsonObject { ["categories"] = new JsonArray(updated.Select(c => (JsonNode)JsonValue.Create(c)!).ToArray()) });
         message.Categories = updated;
     });
@@ -796,7 +831,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
 
     async Task<MessageBody> ReadBodyAsync(MessageSummary message, CancellationToken cancel)
     {
-        var url = $"{me}messages/{message.Id}?$select=body,toRecipients,ccRecipients,bccRecipients,hasAttachments,internetMessageHeaders";
+        var url = $"{MessageUrl(message.Id)}?$select=body,toRecipients,ccRecipients,bccRecipients,hasAttachments,internetMessageHeaders";
         JsonNode? m = null;
         if (expandAttachments)
         {
@@ -819,7 +854,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         var cids = CidReference().Matches(html).Select(x => x.Groups[1].Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var list = m?["attachments"]?.AsArray();
         if (list == null && ((m?["hasAttachments"]?.GetValue<bool>() ?? false) || cids.Count > 0))
-            list = (await GetAsync($"{me}messages/{message.Id}/attachments?$select=id,name,contentType,size,isInline", cancel: cancel))?["value"]?.AsArray();
+            list = (await GetAsync($"{MessageUrl(message.Id)}/attachments?$select=id,name,contentType,size,isInline", cancel: cancel))?["value"]?.AsArray();
         var nodes = (list ?? new JsonArray()).OfType<JsonNode>().ToList();
 
         // Le immagini che il testo mostra (cid:) si scaricano subito, con il loro contentId, quattro alla volta: una dopo
@@ -829,7 +864,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         // allegate (8 foto da 1,5 MB erano 8 richieste da 2 MB solo per mostrare il logo della firma).
         var full = new System.Collections.Concurrent.ConcurrentDictionary<string, JsonNode?>();
         Task FetchAsync(IEnumerable<JsonNode> which) =>
-            EachAsync(which.ToList(), async a => full[Str(a, "id")] = await GetAsync($"{me}messages/{message.Id}/attachments/{Str(a, "id")}", cancel: cancel));
+            EachAsync(which.ToList(), async a => full[Str(a, "id")] = await GetAsync($"{MessageUrl(message.Id)}/attachments/{Segment(Str(a, "id"))}", cancel: cancel));
         if (cids.Count > 0)
         {
             await FetchAsync(nodes.Where(a => a["isInline"]?.GetValue<bool>() ?? false));
@@ -883,7 +918,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             else if (attachments.FirstOrDefault(a => (a.ContentType.StartsWith("text/calendar", StringComparison.OrdinalIgnoreCase) || a.Name.EndsWith(".ics", StringComparison.OrdinalIgnoreCase))
                                                      && a.Size < Invitation.MaxLength) is { } ics)
             {
-                var file = await GetAsync($"{me}messages/{message.Id}/attachments/{ics.Id}", cancel: cancel);
+                var file = await GetAsync($"{MessageUrl(message.Id)}/attachments/{Segment(ics.Id)}", cancel: cancel);
                 if (Str(file, "contentBytes") is { Length: > 0 } bytes) invite = await Invitation.ParseAsync(Encoding.UTF8.GetString(Convert.FromBase64String(bytes)));
             }
         }
@@ -916,7 +951,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     }
 
     public async Task<byte[]> GetAttachmentAsync(MessageSummary message, Attachment attachment) =>
-        attachment.Content ?? await DownloadAsync($"{me}messages/{message.Id}/attachments/{attachment.Id}/$value", "l'allegato");
+        attachment.Content ?? await DownloadAsync($"{MessageUrl(message.Id)}/attachments/{Segment(attachment.Id)}/$value", "l'allegato");
 
     /// <summary>Senza dati per tanto tempo, uno scaricamento si interrompe (le prove di --prova-bozze lo accorciano).</summary>
     internal static TimeSpan DownloadIdle = TimeSpan.FromSeconds(60);
@@ -981,10 +1016,10 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// quando finiscono il numero si riconta.
     /// </remarks>
     public Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool read) => UnreadSync.WriteAsync(Account.Id, () => EachAsync(messages, m =>
-        SendAsync(HttpMethod.Patch, $"{me}messages/{m.Id}", new JsonObject { ["isRead"] = read })));
+        SendAsync(HttpMethod.Patch, $"{MessageUrl(m.Id)}", new JsonObject { ["isRead"] = read })));
 
     public Task SetFlagAsync(IReadOnlyList<MessageSummary> messages, bool flagged) => EachAsync(messages, m =>
-        SendAsync(HttpMethod.Patch, $"{me}messages/{m.Id}",
+        SendAsync(HttpMethod.Patch, $"{MessageUrl(m.Id)}",
             new JsonObject { ["flag"] = new JsonObject { ["flagStatus"] = flagged ? "flagged" : "notFlagged" } }));
 
     /// <summary>
@@ -998,7 +1033,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             ? new JsonObject { ["dateTime"] = day.Date.ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture), ["timeZone"] = zone }
             : null;
         if (due != null) start ??= due.Value.Date < DateTime.Today ? due : DateTime.Today;
-        return EachAsync(messages, m => SendAsync(HttpMethod.Patch, $"{me}messages/{m.Id}", new JsonObject
+        return EachAsync(messages, m => SendAsync(HttpMethod.Patch, $"{MessageUrl(m.Id)}", new JsonObject
         {
             ["flag"] = new JsonObject { ["flagStatus"] = "flagged", ["startDateTime"] = Day(start), ["dueDateTime"] = Day(due) },
         }));
@@ -1012,7 +1047,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             ["dateTime"] = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
             ["timeZone"] = TimeZoneInfo.Local.Id,
         };
-        return EachAsync(messages, m => SendAsync(HttpMethod.Patch, $"{me}messages/{m.Id}", new JsonObject
+        return EachAsync(messages, m => SendAsync(HttpMethod.Patch, $"{MessageUrl(m.Id)}", new JsonObject
         {
             ["flag"] = new JsonObject { ["flagStatus"] = "complete", ["completedDateTime"] = now.DeepClone() },
         }));
@@ -1023,7 +1058,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     {
         var ids = new System.Collections.Concurrent.ConcurrentDictionary<MessageSummary, string>();
         await EachAsync(messages.Where(m => m.FolderId != destination.Id), async m =>
-            ids[m] = Str(await SendAsync(HttpMethod.Post, $"{me}messages/{m.Id}/move", new JsonObject { ["destinationId"] = destination.Id }), "id"));
+            ids[m] = Str(await SendAsync(HttpMethod.Post, $"{MessageUrl(m.Id)}/move", new JsonObject { ["destinationId"] = destination.Id }), "id"));
         return messages.Where(ids.ContainsKey).Select(m => new MovedMessage(m, ids[m])).ToList();
     });
 
@@ -1032,7 +1067,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     {
         var ids = new System.Collections.Concurrent.ConcurrentDictionary<MovedMessage, string>();
         await EachAsync(moved, async x =>
-            ids[x] = Str(await SendAsync(HttpMethod.Post, $"{me}messages/{x.NewId}/move", new JsonObject { ["destinationId"] = x.Original.FolderId }), "id"));
+            ids[x] = Str(await SendAsync(HttpMethod.Post, $"{MessageUrl(x.NewId)}/move", new JsonObject { ["destinationId"] = x.Original.FolderId }), "id"));
         return moved.Where(ids.ContainsKey).Select(x => x with { NewId = ids[x] }).ToList();
     });
 
@@ -1049,7 +1084,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// <summary>Spostare un messaggio ne cambia l'identificativo: la chiave è quello nuovo, dato dallo spostamento.</summary>
     public Task<string> SnoozeAsync(MessageSummary message, MailFolder snoozeFolder) => UnreadSync.WriteAsync(Account.Id, async () =>
     {
-        var moved = await SendAsync(HttpMethod.Post, $"{me}messages/{message.Id}/move", new JsonObject { ["destinationId"] = snoozeFolder.Id });
+        var moved = await SendAsync(HttpMethod.Post, $"{MessageUrl(message.Id)}/move", new JsonObject { ["destinationId"] = snoozeFolder.Id });
         return Str(moved, "id");
     });
 
@@ -1057,8 +1092,8 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     {
         try
         {
-            await SendAsync(HttpMethod.Patch, $"{me}messages/{key}", new JsonObject { ["isRead"] = false });
-            var moved = await SendAsync(HttpMethod.Post, $"{me}messages/{key}/move", new JsonObject { ["destinationId"] = inbox.Id });
+            await SendAsync(HttpMethod.Patch, $"{MessageUrl(key)}", new JsonObject { ["isRead"] = false });
+            var moved = await SendAsync(HttpMethod.Post, $"{MessageUrl(key)}/move", new JsonObject { ["destinationId"] = inbox.Id });
             return (string?)Str(moved, "id");
         }
         catch (NotFoundException)
@@ -1068,13 +1103,13 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     });
 
     public Task CopyAsync(IReadOnlyList<MessageSummary> messages, MailFolder destination) => EachAsync(messages, m =>
-        SendAsync(HttpMethod.Post, $"{me}messages/{m.Id}/copy", new JsonObject { ["destinationId"] = destination.Id }));
+        SendAsync(HttpMethod.Post, $"{MessageUrl(m.Id)}/copy", new JsonObject { ["destinationId"] = destination.Id }));
 
     public Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default) =>
-        DownloadAsync($"{me}messages/{message.Id}/$value", "il messaggio", limit, cancel);
+        DownloadAsync($"{MessageUrl(message.Id)}/$value", "il messaggio", limit, cancel);
 
     public Task DeletePermanentlyAsync(IReadOnlyList<MessageSummary> messages) => UnreadSync.WriteAsync(Account.Id, () => EachAsync(messages, m =>
-        SendAsync(HttpMethod.Delete, $"{me}messages/{m.Id}")));
+        SendAsync(HttpMethod.Delete, $"{MessageUrl(m.Id)}")));
 
     public async Task SendAsync(OutgoingMessage mail)
     {
@@ -1089,19 +1124,19 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             mail.Cancel.ThrowIfCancellationRequested(); // la scrittura chiusa mentre gli allegati si caricavano: non parte
             try
             {
-                await SendAsync(HttpMethod.Post, $"{me}messages/{id}/send");
+                await SendAsync(HttpMethod.Post, $"{MessageUrl(id)}/send");
             }
             catch (MailException ex) when (IsShared && ex.Code == "ErrorSendAsDenied")
             {
                 // Senza Invia come, con Invia per conto di: come Outlook il messaggio parte "da ... per conto di ...", con
                 // sender l'account di lavoro. Se l'amministratore non ha dato nemmeno quello, resta la spiegazione.
                 Log.Write($"invio da {Account.Email}: Invia come negato, provo per conto di {SignInAccount.Email}");
-                await SendAsync(HttpMethod.Patch, $"{me}messages/{id}", new JsonObject
+                await SendAsync(HttpMethod.Patch, $"{MessageUrl(id)}", new JsonObject
                 {
                     ["from"] = new JsonObject { ["emailAddress"] = new JsonObject { ["address"] = Account.Email } },
                     ["sender"] = new JsonObject { ["emailAddress"] = new JsonObject { ["address"] = SignInAccount.Email } },
                 });
-                await SendAsync(HttpMethod.Post, $"{me}messages/{id}/send");
+                await SendAsync(HttpMethod.Post, $"{MessageUrl(id)}/send");
             }
         }
         catch
@@ -1203,14 +1238,14 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         var token = (IsShared ? null : await SettingsTokenAsync()) ?? throw new MailException(RulesConsentNeeded);
         if (before == null) return Str(await SendAsync(HttpMethod.Post, RulesUrl, Rules.ToGraph(after), token: token), "id");
         var changes = Rules.Changes(before, after);
-        if (changes.Count > 0) await SendAsync(HttpMethod.Patch, $"{RulesUrl}/{Uri.EscapeDataString(before.ServerId)}", changes, token: token);
+        if (changes.Count > 0) await SendAsync(HttpMethod.Patch, $"{RulesUrl}/{Segment(before.ServerId, escape: true)}", changes, token: token);
         return before.ServerId;
     }
 
     public async Task DeleteRuleAsync(MailRule rule)
     {
         var token = (IsShared ? null : await SettingsTokenAsync()) ?? throw new MailException(RulesConsentNeeded);
-        await SendAsync(HttpMethod.Delete, $"{RulesUrl}/{Uri.EscapeDataString(rule.ServerId)}", token: token);
+        await SendAsync(HttpMethod.Delete, $"{RulesUrl}/{Segment(rule.ServerId, escape: true)}", token: token);
     }
 
     // ---------------------------------------------------------------- contatti
@@ -1256,7 +1291,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         var body = ContactFiles.ToGraph(before, after);
         if (before?.ServerId is { Length: > 0 } id)
         {
-            if (body.Count > 0) await SendAsync(HttpMethod.Patch, $"me/contacts/{Uri.EscapeDataString(id)}", body, token: token);
+            if (body.Count > 0) await SendAsync(HttpMethod.Patch, $"me/contacts/{Segment(id, escape: true)}", body, token: token);
             return id;
         }
         return Str(await SendAsync(HttpMethod.Post, "me/contacts", body, token: token), "id");
@@ -1265,7 +1300,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     public async Task DeleteContactAsync(Contact contact)
     {
         var token = await ContactsTokenAsync() ?? throw new MailException(ContactsConsentNeeded);
-        if (contact.ServerId is { Length: > 0 } id) await SendAsync(HttpMethod.Delete, $"me/contacts/{Uri.EscapeDataString(id)}", token: token);
+        if (contact.ServerId is { Length: > 0 } id) await SendAsync(HttpMethod.Delete, $"me/contacts/{Segment(id, escape: true)}", token: token);
     }
 
     // ---------------------------------------------------------------- persone (colleghi)
@@ -1328,7 +1363,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             try
             {
                 var found = new List<CalendarEvent>();
-                string? url = $"me/calendars/{c.Id}/calendarView?{range}&$select={Calendars.EventFields}&$orderby=start/dateTime&$top=250";
+                string? url = $"me/calendars/{Segment(c.Id)}/calendarView?{range}&$select={Calendars.EventFields}&$orderby=start/dateTime&$top=250";
                 for (int page = 0; url != null && page < 10; page++)
                 {
                     var answer = await SendAsync(HttpMethod.Get, url, cancel: cancel, token: token, timeZone: zone);
@@ -1355,13 +1390,13 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     {
         var token = await CalendarTokenAsync() ?? throw new MailException(CalendarConsentNeeded);
         if (e.OnlineMeeting && Account.Tenant == null) throw new MailException("Le riunioni di Teams si creano solo con gli account di lavoro o della scuola.");
-        var path = e.CalendarId.Length > 0 ? $"me/calendars/{Uri.EscapeDataString(e.CalendarId)}/events" : "me/events";
+        var path = e.CalendarId.Length > 0 ? $"me/calendars/{Segment(e.CalendarId, escape: true)}/events" : "me/events";
         var created = await SendAsync(HttpMethod.Post, path, Calendars.ToGraph(e, TimeZoneInfo.Local.Id), token: token);
         return Str(created, "id");
     }
 
     /// <summary>L'evento su cui agire: l'occorrenza scelta, o per tutta la serie la serie (seriesMasterId).</summary>
-    static string EventId(CalendarEvent e, bool series) => Uri.EscapeDataString(series && e.SeriesMasterId.Length > 0 ? e.SeriesMasterId : e.Id);
+    static string EventId(CalendarEvent e, bool series) => Segment(series && e.SeriesMasterId.Length > 0 ? e.SeriesMasterId : e.Id, escape: true);
 
     /// <summary>
     /// Modifica, come il nuovo Outlook: PATCH me/events/{id} dei soli campi cambiati (Calendars.Changes), nel fuso di Windows.
@@ -1433,7 +1468,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     {
         var token = await CalendarTokenAsync() ?? throw new MailException(CalendarConsentNeeded);
         var action = answer switch { InviteAnswer.Accept => "accept", InviteAnswer.Decline => "decline", _ => "tentativelyAccept" };
-        await SendAsync(HttpMethod.Post, $"me/events/{Uri.EscapeDataString(e.Id)}/{action}",
+        await SendAsync(HttpMethod.Post, $"me/events/{Segment(e.Id, escape: true)}/{action}",
             new JsonObject { ["comment"] = comment.Trim(), ["sendResponse"] = send }, token: token);
     }
 
@@ -1443,7 +1478,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// </summary>
     async Task<Invitation?> EventInviteAsync(MessageSummary message, string html, CancellationToken cancel)
     {
-        var e = await GetAsync($"{me}messages/{message.Id}", cancel: cancel);
+        var e = await GetAsync($"{MessageUrl(message.Id)}", cancel: cancel);
         var type = Str(e, "meetingMessageType");
         if (type is not ("meetingRequest" or "meetingCancelled")) return null;
         static DateTime When(JsonNode? t)
@@ -1512,7 +1547,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         }
         var token = await CalendarTokenAsync() ?? throw new MailException(
             "Per rispondere agli inviti di Outlook Missiva deve poter usare il tuo calendario: premi \"Consenti l'accesso al calendario\" nella scheda dell'invito.");
-        var withEvent = await SendAsync(HttpMethod.Get, $"me/messages/{invite.GraphMessageId}?$select=id&$expand=microsoft.graph.eventMessage/event($select=id)", token: token);
+        var withEvent = await SendAsync(HttpMethod.Get, $"me/messages/{Segment(invite.GraphMessageId)}?$select=id&$expand=microsoft.graph.eventMessage/event($select=id)", token: token);
         var eventId = Str(withEvent?["event"], "id");
         if (eventId.Length == 0) throw new MailException("Outlook non trova l'evento dell'invito nel calendario: forse è stato annullato o spostato.");
         var action = response.Answer switch { InviteAnswer.Accept => "accept", InviteAnswer.Decline => "decline", _ => "tentativelyAccept" };
@@ -1522,7 +1557,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             static JsonObject Time(DateTime local) => new() { ["dateTime"] = local.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture), ["timeZone"] = "UTC" };
             body["proposedNewTime"] = new JsonObject { ["start"] = Time(s), ["end"] = Time(e) };
         }
-        await SendAsync(HttpMethod.Post, $"me/events/{eventId}/{action}", body, token: token);
+        await SendAsync(HttpMethod.Post, $"me/events/{Segment(eventId)}/{action}", body, token: token);
     }
 
     /// <summary>
@@ -1536,9 +1571,9 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         JsonNode? saved = null;
         try
         {
-            saved = await GetAsync($"{me}messages/{id}?$select={SummaryFields}{(expandAttachments ? AttachmentsExpand : "")}");
+            saved = await GetAsync($"{MessageUrl(id)}?$select={SummaryFields}{(expandAttachments ? AttachmentsExpand : "")}");
             if (!expandAttachments && saved is JsonObject withoutExpand)
-                withoutExpand["attachments"] = (await GetAsync($"{me}messages/{id}/attachments?$select=id,name,contentType,size,isInline"))?["value"]?.DeepClone();
+                withoutExpand["attachments"] = (await GetAsync($"{MessageUrl(id)}/attachments?$select=id,name,contentType,size,isInline"))?["value"]?.DeepClone();
         }
         catch (Exception ex)
         {
@@ -1625,7 +1660,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             JsonNode? node;
             if (action != null && mail.Original != null)
             {
-                node = await SendAsync(HttpMethod.Post, $"{me}messages/{mail.Original.Id}/{action}", new JsonObject(), htmlBody: true);
+                node = await SendAsync(HttpMethod.Post, $"{MessageUrl(mail.Original.Id)}/{action}", new JsonObject(), htmlBody: true);
                 quote = Str(node?["body"], "content");
             }
             else
@@ -1679,7 +1714,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                     ["id"] = "SystemTime 0x3FEF",
                     ["value"] = UtcText(at.ToUniversalTime()),
                 });
-            await SendAsync(HttpMethod.Patch, $"{me}messages/{id}", patch);
+            await SendAsync(HttpMethod.Patch, $"{MessageUrl(id)}", patch);
             foreach (var a in mail.Draft?.Attachments ?? new())
                 if (!mail.KeptAttachments.Any(k => k.Id == a.Id))
                     await RemoveAttachmentAsync(id, a.Id);
@@ -1697,7 +1732,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                     added.Add(await UploadLargeAsync(id, name, null, size, stream, null, known, mail.Progress, cancel));
                     continue;
                 }
-                var file = await SendAsync(HttpMethod.Post, $"{me}messages/{id}/attachments", new JsonObject
+                var file = await SendAsync(HttpMethod.Post, $"{MessageUrl(id)}/attachments", new JsonObject
                 {
                     ["@odata.type"] = "#microsoft.graph.fileAttachment",
                     ["name"] = name,
@@ -1723,7 +1758,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                     images.Add(await UploadLargeAsync(id, image.Name, image.ContentType, image.Content.Length, new MemoryStream(image.Content), image.ContentId, known, mail.Progress, cancel));
                     continue;
                 }
-                var node = await SendAsync(HttpMethod.Post, $"{me}messages/{id}/attachments", new JsonObject
+                var node = await SendAsync(HttpMethod.Post, $"{MessageUrl(id)}/attachments", new JsonObject
                 {
                     ["@odata.type"] = "#microsoft.graph.fileAttachment",
                     ["name"] = image.Name,
@@ -1783,7 +1818,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     async Task<List<(string Id, string Name)>> ListedAttachmentsAsync(string message, CancellationToken cancel)
     {
         var result = new List<(string, string)>();
-        string? url = $"{me}messages/{message}/attachments?$select=id,name,size,isInline";
+        string? url = $"{MessageUrl(message)}/attachments?$select=id,name,size,isInline";
         for (int page = 0; url != null && page < 20; page++)
         {
             var node = await GetAsync(url, cancel: cancel);
@@ -1814,7 +1849,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             item["contentId"] = contentId;
         }
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        var session = await SendAsync(HttpMethod.Post, $"{me}messages/{message}/attachments/createUploadSession", new JsonObject { ["AttachmentItem"] = item }, cancel: cancel);
+        var session = await SendAsync(HttpMethod.Post, $"{MessageUrl(message)}/attachments/createUploadSession", new JsonObject { ["AttachmentItem"] = item }, cancel: cancel);
         if (!Uri.TryCreate(Str(session, "uploadUrl"), UriKind.Absolute, out var target) || target.Scheme != Uri.UriSchemeHttps)
             throw new MailException($"Outlook non ha dato l'indirizzo a cui caricare {name}: l'allegato non è stato aggiunto.");
         bool complete = false;
@@ -1906,7 +1941,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// </summary>
     async Task RemoveAttachmentAsync(string message, string attachment)
     {
-        try { await SendAsync(HttpMethod.Delete, $"{me}messages/{message}/attachments/{attachment}"); }
+        try { await SendAsync(HttpMethod.Delete, $"{MessageUrl(message)}/attachments/{Segment(attachment)}"); }
         catch (NotFoundException) { }
     }
 
@@ -1917,7 +1952,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// </summary>
     async Task DeleteDraftAsync(string id)
     {
-        try { await SendAsync(HttpMethod.Delete, $"{me}messages/{id}"); }
+        try { await SendAsync(HttpMethod.Delete, $"{MessageUrl(id)}"); }
         catch (NotFoundException) { }
         catch (Exception ex) { Log.Error("bozza del messaggio non inviato", ex); }
     }
@@ -1925,7 +1960,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// <summary>La bozza scartata si elimina; se non c'è già più (eliminata altrove), niente.</summary>
     public async Task DiscardDraftAsync(SavedDraft draft)
     {
-        try { await SendAsync(HttpMethod.Delete, $"{me}messages/{draft.Message.Id}"); }
+        try { await SendAsync(HttpMethod.Delete, $"{MessageUrl(draft.Message.Id)}"); }
         catch (NotFoundException) { }
     }
 

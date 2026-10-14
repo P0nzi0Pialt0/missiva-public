@@ -29,6 +29,11 @@ Le 52 scelte di quel riepilogo, messe in pratica il 12 e il 13 ottobre sul ramo 
 fatte, 4 aperte): che cosa è stato fatto, le scelte nuove, i cambi che si vedono e le prove a mano in fondo, "Scelte del 12
 ottobre: che cosa è stato fatto e che cosa resta". Suite a 1111. Non ancora unito in main né installato.
 
+Revisione del 13 ottobre 2026 (sei consigli di un revisore esterno sul modulo Core, K-01..K-06 di `sicurezza-core.md`),
+verificati il 13 e il 14 ottobre sul ramo `auditor`: quattro confermati e corretti, due confermati in parte; in tre la
+correzione non è quella proposta. Esito, scelte per l'autore e prove a mano nell'ultima sezione, "Revisione del 13 ottobre:
+sei consigli sul modulo Core (K-01..K-06)". Suite a 1137. Non ancora unito in main né installato.
+
 Confermato dall'autore con l'uso (4 ottobre, versione con i blocchi 1-7): posta e loghi all'avvio, Canc, avviso di allegato
 dimenticato, allegato grande inviato con l'account Microsoft (il caricamento a pezzi funziona con il server vero).
 
@@ -5268,6 +5273,7 @@ giorno. Per ognuna: la domanda, la proposta di chi ha verificato il punto, e il 
     restano solo nelle Impostazioni, dove si eliminano.
 25. **Voci delle immagini per interi servizi** (T-17): toglierle anche a ogni avvio, non solo all'importazione?
     Proposta: sì, se nelle tue impostazioni non ce ne sono (non guardato: sono i dati veri).
+    - Fatta il 14 ottobre: vedi "Scelte del 14 ottobre".
 
 **Installazione, versioni di prova, documenti**
 
@@ -7123,3 +7129,1017 @@ non l'aveva provata nessuno, e io avevo detto all'autore di reinstallare da lì.
 - L'installazione vera con lo script nuovo (chiusura di Missiva, spostamento dei file nella cartella di installazione,
   menu Start, registro): la farà l'autore alla prossima installazione.
 - La causa prima, come detto sopra.
+
+## Revisione del 13 ottobre: sei consigli sul modulo Core (K-01..K-06)
+
+Sei consigli di un revisore esterno che ha letto i sorgenti di `Core` (senza le prove, senza `UI`) e non ha eseguito
+nulla: il suo testo è in `sicurezza-core.md`. Verificati il 13 e il 14 ottobre 2026 sul ramo `auditor`, albero di lavoro
+`C:\Progetti\Missiva\auditor`; la cartella `Missiva-sorgente` resta ferma sul commit di main, `e120133`, che è anche il
+"prima" di questa sezione.
+
+Commit: `1c6f5c6` (K-01, con il rapporto), `e1c6ef9` (K-02), `941e9e2` e `f014b12` (K-03), `945cb20` (K-04), `5e33b88`
+(K-05), `65c396b` (K-06), più quello di questo esito.
+
+Su sei punti: quattro confermati e corretti (K-01, K-03, K-04, K-06), due confermati in parte (K-02 e K-05). In tre la
+correzione non è quella proposta, perché quella proposta non chiudeva il difetto o toglieva qualcosa che deve restare
+(K-03, K-04, e K-02 dove il rapporto si ferma a due suffissi).
+
+| Punto | In breve | Esito | Commit |
+|---|---|---|---|
+| K-01 | `SafeFileName`: il taglio a 150 dopo il controllo dei nomi riservati | CONFERMATO, CORRETTO (nessun effetto su questo Windows per i nomi riservati) | `1c6f5c6` |
+| K-02 | `gov.it` e `edu.it` contati come un dominio solo | CONFERMATO per i loghi, FALSO per "Mostra immagini" e per i link; trovati in più i nomi geografici, veri per tutti e tre. CORRETTO | `e1c6ef9` |
+| K-03 | Identificativi nei percorsi di Graph | CONFERMATO, CORRETTO in un altro modo (la codifica proposta non ferma `..`) | `941e9e2`, `f014b12` |
+| K-04 | HTML dell'originale citato com'è nelle risposte e negli inoltri | CONFERMATO, CORRETTO in un altro modo (non con `MailHtml.Prepare`) | `945cb20` |
+| K-05 | Schema dei link in `FlowToHtml`; `bcc=` nei link mailto: | (a) CONFERMATO per l'RTF, CORRETTO; (b) FALSO: il Ccn non entra in silenzio | `5e33b88` |
+| K-06 | `P7m.Check` guarda solo la prima firma | CONFERMATO, CORRETTO; lo stesso in `Pec.Verify` | `65c396b` |
+
+Come si è provato:
+
+- **Prima**: ogni controllo è stato scritto prima della correzione e fatto girare sul codice di prima. I numeri di "prima"
+  qui sotto vengono da quei giri.
+- **Dopo**: `CoreReviewTests` (`Core/ProvaBozze.Core.cs`, da soli in tre secondi con `--prova-audit risultato.txt core`),
+  26 controlli: K-01 (2), K-02 (7), K-03 (3), K-04 (6), K-05 (4), K-06 (4). Solo dati finti; Graph è il gestore HTTP
+  finto; nessuna finestra, nessuna rete.
+- **Visti cadere**: 23 dei 26.
+  - 17 sul codice di prima: K-01 (2), K-02 (5), K-03 (2), K-04 (3), K-05 (2), K-06 (3). Quelli di K-01 e di K-06 anche
+    una seconda volta, con i file di prima rimessi a mano (uno di K-06 era stato ritoccato dopo il primo giro: vedi
+    "Trovato in più").
+  - 6 con un guasto fatto a mano e poi tolto:
+    - K-02, i nomi normali: con `sky` aggiunto all'elenco dei suffissi italiani;
+    - K-03, le richieste byte per byte: con `Segment` sostituito dalla proposta del rapporto (`Uri.EscapeDataString` per
+      tutti). Cadono tutte e 21;
+    - K-04, i messaggi normali: con la pulizia che riscrive sempre l'HTML dall'albero. Cambiano tutti e 14;
+    - K-04, lo script di dati (JSON-LD) e "una volta sola per originale": con la pulizia spenta e senza memoria (5 volte su
+      5 salvataggi);
+    - K-05, il Ccn: con la finestra di scrittura che apre i campi solo per il Cc.
+  - Non visti cadere, perché dicono com'era già e la correzione non li tocca: "per Mostra immagini e per i link gov.it
+    e edu.it erano già suffissi" (K-02), "all'ingresso lo schema si controllava già" (K-05), "con una firma sola la
+    fascia è quella di prima" (K-06).
+- **Le finestre non si aprono.** Di K-05 (b) e di K-06 si prova quello che la finestra mostra (`Mailto.Parse`,
+  `P7m.Band`) e si legge il sorgente della finestra di scrittura senza i commenti (`Ch1Code`).
+- **I dati veri non si guardano**: le impostazioni di prima di K-02 sono scritte e rilette in una cartella di prova.
+
+### Punti del rapporto
+
+- **K-01** (`Safety.SafeFileName`: il taglio dopo il controllo dei nomi riservati). CONFERMATO, CORRETTO (`1c6f5c6`).
+  - Il taglio tiene gli ultimi 150 caratteri, per non perdere l'estensione. Veniva dopo il controllo dei nomi riservati,
+    e nulla ripuliva quello che lasciava davanti.
+  - Prima, dieci nomi costruiti apposta, tutti e dieci sbagliati:
+    - dieci `a`, poi `NUL.` e il resto: usciva `NUL.xxx...` (150 caratteri). Lo stesso con `con.`, `COM1 .` e `LPT¹.`;
+    - `NUL.` più 146 caratteri, lungo giusto 150: prendeva il `_` davanti, diventava 151, e il taglio toglieva proprio
+      il `_`;
+    - un nome che dopo il taglio comincia con uno spazio: usciva con lo spazio, e ripassato dalla stessa funzione lo
+      perdeva. Il nome mostrato (`CleanAttachmentName`, calcolato alla nascita dell'allegato) e quello del salvataggio
+      erano due stringhe diverse, che è quello che S-09 aveva tolto;
+    - il taglio in mezzo a un carattere fatto di due metà (un'emoji): restava mezza. Il file del risultato delle prove,
+      che è UTF-8, non l'ha accettata e la prova si è chiusa: vedi "Trovato in più".
+  - Su 4.000 nomi fatti a pezzi con un generatore sempre uguale, 22 cambiavano al secondo passaggio.
+  - Ora: prima il taglio, poi via quello che lascia davanti (spazi di ogni tipo, punti, mezzo carattere), poi il nome
+    riservato. Un nome riservato lungo 150 perde il primo carattere per far posto al `_`, non l'ultimo: l'estensione,
+    che decide `IsDangerous`, resta. In fondo gli spazi e i punti si tolgono finché ce ne sono (uno spazio unificatore
+    seguito da un punto restava, e al secondo passaggio spariva).
+  - Dopo: i dieci nomi escono senza dispositivi, senza spazi o punti davanti, con la stessa estensione, e
+    `SafeFileName` ripassata sul suo risultato non lo cambia. Dei 4.000, 0 diversi al secondo passaggio; i 3.961 che la
+    regola di prima lasciava a posto escono uguali.
+  - Non `TrimStart('.', ' ')` per tutti, come si legge nel rapporto: un nome corto che comincia con un punto
+    (`.gitignore`) resta com'è, com'era. I punti davanti si tolgono solo dopo un taglio.
+  - **L'effetto su questo Windows per i nomi riservati: nessuno**, come per T-09: qui `NUL.txt` dentro una cartella è un
+    file normale. Resta vero su un Windows più vecchio, non provato. L'effetto che c'è qui è il nome mostrato diverso
+    da quello salvato.
+- **K-02** (`gov.it` e `edu.it`). CONFERMATO per i loghi, FALSO per "Mostra immagini" e per i link. Trovati in più i nomi
+  geografici. CORRETTO (`e1c6ef9`).
+  - **Le regole sono tre, non una**, ognuna con il suo elenco. Il rapporto le dà tutte per rette da
+    `SenderLogos.TwoLevel`:
+    - `SenderLogos.DomainOf` (`TwoLevel`, 24 suffissi scritti uno per uno): il dominio del logo, del segno
+      "autenticato" e della firma che vale per l'annullamento dell'iscrizione con un clic;
+    - `Settings.ImageKey` (`SecondLevels`: un secondo livello come `co`, `gov`, `edu` sotto un dominio nazionale di due
+      lettere): "Mostra immagini", e il confronto di `SenderCheck.NameAddress`;
+    - `Safety.BaseDomain` (un altro `SecondLevels`, più lungo): gli avvisi sui link.
+    - `SenderCheck.SameOrganization` non usa nessun elenco: confronta il dominio intero, e due enti sotto `gov.it` per
+      lei erano già due.
+  - **Loghi, CONFERMATO.** Prima, undici indirizzi di enti finti: `protocollo@ente-uno.gov.it` e `info@ente-due.gov.it`
+    davano tutti e due `gov.it`, e così `edu.it`. Dopo un messaggio autenticato del primo ente, il secondo aveva logo e
+    segno "autenticato" (`gov.it`). La firma DKIM di una scuola valeva per l'annullamento con un clic di un messaggio
+    di un'altra.
+  - **"Mostra immagini" e link, FALSO per `gov.it` e `edu.it`.** La regola generale li divideva dal primo giorno
+    (`e7f1e25`): "Mostra immagini" su un ente ricordava `ente-uno.gov.it`, e un link che mostra un ente e porta a un
+    altro aveva l'avviso. Un controllo lo dice, uguale prima e dopo.
+  - **Quindi nessuna versione di Missiva ha mai scritto `gov.it` o `edu.it` nelle impostazioni premendo "Mostra
+    immagini" su un ente.** Quella voce può esserci solo se scritta a mano, arrivata con una copia importata prima di
+    T-17, o messa premendo "Mostra immagini" su un messaggio che arriva proprio da `x@gov.it`.
+  - **I nomi geografici, CONFERMATO per tutte e tre.** Sotto `.it` il registro riserva i nomi delle regioni e delle
+    province, con il nome e con la sigla, e lì sotto ognuno registra il suo: `comune.paese.pd.it` e `ditta.pd.it` non
+    sono la stessa organizzazione. Prima:
+    - "Mostra immagini" su un comune sotto `pd.it`, su un ente sotto `veneto.it` e su uno sotto `padova.it` ricordava
+      `pd.it`, `veneto.it`, `padova.it`: le immagini di chiunque scrivesse da lì sotto si caricavano da sole (per tutti
+      e tre gli altri mittenti provati sotto quei nomi);
+    - il logo e il segno "autenticato" del comune passavano alla ditta;
+    - un link che mostra il comune e porta a un altro nome della provincia non aveva l'avviso;
+    - il nome del mittente scritto come l'indirizzo del comune, da un altro nome della provincia, non era segnalato.
+  - **Corretto.** Un elenco solo, `Safety.IsItalianSuffix`, che le tre regole consultano. 229 nomi: `gov`, `edu`; le 20
+    regioni con il nome italiano, più `fvg`, `taa` e `vda` (le sigle che le Regioni usano); le 110 sigle delle province,
+    comprese le quattro sarde soppresse; 94 nomi di province, quelli di una parola.
+  - **Quelli che mancano.** L'elenco è scritto a memoria, dal regolamento del registro .it e dalla lista pubblica dei
+    suffissi, senza poterla leggere (niente rete). Ci sono solo i nomi di cui sono certo. Mancano:
+    - i nomi composti delle province, nelle loro varianti con e senza trattino: `reggio-emilia`, `reggio-calabria`,
+      `la-spezia`, `massa-carrara`, `pesaro-urbino`, `forli-cesena`, `ascoli-piceno`, `vibo-valentia`, `monza-brianza` e
+      `monza`, `laquila` e `aquila`, `verbania`, `barletta-andria-trani`, e quelli delle province sarde soppresse;
+    - i nomi in altre lingue (`rome`, `milan`, `venice`, `florence`, `naples`, `turin`, `padua`, `genoa`; i nomi
+      tedeschi e ladini di Bolzano e del Trentino);
+    - le altre sigle a tre lettere delle regioni (`ven`, `lom`, `tos`, `laz`...), e le varianti dei nomi delle regioni
+      (`emiliaromagna`, `trentino`, `alto-adige`, `valledaosta`);
+    - `su` (Sud Sardegna): non ricordo se è nella lista.
+    Vedi "Scelte per l'autore".
+  - **Chi scrive proprio da un suffisso** (`x@gov.it`, `x@pd.it`, `x@co.uk`): "Mostra immagini" ricordava il suffisso,
+    per tutti. Ora ricorda quell'indirizzo.
+  - **Le impostazioni di chi usa già Missiva.** All'avvio (`UpgradeImageSenders`) escono le voci che sono un suffisso
+    italiano intero: `pd.it`, `veneto.it`, `padova.it`, e anche `gov.it` e `edu.it` se ci sono. Non valgono più per
+    tutti gli enti lì sotto. **Chi le aveva deve premere di nuovo "Mostra immagini" sul messaggio del suo ente**, e da
+    allora vale per quell'ente. Il registro lo dice all'avvio: "immagini: N voci di "Mostra immagini" valevano per un
+    intero suffisso italiano (...) e sono uscite".
+    - Provato con impostazioni finte scritte e rilette da una cartella: di dieci voci escono le cinque che sono suffissi
+      italiani, restano le altre (`ente-uno.gov.it`, `co.uk`, un'azienda, un indirizzo di Gmail, una ditta sotto
+      `pd.it`).
+    - `co.uk` e un servizio di posta intero restano, come ha deciso la scelta 25 del 12 ottobre: quelle Missiva non le
+      ha mai scritte, e possono essere una scelta dell'autore. I nomi geografici sì che li scriveva Missiva, da sola,
+      da un clic su un solo ente.
+    - Da una copia di sicurezza importata (`DropBroadImageSenders`, T-17) ora non entrano nemmeno queste: prima usciva
+      solo `gov.it`.
+  - Nomi normali: undici indirizzi (`.it`, `.com`, `.co.uk`, posta personale, nomi che somigliano a un suffisso come
+    `governo-prova.it` o `pd.negozio-prova.it`) hanno il dominio e la voce di prima, e i link gli avvisi di prima.
+  - Controlli: 7.
+- **K-03** (identificativi nei percorsi di Graph). CONFERMATO, CORRETTO in un altro modo (`941e9e2`, `f014b12`).
+  - Prima, con il gestore HTTP finto, un identificativo che non è di Graph al posto di quello di un messaggio, di una
+    cartella o di un allegato. Su 16 prove, tutte e 16 hanno fatto partire richieste con il token dell'account verso
+    un altro percorso:
+    - il ritorno di un posposto con `../mailFolders/archive` (la chiave di un posposto sta nelle impostazioni, e una
+      copia importata la porta): `PATCH me/mailFolders/archive`, poi `POST me/mailFolders/archive/move` con la Posta in
+      arrivo come destinazione. Una cartella spostata;
+    - un'eliminazione con lo stesso identificativo: `DELETE me/mailFolders/archive`. Anche con le barre rovesciate,
+      che .NET legge come barre;
+    - `?` e `#`: il resto del percorso spariva (`POST me/messages/m1` senza `/move`);
+    - `..` da solo: `DELETE me/`;
+    - una cartella `../../users/altra-casella/mailFolders/inbox`: `GET users/altra-casella/mailFolders/inbox/messages`,
+      la posta di un'altra casella letta come quella cartella; un allegato, lo stesso;
+    - una cartella `inbox/../..` data a Svuota: la richiesta dell'elenco andava a `me/messages`, cioè a tutta la
+      casella.
+  - **La proposta del rapporto, `Uri.EscapeDataString` per tutti, provata**: `..` non ha nulla da codificare, e parte
+    ancora (`DELETE me/` per un messaggio, un contatto, un evento; `DELETE me/mailFolders/inbox/` per una regola); uno
+    vuoto anche (`DELETE me/messages/`). E ogni richiesta vera cambia: gli identificativi di Outlook finiscono con `=`,
+    che diventerebbe `%3D`. Che Graph lo accetti per messaggi e cartelle qui non si può provare.
+  - **Ora un punto solo**, `GraphProvider.Segment`, con `MessageUrl` e `FolderUrl` che lo chiamano. 61 sostituzioni in
+    57 righe; prima gli identificativi stavano dentro le stringhe, uno per uno.
+    - Messaggi, cartelle, allegati: un identificativo passa **com'è** se è fatto di ASCII visibile senza `/`, `\`, `?`,
+      `#`, `%`, e non è vuoto né di soli punti. Quelli di Outlook (lettere, cifre, `-`, `_`, `=` in fondo) e gli alias
+      (`inbox`) passano byte per byte.
+    - Gli altri: nessuna richiesta, e chi la chiedeva riceve "non c'è" (`NotFoundException`), come per un 404. Posponi
+      dà il messaggio per eliminato, la coda toglie l'azione. Una riga nel registro, con la sola lunghezza.
+    - Rifiutare invece di codificare è la forma più prudente: un identificativo con uno di quei caratteri **oggi non
+      funzionava già** (il percorso si rompeva), quindi il rifiuto non toglie nulla che andasse. Anche un carattere
+      non ASCII si rifiuta: .NET toglie alcuni caratteri invisibili dagli indirizzi, e `.`, un carattere invisibile,
+      `.` poteva tornare `..`.
+    - Contatti, eventi, calendari e regole si codificavano già (`Uri.EscapeDataString`): restano codificati allo stesso
+      modo, perché un identificativo di regola può avere `+` e `/`. In più il rifiuto per quelli vuoti, di soli punti o
+      non ASCII. Tre punti che non codificavano (`me/calendars/{id}/calendarView`, il messaggio di un invito,
+      l'evento di un invito) ora passano di lì.
+    - `users/{indirizzo}/` delle caselle condivise non è toccato.
+  - Dopo: 18 identificativi che non sono di Graph, 18 fermati, nessuna richiesta. 21 richieste con identificativi fatti
+    come i veri (anche in una casella condivisa) partono agli stessi indirizzi di prima, byte per byte. Un controllo
+    legge il sorgente: nessun valore entra in un percorso se non da `Segment`.
+  - Controlli: 3.
+- **K-04** (HTML citato nelle risposte e negli inoltri). CONFERMATO, CORRETTO in un altro modo (`945cb20`).
+  - Con Gmail, IMAP e i file .eml la citazione la fa Missiva (`MimeOptions.BuildAsync`, `EmlProvider.Unlink`); con Graph
+    la fa il server (`createReply`, `createForward`). Missiva ci metteva `MessageBody.Html` com'era arrivato.
+  - Prima, nel messaggio MIME vero che partirebbe, per una risposta, un inoltro e un .eml inoltrato: `<script>`, il
+    modulo con i suoi campi e il pulsante, `<iframe>`, `<object>`, `<embed>`, `onload`, `onclick`, `onerror`, i link
+    `javascript:`, `vbscript:` e `data:text/html`, il `meta` che manda a un'altra pagina. Tutti e 17 i segni che
+    l'originale di prova aveva.
+  - **Non `MailHtml.Prepare`, come propone il rapporto.** Quella è la pulizia del riquadro: blocca le immagini esterne,
+    riscrive stili e colori per il tema scuro, mette tutto in un `div` suo. Un inoltro deve arrivare al destinatario
+    com'era l'originale.
+  - Ora `MailHtml.Outgoing`, una pulizia per l'uscita. Toglie quello che esegue o invia:
+    - con il contenuto: `script`, `iframe`, `frame`, `frameset`, `noframes`, `object`, `embed`, `noembed`, `applet`,
+      `portal`, e i campi di un modulo (`input`, `select`, `textarea`);
+    - lasciando il contenuto: `form` e `button`. Un messaggio scritto tutto dentro un modulo resta leggibile;
+    - il `meta` con `http-equiv="refresh"` (gli altri `meta` restano: quello del tipo di contenuto c'è in quasi ogni
+      messaggio);
+    - gli attributi che cominciano con `on`;
+    - negli attributi che portano un indirizzo (`href`, `src`, `action`, `background`, `poster`, `srcset` e altri),
+      quelli che non sono http, https, mailto, tel, cid o un'immagine `data:`. Letti come li legge un motore
+      (`MailHtml.KindOf`, quello di T-01): `java[tab]script:` è `javascript:`. Un indirizzo senza schema resta;
+    - le animazioni dei disegni che cambiano un indirizzo.
+  - **Le immagini dell'originale restano**, anche quelle esterne e quelle di un pixel: i "tracker" che il rapporto
+    nomina sono immagini dell'originale, e in un inoltro restano con ogni programma di posta. Restano anche stili,
+    tabelle, commenti per Outlook, `base`, fogli di stile esterni.
+  - **I messaggi normali ripartono uguali, byte per byte.** Se non c'è nulla da togliere `Outgoing` torna la stessa
+    stringa. Solo quando c'è qualcosa da togliere l'HTML si riscrive dall'albero. Provato su 14 messaggi di prova: una
+    risposta breve, una catena di risposte, una newsletter con tabelle, immagini, pixel, commenti per Outlook e
+    `tel:`, un messaggio scritto con Word, solo testo, immagini `cid:` e `data:`, un pixel dentro `noscript`, un testo
+    che parla di script, segni di minore, tag non chiusi, maiuscole senza virgolette, link di ogni tipo, un disegno,
+    vuoto.
+  - **`tel:` resta**, in più rispetto all'elenco del compito (http, https, mailto, cid, immagini `data:`): sta nelle
+    firme dei messaggi normali, non esegue e non invia, e toglierlo avrebbe fatto riscrivere la citazione di molti
+    messaggi normali. Vedi "Scelte fatte qui".
+  - **Un messaggio normale che cambia**: una conferma d'ordine con i dati per Gmail in uno script (JSON-LD). Lo script
+    non riparte e la citazione si riscrive dall'albero; testo, tabella, stile, immagine e link restano (un controllo).
+  - **I tetti di `ParseGuard` valgono anche qui**: l'analisi è la stessa (`MailHtml.Parse`). Un originale oltre i tetti
+    (600 livelli, con uno script in fondo) entra nella citazione come solo testo, come lo mostra il riquadro, in 4 ms
+    nella suite intera e in 15-30 con il gruppo da solo. Prima entrava com'era.
+  - **Una volta sola per originale** (`MimeOptions.QuoteHtml`, come `QuoteText`): cinque salvataggi della bozza, una
+    pulizia. Costo, per una newsletter di 438 KB con 2.500 righe: con il gruppo da solo (a freddo) circa 85 ms al
+    primo salvataggio, che in tutto passa da 89 a 184-189 ms; nella suite intera (a caldo) 33-55 ms su 64-66. Ai
+    salvataggi successivi 0-4 ms.
+  - Controlli: 6.
+- **K-05** (`FlowToHtml` e `Mailto`). (a) CONFERMATO per l'RTF, CORRETTO. (b) FALSO. (`5e33b88`)
+  - **(a) Da dove entra un link.** Tre strade:
+    - Inserisci collegamento (Ctrl+K, `LinkWindow.Parse`): solo http, https, mailto. Controllato all'ingresso;
+    - una bozza ripresa (`HtmlToFlow`): solo http, https, mailto. Controllato all'ingresso;
+    - un RTF: incollato da un documento scritto da altri, o di una firma o di un modello (anche arrivati con una copia
+      di sicurezza). WPF fa un link per ogni campo `HYPERLINK`, con l'indirizzo che ha. **Nessun controllo.**
+  - Prima: un RTF con tre campi (`javascript:`, `file://server/...`, `https:`) dava tre link, e `FlowToHtml` li spediva
+    tutti e tre. Dodici indirizzi messi in un documento: tutti nell'HTML come link, più uno relativo e uno vuoto.
+  - Ora, all'uscita, parte come link solo http, https, mailto e `tel:`. Degli altri resta il testo.
+  - **(b) Il Ccn di un link mailto:, FALSO.** `FillFromMailto` mette il Ccn nel campo Ccn e, se il link ha un Cc o un
+    Ccn, chiama `OnShowCcBcc`, che rende visibili i campi Cc e Ccn; nessuno li richiude. Chi scrive vede il campo Ccn
+    aperto con l'indirizzo. È la seconda delle due forme che il compito accetta ("entra con il campo Ccn aperto e in
+    vista"), ed è già così: **niente da cambiare**.
+    - Letto dal sorgente, non visto a finestra. Un controllo lo tiene fermo: se un giorno il campo restasse chiuso,
+      cade.
+    - "Annulla iscrizione" toglie già Cc e Ccn dal mailto: del mittente (`Unsubscribe.CleanMailto`).
+    - Il mailto: che Missiva costruisce da sé ("Scrivi all'amministratore") ha solo oggetto e testo: non cambia.
+  - Controlli: 4.
+- **K-06** (`P7m.Check` con più firme). CONFERMATO, CORRETTO (`65c396b`).
+  - L'integrità era già controllata per tutte le firme (`SignedCms.CheckSignature`). Il certificato solo per la prima
+    (`SignerInfos[0]`): catena, scadenza, scopo. Il nome mostrato era il suo.
+  - **Le buste di prova.** In una busta le firme parallele stanno in un insieme, che la codifica mette in ordine: fra
+    due firme con lo stesso emittente decide il numero di serie del certificato. Con certificati di prova dal numero di
+    serie scelto (`K6Keys`) si costruiscono i due ordini; la prova li verifica rileggendo il file.
+  - Prima, una firma buona (Maria Rossi) e una con il certificato scaduto (Mario Rossi):
+    - buona per prima: "Firmato da Maria Rossi il 26/09/2026 alle 10:30: firma valida, certificato riconosciuto da
+      Windows." Verde. Di Mario Rossi nessuna traccia;
+    - buona per ultima: "Firmato da Mario Rossi ...: il documento è integro, ma il certificato non è fra quelli
+      riconosciuti da Windows". Gialla. Di Maria Rossi nessuna traccia.
+    Lo stesso con il certificato di un sito web al posto di quello scaduto: verde o rossa secondo l'ordine.
+  - Prima, una busta dentro l'altra (fuori Maria Rossi, dentro il certificato di un sito web): lo stato era già il
+    peggiore, ma la fascia dava la colpa a chi non l'aveva: "il certificato di Maria Rossi non serve a firmare
+    documenti".
+  - Ora ogni firma di ogni busta si controlla per sé. Vale la peggiore, alla pari la prima. `Result.Signer` è il suo
+    firmatario, `Result.Signers` tutti. La fascia, con più firmatari:
+    - "Firmato da Maria Rossi e Mario Rossi: il documento è integro, ma il certificato di Mario Rossi non è fra quelli
+      riconosciuti da Windows (...)";
+    - "Firma non valida: il certificato di sito-prova.example non serve a firmare documenti (...). Non fidarti del
+      contenuto. Le firme sono di Maria Rossi e sito-prova.example.";
+    - "Firmato da Maria Rossi e Ada Bianchi: firme valide, certificati riconosciuti da Windows."
+    Uguale nei due ordini. Con più firmatari non c'è l'ora: ogni firma ha la sua.
+  - Con una firma sola, e con la stessa persona che firma due volte, la fascia è quella di prima, parola per parola.
+  - **Un certificato scaduto risulta "non riconosciuto da Windows"** (gialla), non "scaduto": è la frase che c'era.
+    Vedi "Scelte per l'autore".
+  - **`Pec.Verify`, le firme S/MIME: il caso esiste.** Prendeva la prima firma (`Verify(context).FirstOrDefault()`).
+    Con un messaggio firmato due volte (costruito rifacendo la parte della firma con una busta staccata sugli stessi
+    byte): firma buona per prima "verificata", per ultima "non riconosciuta". Ora vale la peggiore, con il suo
+    firmatario. La busta di un gestore PEC ha una firma sola: lì non cambia nulla.
+  - Controlli: 4.
+
+### Trovato in più
+
+- **I nomi geografici di `.it`**: vedi K-02. È la parte più grande di questo lavoro, e il rapporto non la nomina.
+- **`MailAutoconfig.BaseDomain` è una quarta regola**, con un elenco suo ancora più corto (`co`, `com`, `net`, `org`).
+  Serve a cercare il gestore dal nome del server di posta; un dominio sbagliato lì vuol dire solo non trovarlo. Non
+  toccata.
+- **Mezzo carattere in un nome chiude la suite.** `File.WriteAllLines` rifiuta una metà di carattere, e il primo giro
+  di K-01 è finito con un'eccezione non gestita mentre scriveva il risultato. Corretto nella prova (la metà diventa
+  `?` nel testo del controllo). Lo stesso potrebbe succedere a chiunque scriva quel nome in un file UTF-8: ora
+  `SafeFileName` non ne lascia.
+- **Svuota con un identificativo di cartella costruito apposta** leggeva l'elenco di tutta la casella (K-03): con una
+  risposta piena avrebbe eliminato per sempre quei messaggi. Chiuso da `Segment`.
+- **`EmlProvider.Unlink` non porta il mittente scelto** (`From`, un alias o "Invia come"), né `Cancel` e `Progress`,
+  nel messaggio che passa all'account. Letto, non provato, non toccato: non è di questa revisione.
+- **Le API di Google** (calendario, contatti) codificano già gli identificativi nei percorsi. Non guardate oltre: un
+  identificativo di soli punti lì non è stato provato.
+- **Una cartella dei dati di un giro riuscito è rimasta** (`giro-...` del primo giro intero, "tutto bene"), contro la
+  regola di C-49. Non cercato perché; fra un giorno la toglie il primo giro che parte.
+- **Un controllo cambia testo con la data**: "V-..., un messaggio nuovo in un gruppo che c'è già" scrive i gruppi
+  dell'elenco ("Questo mese", "Settimana scorsa"), e fra il giro del 13 e quello del 14 ottobre il testo è diverso.
+- **Due errori nelle prove nuove, corretti nelle prove.**
+  - K-04: un originale scritto con i soli a capo di Unix parte con gli a capo di rete (li mette MimeKit scrivendo il
+    messaggio, da sempre), e il confronto byte per byte dava "cambiato" anche sul codice di prima. Il messaggio di
+    prova ora ha gli a capo di rete.
+  - K-06: due certificati di prova con lo stesso emittente e lo stesso numero di serie non si distinguono (una firma
+    indica il suo certificato così), e la busta con tre firme risultava "non valida" per questo. Ora ognuno ha il suo
+    numero. Il controllo, ritoccato, è stato rivisto cadere con i file di prima.
+
+### Controlli e suite
+
+- `CoreReviewTests`, 26 controlli, gruppo `core` in `Core/ProvaBozze.Gruppi.cs`.
+- Nessun controllo di prima è stato toccato, e nessuno è sparito. I nomi del primo e dell'ultimo giro confrontati con
+  uno script, tolte le cifre: 26 in più; diversi solo otto che hanno dentro un pezzo casuale o la data.
+- Suite completa (`--prova-bozze`), sul codice di `f014b12`: **1137 controlli, tutto bene, in 155 secondi**. Dopo quel
+  giro sono cambiati solo i documenti.
+- Giri interi prima: sul codice di `65c396b` 1137, tutto bene, in 156 secondi; dopo K-04 1129, in 153; dopo K-03 1123, in
+  171; dopo K-02 1120, in 175. Prima di cominciare, sul codice di `e120133`: 1111, tutto bene, in 194 secondi.
+- Compilazione da capo (`--no-incremental`) prima dell'ultimo giro: Debug 0 errori e 0 avvisi, Release 0 errori e 0
+  avvisi. La versione che si installa non è stata pubblicata né provata.
+- `privato\pubblica.ps1 -SoloControlli`: "Controlli passati".
+
+### Che cosa cambia per chi usa Missiva
+
+Niente di questo è stato provato a finestra.
+
+1. **K-01. Quasi nulla.** Un allegato con un nome più lungo di 150 caratteri si salva con il nome che si vede.
+2. **K-02. Tre cose.**
+   - Per i mittenti che stanno sotto un nome geografico (un comune sotto `pd.it`, un ente sotto `veneto.it` o
+     `padova.it`), **se avevi premuto "Mostra immagini" le immagini tornano bloccate**: premi di nuovo sul messaggio di
+     quell'ente, e da allora vale per lui soltanto. Il registro dice quante voci sono uscite, al primo avvio.
+   - Il logo di un ente sotto `gov.it`, `edu.it` o un nome geografico non è più quello di tutto il suffisso: sparisce,
+     e torna (il suo) al primo suo messaggio autenticato.
+   - Un link che mostra un ente e porta a un altro sotto lo stesso nome geografico ha l'avviso, e così un nome del
+     mittente scritto come l'indirizzo di un altro ente.
+3. **K-03. Niente**, se tutto va come previsto. Se un'azione su un account Microsoft dicesse "L'identificativo non è
+   di Microsoft Graph", è questo: dimmelo, con la riga del registro.
+4. **K-04.** Rispondendo o inoltrando da Gmail o da un account IMAP (o da un .eml) un messaggio con script o moduli, la
+   citazione parte senza. Dei messaggi normali non cambia nulla, immagini comprese. La prima volta che si salva la
+   bozza di una risposta a una newsletter molto grande costa fino a un decimo di secondo in più.
+5. **K-05.** Un link incollato da Word che porta a un file su un server (`file://`), o con un altro schema, parte come
+   testo. I link http, https, mailto e `tel:` di firme e modelli partono come prima. Il Ccn di un link mailto: si
+   vede nel campo Ccn aperto, com'era.
+6. **K-06.** Un file .p7m con più firme nomina tutti i firmatari, ed è verde solo se tutte le firme lo sono.
+
+### Scelte fatte qui, da rivedere
+
+- **K-01.** Dopo un taglio si tolgono anche i punti davanti; senza taglio un punto davanti resta.
+- **K-02.**
+  - Le tre regole restano tre: non le ho unite, ognuna ha le sue prove. Hanno in comune solo l'elenco italiano.
+  - Le voci che sono un suffisso italiano escono a ogni avvio, anche `gov.it` e `edu.it`, che Missiva non ha mai
+    scritto da un ente: lo chiedeva il compito. Le altre voci larghe (`co.uk`) restano, per la scelta 25.
+  - Nessun avviso a finestra: solo la riga nel registro, e le immagini bloccate con la loro fascia.
+  - I loghi salvati sotto i nomi di prima (`gov.it.png`) restano sul disco, inutili.
+- **K-03.**
+  - Rifiuto invece di codifica per messaggi, cartelle e allegati; un carattere non ASCII è un rifiuto.
+  - Un identificativo rifiutato vale come "non c'è" (`NotFoundException`), non come un errore: Posponi e la coda lo
+    lasciano andare invece di riprovare.
+  - Contatti, eventi, calendari e regole restano codificati: lì `/` diventa `%2F` e la richiesta parte.
+- **K-04.**
+  - `tel:` resta, in più rispetto al compito; `sms:`, `callto:`, `sip:`, `ftp:` e gli altri si tolgono.
+  - Il modulo e il pulsante lasciano il contenuto; i campi si tolgono.
+  - `base`, i fogli di stile esterni e l'attributo `ping` restano: non eseguono, e caricano come un'immagine.
+  - Gli stili non si toccano (`style`, `<style>`): un `url(javascript:...)` in un foglio di stile resta scritto. I
+    motori di oggi non lo eseguono.
+  - Oltre i tetti la citazione è solo testo, anche per un messaggio che di pericoloso non ha nulla.
+  - La parte di solo testo della citazione (`QuoteText`) non cambia.
+- **K-05.** `tel:` parte, anche qui in più rispetto al compito, per le firme. Il Ccn di un mailto: resta com'è.
+- **K-06.**
+  - Con più firmatari la fascia non dice l'ora.
+  - Una busta senza firme dentro una firmata dà "Una delle buste del file non ha una firma" (prima "Il file non ha una
+    firma").
+  - Per le firme S/MIME, con più firme tutte buone si nomina solo la prima.
+
+### Scelte per l'autore
+
+- **K-02, l'elenco dei suffissi italiani**: confrontarlo con la lista pubblica dei suffissi e aggiungere le varianti
+  che mancano? Proposta: sì, alla prima sessione che può leggerla; sono una cinquantina di righe. In alternativa
+  portare in Missiva tutta la lista (migliaia di righe, per tutti i paesi) e togliere i tre elenchi: è un lavoro a sé.
+  - Fatta il 14 ottobre: vedi "Scelte del 14 ottobre".
+- **K-02, le voci larghe che restano** (`co.uk`, un servizio di posta intero): toglierle anche loro a ogni avvio? È la
+  scelta 25, ancora aperta. Proposta: sì, ora che il registro dice che cosa esce.
+  - Fatta il 14 ottobre: vedi "Scelte del 14 ottobre".
+- **K-02, dirlo a finestra** quando all'avvio escono delle voci? Proposta: no, basta la fascia delle immagini bloccate.
+- **K-04 e K-05, `tel:`**: tenerlo, com'è ora, o toglierlo come dice l'elenco di partenza? Proposta: tenerlo.
+- **K-05, il Ccn di un link mailto:**: lasciarlo entrare nel campo aperto, com'è, o non farlo entrare affatto?
+  Proposta: com'è, come Outlook e Thunderbird.
+- **K-06, il certificato scaduto**: una frase sua ("il certificato di ... è scaduto") invece di "non riconosciuto da
+  Windows"? Proposta: sì, ma va distinto il certificato scaduto oggi da quello che era valido alla data della firma,
+  e per quello serve una marca temporale, che Missiva non legge.
+- **K-06, le firme S/MIME**: nominare tutti i firmatari anche lì? Proposta: no, finché non capita un messaggio vero.
+- **Le API di Google**: lo stesso punto solo di K-03 per i percorsi di calendario e contatti? Proposta: sì, quando si
+  tocca quel codice.
+
+### Non verificato
+
+- **Niente a finestra**: la fascia di un .p7m con più firme, il campo Ccn aperto da un link mailto:, "Mostra immagini"
+  da premere di nuovo, un link incollato da Word.
+- **Nessun server vero.**
+  - K-03: Graph vero. Che i suoi identificativi di messaggi, cartelle e allegati siano sempre ASCII senza `/`, `\`,
+    `?`, `#`, `%` è quello che so di come sono fatti, non una misura. Come Graph tratta `%2F` nell'identificativo di un
+    contatto, di un evento o di una regola.
+  - K-04: come i programmi di chi riceve mostrano una citazione riscritta dall'albero (Outlook, Gmail). Nessun
+    messaggio vero: i 14 normali sono scritti a mano.
+- **K-01**: un Windows dove i nomi riservati dentro una cartella sono dispositivi.
+- **K-02**: la lista pubblica dei suffissi (niente rete). Le impostazioni vere: se dentro ci siano voci che usciranno
+  non l'ho guardato; lo dirà il registro al primo avvio. Un sito vero a `gov.it` o a `pd.it`, e che logo desse.
+- **K-05**: gli appunti veri (Ctrl+V da Word): qui l'RTF è letto da `RichEditor.BlocksFromRtf`, la stessa funzione di
+  firme e modelli.
+- **K-06**: un file .p7m vero con più firme, fatto da un programma di firma (con le controfirme, con i certificati
+  dell'elenco AgID); una firma con la marca temporale.
+- **La Missiva installata e la versione finale** non sono state eseguite né pubblicate. La suite è codice solo di
+  Debug.
+
+### Prove a mano per l'autore
+
+Dopo l'unione in main e l'installazione.
+
+1. **K-02.** Al primo avvio cerca nel registro la riga "immagini: ... voci di "Mostra immagini" valevano per un intero
+   suffisso italiano". Se c'è, apri un messaggio di uno di quei mittenti (un comune, la Regione): le immagini sono
+   bloccate; premi "Mostra immagini"; apri un altro suo messaggio: si vedono. Un messaggio di un altro ente sotto lo
+   stesso nome resta bloccato.
+2. **K-03.** Con un account Microsoft, l'uso di sempre: apri un messaggio con un allegato e aprilo, sposta, elimina,
+   posponi e fai tornare, segna come letto, rinomina una cartella. Tutto come prima. Nel registro non deve comparire
+   "non è di Graph".
+3. **K-04.** Da un account Gmail inoltra a te stesso una newsletter con immagini e una conferma d'ordine: nel messaggio
+   arrivato le immagini ci sono e l'aspetto è quello dell'originale.
+4. **K-05.** In una scrittura incolla da Word una riga con un collegamento a un sito e una con un collegamento a un
+   file: inviato a te stesso, il primo è un link, il secondo è testo. La tua firma, se ha link o un numero di telefono
+   collegato, arriva come prima.
+5. **K-06.** Se hai un file .p7m firmato da due persone, aprilo: la fascia nomina tutte e due.
+
+## Revisione del 14 ottobre: cinque consigli sull'interfaccia (U-01..U-05)
+
+Cinque consigli di un revisore esterno che ha letto i sorgenti dell'interfaccia (`Program.cs`, `UI`, i due script) e non
+ha eseguito nulla: il suo testo è in `sicurezza-ui.md`. Verificati il 14 ottobre 2026 sul ramo `auditor`, albero di
+lavoro `C:\Progetti\Missiva\auditor`; il "prima" di questa sezione è il commit `df0cd97`.
+
+Commit: `0e97cd1` (U-01, con il rapporto), `edecd0a` (U-02), `1a4a134` (U-03), `070812f` (U-04), `0fa90ad` (U-05), più
+quello di questo esito.
+
+Su cinque punti uno è un difetto vero, trovato con un'email che lo sfrutta (U-01); gli altri sono indurimento, con dentro
+due casi veri piccoli (la pulizia dei temporanei dietro una giunzione in U-03, il nome di Esplora file senza percorso in
+U-05). In due la correzione non è quella proposta, perché quella proposta non chiudeva il difetto (U-01) o avrebbe
+peggiorato qualcosa (U-03, il nome a 128 bit e la scrittura con file temporaneo e rinomina).
+
+| Punto | In breve | Esito | Chi ci guadagnava | Commit |
+|---|---|---|---|---|
+| U-01 | Uscire dalla shadow root dell'email | CONFERMATO come difetto, con 20 email che escono. CORRETTO in un altro modo | Chi manda un'email | `0e97cd1` |
+| U-02 a | Conferma per gli inoltri verso fuori già presenti o riaccesi | CONFERMATO per la casella dell'elenco e per gli indirizzi nascosti, FALSO per la finestra (non accende). CORRETTO | Quasi nessuno: chi è già entrato nella casella, se poi l'utente accende lui la regola | `edecd0a` |
+| U-02 b | "Esegui ora" e il Cestino | GIÀ DETTO in due pezzi; ora in una frase | Nessuno | `edecd0a` |
+| U-03 | Nome della cartella temporanea a 128 bit | Indurimento. FATTO con una via di mezzo: 32 cifre dove il percorso lo permette, e la cartella creata solo se non c'è | Nessuno | `1a4a134` |
+| U-03 | Collegamenti nella cartella temporanea | FALSO per una giunzione dentro (la pulizia toglieva già solo il collegamento), CONFERMATO se la cartella stessa è una giunzione. CORRETTO | Nessun altro: solo un programma dell'utente può crearla. Il danno però era vero | `1a4a134` |
+| U-03 | Salvataggi scelti dall'utente con `SafeFile.Write` | LASCIATO. "Salva tutti" non sovrascriveva già | Nessuno | `1a4a134` |
+| U-03 | Il file con il nome finale prima della domanda sul marchio web | CONFERMATO, CORRETTO | Nessuno, in pratica | `1a4a134` |
+| U-04 | Codifica in `ReadingPage.Empty` | Indurimento, FATTO come serve a quel posto (CSS, non HTML) | Nessuno | `070812f` |
+| U-05 | `explorer.exe` senza percorso | CONFERMATO (basso), CORRETTO | Chi può mettere un file nella cartella dove si salva la copia di sicurezza | `0fa90ad` |
+| U-05 | Schema dei link in `AccountWindow.OnLink` | Rischio nullo (due link fissi https). Controllo messo | Nessuno | `0fa90ad` |
+
+Come si è provato:
+
+- **Prima**: ogni controllo è nato prima della correzione, o è stato rivisto cadere con la correzione spenta a mano.
+- **Dopo**: `UiReviewTests` (`Core/ProvaBozze.Interfaccia.cs`, da soli in sette secondi con `--prova-audit risultato.txt
+  interfaccia`), 31 controlli: U-01 (12), U-02 (6), U-03 (7), U-04 (3), U-05 (3). Solo dati finti; nessuna finestra,
+  nessuna rete.
+- **Il motore vero** (U-01): il WebView2 senza finestra di T-01 (`Sec2Engine`), con la pagina vera di
+  `ReadingPage.Build` e una fascia rossa vera. Per ogni email di prova uno script legge il DOM fuori dalla shadow root
+  (deve essere quello della pagina dello stesso messaggio con un corpo innocuo, carattere per carattere), il colore
+  calcolato della fascia, e conta in tutta la pagina gli elementi con un attributo di evento, che la pulizia toglie a
+  tutti quelli che vede.
+- **Visti cadere**: 28 dei 31.
+  - Sul codice di prima: i due del motore (20 email escono, 20 portano elementi mai puliti) e, in una prima forma,
+    quello della pulizia dietro una giunzione (U-03).
+  - Con la correzione spenta a mano e poi rimessa, senza commit:
+    - U-01: la guardia tolta (2); il contenuto grezzo rimesso, con la guardia accesa (3: nessuna email esce, ma 20
+      portano ancora elementi mai puliti); i commenti rimessi, `template` tolto dagli elementi che non si scrivono,
+      l'oggetto scritto senza codifica (4). In tutto 9 dei 12.
+    - U-02: la regola di prima (solo gli indirizzi nuovi, nessuna domanda accendendo) e la frase di prima di "Esegui
+      ora" (4); la domanda tolta dalle due strade (in più quello che legge i sorgenti); la domanda sempre (in più
+      "nessuna domanda quando nessun inoltro diventa attivo"). Tutti e 6.
+    - U-03: tutte e sette le correzioni spente in un giro (7).
+    - U-04: i nomi dei caratteri non filtrati e un'interpolazione nuova senza codifica (2); una virgola e uno spazio fra
+      i nomi (1).
+    - U-05: il nome senza percorso, il controllo dello schema tolto, `"dotnet"` senza percorso in una prova (3).
+  - Non visti cadere, perché dicono com'è il motore o misurano: "un xmp scritto come pre si vede uguale", "il costo
+    della guardia", "il template di una shadow root si scrive in un punto solo", e "nessuna email esce" con la sola
+    guardia spenta (resta vero: lo tiene la correzione vera).
+- **Le finestre non si aprono.** Le domande di U-02 si provano dalla funzione che ne decide il testo
+  (`Rules.ForwardQuestion`, `RulesView.RunQuestion`) e dalla funzione che accende e spegne (`RulesView.EnableAsync`) con
+  il gestore HTTP finto di Graph.
+
+### Punti del rapporto
+
+- **U-01** (uscire dalla shadow root dichiarativa). CONFERMATO come difetto, CORRETTO in un altro modo (`0e97cd1`).
+  - **Il rapporto è una lettura**: indica i commenti e il ramo di `template`, e dice "se per qualsiasi discrepanza".
+    Nessuno dei due è la strada. Su 239 email costruite per uscire, nel motore vero, **20 escono**, e sono tutte della
+    stessa famiglia:
+    - `<math><mtext><table><mglyph><xmp>...`: l'analisi (AngleSharp, come vuole lo standard) mette `mglyph` fuori dalla
+      tabella, dentro `mtext`, e lì è un elemento dell'HTML; riletto dal motore in quel posto è un elemento della
+      formula, con tutto quello che contiene. Il contenuto grezzo di `xmp`, che la pulizia aveva scritto com'era,
+      diventa elementi: il primo è `</template>`, che chiude la shadow root, e il resto dell'email finisce nella pagina.
+    - Lo stesso con `malignmark`, con `mi`, `mo`, `mn`, `ms` al posto di `mtext`, con `noembed` e `noframes` al posto di
+      `xmp`, con `mglyph` in una riga, dopo una didascalia, in un `colgroup`, dentro `foreignObject` o dentro un'altra
+      tabella (16 email).
+    - Con un `svg` sotto `mglyph`, nei due versi (4 email). In un verso come sopra, con `xmp` o `noembed` dentro
+      `foreignObject` o `desc`. Nell'altro: `<math><mtext><table><mglyph><svg><mtext><xmp><a title="</xmp>...">`. Qui
+      `xmp` è un elemento del disegno e la pulizia vede i suoi figli; riletto, `svg` sotto `mglyph` è della formula,
+      `mtext` torna un punto dove comincia l'HTML, `xmp` è quello dell'HTML e si chiude a metà dell'attributo.
+  - **Che cosa si vede prima**: fuori dalla shadow root compare l'elemento con il segno e il suo attributo di evento, e la
+    fascia rossa vera passa dal suo colore, `rgb(164, 38, 44)`, a quello scritto dall'email, `rgb(1, 2, 3)`.
+  - **Chi ci guadagna**: chiunque mandi un'email. Può nascondere la fascia rossa "mittente non verificato", disegnarne
+    una verde finta, coprire i pulsanti veri del riquadro con i suoi. Non può eseguire codice (JavaScript è spento e la
+    pagina lo vieta), e le sue immagini partono solo se la pagina le lascia già passare per un altro messaggio.
+  - **I candidati che non escono, prima** (219): i commenti in tutte le forme (`--!>`, `<!-->`, `<!--->`, annidati,
+    mai chiusi, condizionali di Outlook, `<!x`, `<?xml`, `</ `, CDATA nell'HTML: AngleSharp 1.8.2 li chiude come il
+    motore); commenti e CDATA dentro `svg` e `math`; `svg style` in cinque forme; `annotation-xml` con una dozzina di
+    forme di `encoding`, nei due versi; `foreignObject`, `desc`, `title`, `template`, `script`, `plaintext` dentro
+    `svg`; `</p>` e `</br>` dentro `svg` e `math` (AngleSharp esce dal disegno come il motore); `xmp`, `noembed`,
+    `noframes`, `listing`, `textarea`, `title`, `noscript`, `iframe`, `script`, `plaintext` da soli, in una tabella,
+    dopo un `frameset`; `mglyph` senza tabella, dentro `b`, dentro due moduli, dentro due link; gli attributi (fra virgolette,
+    fra apici, senza, con entità, il nome di un attributo con `<`, lo stile, il link, classe e colori del corpo); i
+    fogli di stile con `</template` in undici forme; `template` e `</template>` in una tabella, in una cella, in un
+    `colgroup`, in un `select`, in un `frameset`, dopo `</body>` e `</html>`; dieci caratteri fra il nome di un elemento
+    o di un attributo e quello che segue (avanzamento di pagina, ritorno a capo da solo, carattere nullo...); la strada
+    del solo testo, in cinque modi. L'elenco intero, con l'esito di ognuno prima e dopo, lo scrive la prova con
+    `MISSIVA_PROVA_USCITE=file`.
+  - **Le altre cose che la pagina prende dall'email senza passare dalla pulizia**: oggetto, nome e indirizzo del
+    mittente, anteprima di un messaggio chiuso, destinatari, Rispondi a, categorie, nomi degli allegati, righe delle
+    fasce, account. Passano tutte dalla codifica (`E`). Con dentro la chiusura dei contenitori e del template la pagina
+    ha gli stessi 106 elementi di quella con testi innocui, e il motore legge l'oggetto com'è scritto. Erano già a
+    posto.
+  - **La correzione proposta non bastava.** Togliere i commenti, togliere il ramo di `template` e mettere la guardia su
+    `</template` ferma l'uscita dalla shadow root (provato: con la sola guardia nessuna delle 239 esce), ma le 20 email
+    portano ancora dentro la shadow root elementi che la pulizia non ha mai visto: un'immagine mai controllata, un link
+    mai controllato.
+  - **Corretto alla radice**: nella pagina del riquadro non si scrive più contenuto grezzo.
+    - `xmp` dell'HTML si scrive come `pre`, con il testo scritto come testo e i suoi attributi. Per il motore si vede
+      uguale: stessi blocco, carattere, dimensione, spazi e margini (misurato).
+    - `noembed` e `noframes` non si scrivono: il motore non li mostrava (`display: none`, misurato).
+    - Un `xmp` dentro un disegno o una formula non si scrive.
+    - In più, in nessuno spazio dei nomi: `template`, `script`, `style`, `title`, `textarea`, `iframe`, `noscript`,
+      `plaintext` (`MailHtml.NeverWritten`). Erano già tolti a monte; ora chi scrive la pagina non li scrive comunque.
+    Così ogni tag che il motore legge è uno scritto dalla pulizia per un elemento che ha visto, in qualunque contesto lo
+    rilegga, e tutto il resto è testo.
+  - **I commenti** (punto 2 del compito): nella pagina del riquadro non si scrivono più. `InnerHtml` ha due chiamanti:
+    - `MailHtml.Clean`, la pagina del riquadro: senza commenti, senza contenuto grezzo, mai `template`;
+    - `MailHtml.Outgoing`, l'HTML che riparte in una risposta o in un inoltro (K-04): com'era. I commenti condizionali
+      di Outlook restano tutti (un controllo: l'originale riscritto dall'albero è uguale carattere per carattere), e
+      resta il contenuto grezzo di `xmp`.
+  - **Il ramo di `IHtmlTemplateElement`** (punto 3): nel riquadro era codice morto, perché `template` è fra gli
+    elementi tolti, in ogni spazio dei nomi. Ci si arriva solo da `Outgoing`, quando qualcos'altro fa riscrivere la
+    citazione: lì resta, e scrive il contenuto del `template` com'era. Vedi "Trovato in più".
+  - **La guardia finale** (punto 4): `MailHtml.Sealed`, dentro `MailHtml.Result`.
+    - Sta dove nasce il frammento, non dove la pagina lo scrive: `Result.Fragment` passa dalla guardia nel costruttore
+      e non si riassegna. Qualunque strada porti a un `Result` (la pulizia, il solo testo, il ripiego), nella pagina
+      non entra un frammento che non ci sia passato; si fa una volta per corpo e non a ogni disegno; e in
+      `ReadingPage` il template di una shadow root si scrive in un punto solo, con dentro solo quel frammento (un
+      controllo legge il sorgente).
+    - `</template`, maiuscolo o minuscolo, diventa `&lt;/template`. Dopo la correzione qui sopra la sequenza può stare
+      solo nel valore di un attributo, dove si legge uguale: il motore rilegge lo stesso valore (provato, anche in
+      maiuscolo).
+    - Un frammento senza la sequenza torna la stessa stringa. Sui 526 testi HTML che le altre prove hanno già, puliti
+      per il tema chiaro e per lo scuro (1052 frammenti), la guardia non ne tocca nessuno.
+    - Costo: 0,08-0,12 ms su un frammento di 976 KB.
+  - **`</style` e la chiusura dei contenitori**: non servono. Il foglio di stile dell'email non ha nessun `</` (diventa
+    `\3C/` sull'intero foglio, come ultimo passo), e sta in testa al template, dove il motore lo legge di sicuro come
+    foglio di stile. `</div>` e `</article>` dentro un template non chiudono nulla fuori: per il motore il template è
+    un confine, e la pulizia scrive solo chiusure di elementi che ha aperto.
+  - **Che cosa cambia nella pagina dei messaggi normali**: dei 1046 frammenti dei testi di prova di prima, 1022 sono
+    uguali byte per byte; 20 perdono solo i commenti; 4 (lo stesso testo) hanno un `xmp` che diventa `pre`.
+  - **Due controlli di prima cambiano**, perché si aspettavano commenti e `xmp` nella pagina:
+    - "160 "<" sciolti nel testo: la stessa pagina e lo stesso testo; commenti, attributi e contenuti grezzi non si
+      toccano" (blocco 1): stesso nome. Il frammento atteso non ha più il commento e ha `pre` al posto di `xmp`; che
+      l'analisi non tocchi commento e contenuto grezzo ora si legge anche dall'HTML in uscita, dove restano.
+    - "messaggio con foglio di stile, tabella, link, pixel, script, modulo, commento e pre: pagina chiara e scura, link e
+      testo uguali a prima" (blocco 1): il frammento atteso non ha più `<!-- commento -->`, e il nome finisce con "(dal 14
+      ottobre, U-01, senza il commento)".
+  - **Costo**: la pulizia di un messaggio costruito con 48.000 elementi e 8.000 commenti (1 MB) costa 200-290 ms in
+    Debug con le regole nuove e 210-265 senza: dentro il rumore.
+  - Controlli: 12.
+- **U-02** (conferma sugli inoltri verso fuori; "Esegui ora"). (a) CONFERMATO in parte, CORRETTO. (b) GIÀ DETTO, reso
+  esplicito. (`edecd0a`)
+  - **Da dove arriva un inoltro già presente**: solo dalle regole di Outlook lette dal server, create altrove. Le regole
+    di Missiva (Gmail, IMAP) non inoltrano: la finestra non ha il campo, e i tre elenchi non si salvano nemmeno.
+    `Rules.ExternalForwards` conta tutti e tre: inoltra, reindirizza, inoltra come allegato.
+  - **La finestra della regola non accende e non spegne**: `RuleWindow` non ha la casella, e `Read` copia `Enabled` com'è.
+    Il caso del rapporto, "regola spenta, modificata e salvata", salva una regola che resta spenta: nessun inoltro
+    diventa attivo. Per questo lì non si chiede di nuovo.
+  - **La casella dell'elenco sì, e non chiedeva nulla** (`RulesView.SetEnabledAsync`): una regola spenta che
+    reindirizza fuori si riaccendeva con un clic. È il caso del titolo del rapporto, che le sue correzioni non
+    nominano.
+  - **Gli indirizzi nascosti**: con un indirizzo nuovo aggiunto nella finestra, la conferma nominava solo quello. Un
+    reindirizzamento o un inoltro come allegato già presenti, che la finestra non mostra nei campi, non comparivano.
+  - **La regola, ora in un punto solo** (`Rules.ForwardQuestion`, usata dalla finestra e dalla casella): si chiede ogni
+    volta che un inoltro verso fuori diventa attivo e prima non lo era, cioè regola nuova, indirizzo esterno nuovo,
+    regola spenta che si accende. La domanda nomina **tutti** gli indirizzi esterni della regola. Non si chiede: una
+    regola già accesa salvata con gli stessi inoltri; una spenta che resta spenta con gli stessi; spegnere; un inoltro
+    dentro l'organizzazione.
+  - **Una differenza dalla regola del compito, non meno prudente**: un indirizzo nuovo in una regola spenta si chiede
+    lo stesso, com'era prima, dicendo "La regola è spenta: quando la accendi...". Toglierlo sarebbe stato chiedere
+    meno di prima.
+  - Accendendo: "Con la regola "Archivio" accesa, tutti i messaggi che arrivano verranno inoltrati a ..., fuori dalla tua
+    organizzazione, anche quando non guardi. Chi entra di nascosto in una casella lascia proprio regole così: accendila
+    solo se l'hai creata tu e ...", con il pulsante "Accendi la regola". Detto di no, la casella torna spenta e a Outlook
+    non parte nessuna richiesta (provato con Graph finto: 0 richieste; con il sì, un PATCH con il solo `isEnabled`).
+  - Per un account personale il testo dice "fuori dalla tua casella" (prima "organizzazione" per tutti).
+  - **Chi ci guadagna**: poco. Serve qualcuno che sia già entrato nella casella e abbia lasciato una regola spenta, e
+    poi l'utente che la accende lui, in un elenco che gliela mostra già in rosso con gli indirizzi.
+  - **T-34 e la scelta 16 sono un'altra cosa**: lì si tratta di accorgersi che una regola che inoltra fuori è
+    comparsa, senza aprire le Impostazioni (leggere le regole in sottofondo e avvisare). Qui si tratta del momento in
+    cui l'utente ne rende attiva una da Missiva. La scelta 16 resta com'è: non fatta, dell'autore.
+  - **(b) "Esegui ora"**: la conferma diceva già quanti messaggi la regola cambia ("La regola cambia 3 dei 4 messaggi
+    di ...") e, nella descrizione sotto, "elimina (nel Cestino)". Con una regola sola che elimina, i messaggi che cambia
+    sono quelli che vanno nel Cestino: il numero era già quello. Ora la prima frase lo dice: "La regola mette nel
+    Cestino 3 dei 4 messaggi di ...: nel Cestino, non per sempre, da lì si riprendono." Le altre regole hanno la frase
+    di prima. Elimina delle regole è sempre uno spostamento nel Cestino (`Rules.RunAsync`), mai un'eliminazione per
+    sempre; sul server IMAP finto nel Cestino ne arrivano 3.
+  - Controlli: 6.
+- **U-03** (allegati nella cartella temporanea, salvataggi). (`1a4a134`)
+  - **Chi può scrivere in `%TEMP%\Missiva`**: l'utente e i programmi che girano come lui. Un altro utente del PC no.
+    Chi può scriverci può già leggere la posta e sostituire Missiva: per i quattro sotto-punti non c'è un attaccante
+    che ci guadagni. Uno di loro era però un danno vero.
+  - **La pulizia e i collegamenti**, misurato con giunzioni verso cartelle di prova:
+    - una giunzione fra le sottocartelle, o più dentro: FALSO. `Directory.Delete` di .NET toglie il collegamento e non
+      tocca dove porta; i file della cartella di arrivo restano. Dopo una giunzione trovata più dentro lascia la
+      cartella vuota, che se ne va al giro dopo;
+    - **la cartella degli allegati è lei una giunzione**: CONFERMATO. Le sue "sottocartelle" sono quelle della cartella
+      di arrivo, e la pulizia le cancellava con tutto quello che contenevano: alla chiusura di Missiva tutte, ogni
+      minuto quelle ferme da un'ora. Ora la pulizia non parte, e un allegato non ci si scrive ("è un collegamento a
+      un'altra cartella: Missiva non ci scrive");
+    - l'età di una sottocartella non conta più i file dietro un collegamento.
+    `%TEMP%` e le cartelle sopra non si guardano: possono essere collegamenti per buoni motivi.
+  - **La cartella di un allegato, nuova davvero** (`Safety.NewTempFolder`): si crea con una chiamata che non riesce se
+    il nome c'è già. `Directory.CreateDirectory` non lo dice, e prima il file finiva nella cartella che c'era. È questa
+    la proprietà che conta, più della lunghezza del nome.
+  - **Il nome a 128 bit, con una via di mezzo.** Chi conosce la forma del nome: nessuno, la pulizia elenca le
+    sottocartelle. Il percorso invece conta: Excel apre fino a 218 caratteri fra cartella e nome (Word e PowerPoint
+    259). Su questo PC la cartella degli allegati è lunga 41 caratteri; un allegato dal nome di 150 caratteri sta a
+    201 con 8 cifre, com'era, a 209 con 16 e a **225 con 32**: con 32 Excel non lo aprirebbe più. Quindi 32 cifre
+    finché il percorso resta entro 218 (qui per i nomi fino a 143 caratteri), poi 16, poi 8 come prima: mai un
+    percorso oltre 218 dove prima ci stava.
+  - **Il file prende il suo nome solo quando si apre** (`Safety.WriteTemp`): si scrive e si marca come `nome.parte`, e
+    si rinomina dopo la domanda. Il marchio web segue il file. Prima il file nasceva con il nome finale, e quando il
+    marchio non si scriveva restava lì, senza marchio, per tutto il tempo della domanda "Aprire un file senza il
+    controllo di Windows?". Il marchio non si scrive quando la cartella temporanea sta su un disco senza flussi
+    alternativi (FAT, exFAT, certe cartelle di rete): qui è NTFS, e si scrive.
+  - **I salvataggi scelti dall'utente** ("Salva con nome"): LASCIATO. `SafeFile.Write` è file temporaneo più rinomina:
+    su un file che c'è già cambierebbe permessi e flussi alternativi, non funziona dove si può modificare un file ma
+    non crearne, e se il nome scelto è un collegamento l'ha scelto l'utente. La finestra di Windows chiede già prima
+    di sovrascrivere.
+  - **"Salva tutti" non sovrascriveva già**: con un file dello stesso nome prendeva " (2)". FALSO il sospetto. Ora il
+    file si crea solo se non esiste, in un passo (`Safety.WriteNewAsync`), e un nome che è di una cartella o di una
+    giunzione si salta.
+  - Un controllo di prima cambia: "scelta 5 (T-10), Apri chiede la conferma delle pagine web prima di scrivere il file
+    e di passarlo a Windows" cerca nel sorgente `Safety.WriteTemp` al posto di `File.WriteAllBytes`. Stesso nome.
+  - Controlli: 7.
+- **U-04** (`ReadingPage.Empty`). Indurimento, FATTO (`070812f`).
+  - **Da dove vengono i tre valori**: dal segnaposto di WPF (`ReadingView.ShowBlank`). Il carattere è
+    `FontFamily.Source` del testo, i due colori sono pennelli del tema mescolati al fondo. Nessuno viene da un'email
+    né dalle impostazioni: nessuno ci guadagna.
+  - **La codifica dell'HTML lì non è la cosa giusta**: il nome del carattere sta dentro `style`, fra apici. `E(...)`
+    protegge il bordo dell'attributo ma non il CSS, e avrebbe cambiato la pagina (gli apici diventano `&#39;`). Ora:
+    - il valore di `font-family` lo scrive la pagina (`ReadingPage.CssFonts`), e ci entra solo un nome di carattere
+      (`HtmlToFlow.FontName`: lettere, cifre, spazi, trattini; mai un indirizzo);
+    - i due colori sono `Color`, non testi: nella pagina non entra una stringa fatta altrove.
+  - **La pagina è quella di prima**, carattere per carattere: quattro casi, tema chiaro e scuro, con i caratteri e i
+    colori di sempre.
+  - **"Sono gli unici parametri non passati per E(...)": FALSO alla lettera, vero nella sostanza.** In `ReadingPage.cs`
+    le interpolazioni senza `E(...)` sono 89. Lette una per una: numeri, indici, colori calcolati, indirizzi delle
+    azioni (origine, gettone esadecimale, percorso fisso), classi e testi fissi, pezzi già codificati, il frammento già
+    pulito. Nessuna porta com'è un testo di un'email.
+  - Una portava un valore delle impostazioni di Windows: la data della fascia "Non in linea: copia del ...", scritta
+    con il separatore di data e ora dell'utente. Ora passa da `E`.
+  - Un controllo tiene fermo l'elenco: un'interpolazione nuova senza `E(...)` lo fa cadere con il suo nome, e va letta
+    e aggiunta, o codificata. È un inciampo, non una dimostrazione: nomi come `label` o `html` valgono dovunque.
+  - Controlli: 3.
+- **U-05** (`explorer.exe`, `AccountWindow.OnLink`). (`0fa90ad`)
+  - **Com'è Windows, misurato**: un programma avviato con il solo nome si cerca nella cartella di chi lo avvia, poi
+    nella **cartella corrente**, e solo dopo in quelle di sistema. Con una copia di `sort.exe` in una cartella di prova
+    fatta corrente, `sort.exe` senza percorso avvia quella copia e non quella di System32 (processo creato sospeso e
+    chiuso: non esegue nulla). Con la variabile `NoDefaultCurrentDirectoryInExePath` nell'ambiente la cartella
+    corrente si salta.
+  - **La cartella corrente di Missiva**: dal menu Start è la cartella di installazione (`installa.ps1` la scrive nel
+    collegamento). Negli altri avvii (con Windows, da un link mailto:, da una notifica) non la decide Missiva: non
+    misurato. Poi può cambiare: le finestre di Windows per scegliere un file o una cartella possono spostarla dove si
+    è appena salvato (lo dice la documentazione; non misurato, serve una finestra).
+  - **Chi ci guadagna**: nella cartella di installazione scrive solo l'utente. Ma "Apri la cartella" compare proprio
+    dopo aver scelto dove salvare la copia di sicurezza: un file chiamato `explorer.exe` in quella cartella (una
+    chiavetta, una cartella condivisa) sarebbe partito al posto di Esplora file. Improbabile, non impossibile.
+  - Ora `Safety.ShowInFolder`: il percorso intero, dalla cartella di Windows. Un percorso con una virgoletta non si
+    passa (Windows non ne ammette).
+  - **Tutti gli avvii del programma**, letti uno per uno (12, più `CreateProcessW` in `Sandbox`, che ha già il percorso
+    intero di Missiva):
+
+    | Dove | Che cosa | Shell | Da dove viene |
+    |---|---|---|---|
+    | `Safety.ShowInFolder` (copia di sicurezza) | Esplora file | no | percorso intero; il file l'ha scelto l'utente |
+    | `App.OnExit` (riavvio dopo un'importazione) | Missiva | no | `Environment.ProcessPath` |
+    | `AccountWindow.OnLink` | pagina web | sì | due link fissi del XAML, ora solo https |
+    | `CalendarView.Join` | riunione | sì | solo https; conferma se non è Teams, Zoom, Meet, Webex |
+    | `ReadingView.OpenLink` | link di un'email | sì | solo http e https, con l'avviso dei link ingannevoli |
+    | `ReadingView` (Runtime di WebView2) | pagina web | sì | indirizzo fisso |
+    | `PeopleView.OpenExternal` | tel:, Google Contatti, sito | sì | `ContactLinks.IsAllowed` |
+    | `GoogleAuth` | accesso a Google | sì | indirizzo fisso, parametri codificati |
+    | `App.OpenDataFolder`, menu del registro | cartella dei dati | sì | `Store.Dir` |
+    | `ReadingView`, `P7mWindow` | allegato | sì | file scritto da `Safety.WriteTemp`, dopo le conferme |
+  - Nelle prove due avvii usavano `"dotnet"` senza percorso: ora `DotnetExe()`, il percorso intero.
+  - **`OnLink`**: ci arrivano solo i due link del XAML, `https://entra.microsoft.com` e
+    `https://console.cloud.google.com/auth/clients`. È l'unico gestore di `RequestNavigate`. Rischio nullo; il
+    controllo dello schema c'è, come difesa in più.
+  - Un controllo legge tutti i sorgenti: nessun avvio con il nome di un programma scritto fra virgolette, prove
+    comprese; nel programma ogni avvio dice se passa dalla shell, e quello che avvia è fra quelli letti.
+  - Controlli: 3.
+
+### Trovato in più
+
+- **La correzione vera di U-01 non è nel rapporto**: vedi sopra. Senza il motore vero non si trovava.
+- **Nell'HTML che riparte, il contenuto di un `template` non si pulisce** (`MailHtml.Outgoing`, K-04): la visita non
+  entra nel contenuto, che poi si scrive com'era (un `onclick` lì dentro resta). Lì dentro è inerte per chi riceve.
+  Non toccato: vedi "Scelte per l'autore".
+- **AngleSharp 1.8.2 e il motore leggono allo stesso modo** tutto il resto provato: commenti, CDATA, punti di
+  integrazione, nomi e separatori. Le due analisi divergono solo dove lo standard stesso cambia risposta con il
+  contesto.
+- **Una prova ha aperto un avviso di Windows sullo schermo**, il 14 ottobre fra le 2:00 e le 2:11. Per misurare dove
+  Windows cerca un programma avevo messo nella cartella corrente un file di testo chiamato `hostname.exe`: Windows l'ha
+  preso, non è riuscito ad avviarlo, e l'avvio non è più tornato (con ogni probabilità il suo avviso per i programmi
+  che non può eseguire). Ho chiuso il mio processo di prova; dopo, nessuna finestra con quel titolo. La misura è
+  stata rifatta a mano con un programma vero creato sospeso, e nella suite non c'è: **una prova non avvia mai un
+  programma che potrebbe non partire**.
+- **La shell da cui girano le prove ha `NoDefaultCurrentDirectoryInExePath=1`**: lì la cartella corrente non si
+  guarda. La Missiva avviata dal menu Start non ce l'ha (non è fra le variabili dell'utente né della macchina).
+- **Da PowerShell `$null` passato a .NET diventa un testo vuoto**, e da .NET 9 un testo vuoto non toglie una variabile
+  d'ambiente: la lascia vuota. La prima misura a mano era sbagliata per questo.
+
+### Controlli e suite
+
+- `UiReviewTests`, 31 controlli, gruppo `interfaccia` in `Core/ProvaBozze.Gruppi.cs`.
+- Tre controlli di prima sono stati toccati, detti sopra per nome: due del blocco 1 (U-01), uno delle scelte del 12
+  ottobre (U-03). In più, in due prove di prima `"dotnet"` è diventato `DotnetExe()` (U-05): stessi controlli.
+- Suite completa (`--prova-bozze`), sul codice di `0fa90ad`: **1167 controlli, tutto bene, in 214 secondi**. Dopo quel
+  giro sono cambiati solo i documenti.
+- **1167 e non 1168** (1137 più 31). Il giro di prima, sul codice di `df0cd97`, aveva 1137 controlli, tutto bene: non
+  l'ho fatto girare io, è il file del risultato lasciato dalla verifica di ieri. I nomi di prima e di dopo confrontati
+  con uno script, tolte le cifre: 31 in più; uno con il nome cambiato (quello del blocco 1 detto sopra); dodici diversi
+  solo per un pezzo casuale; **uno in meno**: "T-31, nel motore di WPF: un Run con il carattere ..., disposto, fa
+  arrivare all'ascoltatore ...". È un controllo che misura solo se Windows prova i percorsi di rete via WebDAV, cioè
+  con il servizio WebClient acceso: ieri lo era, oggi è fermo (avvio manuale), e al suo posto il risultato scrive "su
+  questo PC la prova non vede (il servizio WebClient è spento?), non misurato". Era così anche nel gruppo `sicurezza3`
+  da solo, prima di toccare qualunque cosa lo riguardi. Non l'ho acceso: è un servizio di Windows.
+- Compilazione da capo (`--no-incremental`) prima dell'ultimo giro: Debug 0 errori e 0 avvisi, Release 0 errori e 0
+  avvisi. La versione che si installa non è stata pubblicata né provata.
+- `privato\pubblica.ps1 -SoloControlli`: "Controlli passati".
+
+### Che cosa cambia per chi usa Missiva
+
+Niente di questo è stato provato a finestra.
+
+1. **U-01. Niente che si veda.** Un'email non può più uscire dal suo riquadro. I commenti nascosti delle email non
+   stanno più nella pagina; un testo dentro `xmp` si vede uguale.
+2. **U-02.** Accendendo dall'elenco una regola di Outlook che manda la posta fuori compare una conferma con tutti gli
+   indirizzi. Aggiungendo un indirizzo a una regola che ne ha già di nascosti, la conferma li nomina tutti. "Esegui
+   ora" con una regola che elimina dice subito quanti messaggi vanno nel Cestino.
+3. **U-03.** Aprendo un allegato con un altro programma non cambia nulla. Se la cartella temporanea di Missiva fosse un
+   collegamento a un'altra cartella, l'allegato non si apre e l'avviso lo dice.
+4. **U-04. Niente.**
+5. **U-05. Niente**: "Apri la cartella" dopo la copia di sicurezza apre Esplora file come prima.
+
+### Scelte fatte qui, da rivedere
+
+- **U-01.**
+  - `xmp` diventa `pre`: un foglio di stile dell'email che nomina `xmp` non vale più per lui.
+  - `noembed`, `noframes` e un `xmp` dentro un disegno o una formula non si scrivono.
+  - La guardia sta nel costruttore di `MailHtml.Result`, non in `ReadingPage`.
+  - La guardia scrive `&lt;`: in un attributo è lo stesso carattere; in un foglio di stile non lo sarebbe, ma lì la
+    sequenza non può arrivare.
+- **U-02.**
+  - Un indirizzo nuovo in una regola spenta chiede lo stesso, come prima.
+  - Le conferme hanno il pulsante che conferma come predefinito, com'era quella di prima.
+  - "fuori dalla tua casella" per gli account personali.
+- **U-03.**
+  - 218 caratteri come misura: è il limite di Excel, preso da quello che so, non provato qui.
+  - Il nome neutro è `nome.parte`.
+  - Un collegamento fra le sottocartelle della cartella temporanea si toglie subito, senza guardarne l'età.
+  - Prima di rinominare il file si riprova tre volte, a un decimo di secondo, se un altro programma lo tiene aperto.
+- **U-04.** Un nome di carattere con altri segni si salta, non si corregge.
+- **U-05.** La misura di come Windows cerca un programma non è nella suite.
+
+### Scelte per l'autore
+
+- **U-01, il `template` nell'HTML che riparte**: toglierlo dalla citazione di risposte e inoltri, con il contenuto?
+  Proposta: sì, una parola in `NotQuoted`; nessuna email normale ne ha.
+  - Fatta il 14 ottobre: vedi "Scelte del 14 ottobre".
+- **U-02, il pulsante predefinito delle conferme sugli inoltri**: Annulla al posto di "Inoltra a..." e "Accendi la
+  regola"? Proposta: sì (`Dialog.AskCancelFirst`, come per Elimina di un contatto): oggi Invio due volte salva e
+  conferma.
+  - Fatta il 14 ottobre: vedi "Scelte del 14 ottobre".
+- **U-02, una regola accesa che inoltra fuori a cui si tolgono tutte le condizioni**: oggi chiede "vale per tutti i
+  messaggi", senza ricordare l'inoltro. Aggiungerlo a quella domanda? Proposta: sì, una frase.
+  - Fatta il 14 ottobre: vedi "Scelte del 14 ottobre".
+- **U-03, "Salva con nome"**: resta com'è. Proposta: sì.
+- **La scelta 16** (avviso quando compare una regola di Outlook che inoltra fuori, T-34): resta aperta, com'era.
+
+### Non verificato
+
+- **Niente a finestra**: la conferma accendendo una regola e la casella che torna spenta; "Esegui ora" con la frase
+  nuova; un allegato aperto con il nome che cambia da `.parte`; "Salva tutti" accanto a un file che c'è; "Apri la
+  cartella" dopo la copia di sicurezza; il riquadro vuoto.
+- **U-01**: nessuna email vera. I 526 testi sono quelli delle prove. Una newsletter vera con `xmp` non l'ho mai vista.
+  Il motore è quello di questo PC (WebView2 154): un motore più nuovo si rilegge con lo stesso gruppo.
+- **U-02**: Outlook vero. Le regole di prova sono fatte come le dà Graph, a mano.
+- **U-03**:
+  - un collegamento simbolico a un file con il nome di un allegato, in "Salva tutti": su questo PC non se ne creano
+    senza permessi in più. Provato con una giunzione;
+  - una cartella temporanea su un disco senza flussi alternativi, dove il marchio web non si scrive;
+  - i 218 caratteri di Excel, e un antivirus che tiene aperto il file mentre cambia nome.
+- **U-05**: la cartella corrente di Missiva negli avvii diversi dal menu Start, e dopo una finestra di scelta dei
+  file.
+- **La Missiva installata e la versione finale** non sono state eseguite né pubblicate.
+
+### Prove a mano per l'autore
+
+Dopo l'unione in main e l'installazione.
+
+1. **U-01.** Apri una decina di messaggi di tutti i giorni, fra cui una newsletter con immagini e una conversazione:
+   si vedono come prima.
+2. **U-02.** In Impostazioni, Posta, Regole, con un account Outlook: crea una regola che inoltra a un tuo indirizzo
+   esterno (chiede, come prima), spegnila, riaccendila dalla casella: compare la conferma con l'indirizzo; con Annulla
+   la casella resta spenta. Poi "Esegui ora" con una regola che elimina, su una cartella di prova: la prima frase dice
+   quanti messaggi vanno nel Cestino.
+3. **U-03.** Apri un allegato di Word e uno di Excel con un altro programma: si aprono, in Visualizzazione protetta.
+   "Salva tutti" due volte nella stessa cartella: la seconda volta i file hanno " (2)".
+4. **U-05.** Esporta una copia di sicurezza e premi "Apri la cartella": si apre Esplora file con il file scelto.
+
+## Scelte del 14 ottobre: che cosa è stato fatto delle scelte delle due revisioni
+
+Dopo le revisioni del 13 e del 14 ottobre l'autore ha lasciato le loro "Scelte per l'autore" alla sessione che
+coordina il lavoro ("fai ciò che ritieni opportuno"): quella ne ha scelte cinque, fatte qui il 14 ottobre 2026 sul ramo
+`auditor` (albero di lavoro `C:\Progetti\Missiva\auditor`). "Prima" è il commit `d13c8cb`, uguale a main. Commit, uno
+per punto: `9aca877`, `a4cedb9`, `be115ba`, `7be9873`, `c9ea4ee`, più quello di questo esito. Tutte e cinque fatte.
+
+| Punto | Scelta | Commit |
+|---|---|---|
+| K-02 | L'elenco dei suffissi di .it dalla lista pubblica dei suffissi | `9aca877` |
+| Scelta 25 (T-17, K-02) | Le voci larghe di "Mostra immagini" escono a ogni avvio, non solo da una copia importata | `a4cedb9` |
+| U-02 | Annulla come pulsante predefinito nelle conferme sugli inoltri | `be115ba` |
+| U-02 | Una regola senza condizioni che manda la posta fuori: una domanda sola, che lo dice | `7be9873` |
+| U-01 | Niente `template` nella citazione di risposte e inoltri | `c9ea4ee` |
+
+Come si è provato: 8 controlli nuovi nei due gruppi che c'erano, 4 in `core` (`Core/ProvaBozze.Core.cs`) e 4 in
+`interfaccia` (`Core/ProvaBozze.Interfaccia.cs`), in fondo, sotto la riga "Scelte del 14 ottobre". Solo dati finti,
+nessuna finestra, nessuna rete. **Visti cadere tutti e 8** con la modifica spenta a mano, senza commit (i dettagli
+punto per punto).
+
+### I punti
+
+- **K-02, l'elenco dei suffissi di .it** (`9aca877`).
+  - La lista pubblica dei suffissi, sezione ICANN, l'ha letta il 14 ottobre la sessione che coordina (qui non c'è
+    rete): 407 secondi livelli di .it, tutti `nome.it`. I 229 di prima ci sono tutti; i nuovi sono 178.
+  - `Safety.ItalianSecondLevels` ora è quella: `edu` e `gov`; 111 nomi di regioni con le varianti (uniti o con il
+    trattino, in altre lingue come `lombardy` e `tuscany`, sigle a tre lettere come `lom` e `ven`); 111 sigle di
+    province (in più dei 110 di prima `su`, Sud Sardegna: il dubbio del 13 ottobre è sciolto); 183 nomi di province con
+    le varianti (`reggio-emilia`, `la-spezia`, `monza-e-della-brianza`, `bozen`, `florence`, le province sarde
+    soppresse...). In ordine alfabetico dentro i gruppi.
+  - 20 nomi hanno lettere accentate (`trentino-süd-tirol`, `vallée-aoste`, `südtirol`, `forlì-cesena`...): ci sono
+    come nei nomi di dominio, `xn--...`. Riletti con le funzioni di .NET: ognuno torna lo stesso, e il nome che dà è
+    quello atteso.
+  - I domini della sezione privata (servizi di una ditta, come blogspot.it) non ci sono, apposta: il commento lo dice.
+  - Costo: lo stesso `HashSet`, con 178 nomi in più. Non misurato.
+  - I controlli di ieri su K-02 passano tutti: nessuno nominava un nome che mancava. Con l'elenco di prima rimesso a mano
+    passano anche loro, e cade solo quello nuovo.
+  - `Safety.BaseDomain` ora è `internal`: un controllo la chiama da sola, perché per un nome con `xn--` gli avvisi sui
+    link si fermano prima (avvisano sempre, "caratteri non latini") e non arrivano a lei.
+  - Controlli: 2. Nove nomi nuovi (due composti, due in altre lingue, la sigla di una regione, quella del Sud Sardegna,
+    una variante del Trentino, due accentati) danno l'ente per le tre regole (`SenderLogos.DomainOf`,
+    `Settings.ImageKey`, `Safety.BaseDomain`), con "Mostra immagini" e un link di prova: caduto con l'elenco di prima
+    (tutti e nove davano il suffisso). Sette indirizzi normali sotto .it e nomi che somigliano ai suffissi nuovi
+    (`ditta-prova.it`, anche con un sottodominio `bozen.`, `reggio-emilia-prova.it`, `bozen.example`) restano com'erano:
+    caduto con `ditta-prova` aggiunto all'elenco per prova.
+- **Scelta 25, le voci larghe di "Mostra immagini" a ogni avvio** (`a4cedb9`).
+  - Prima all'avvio (`Settings.UpgradeImageSenders`, da `Store.Load`) uscivano solo i suffissi italiani interi; le altre
+    voci larghe solo da una copia importata (`DropBroadImageSenders`, T-17).
+  - Ora una funzione sola decide che cosa è largo, `Settings.IsBroadImageKey`, e la usano i due posti: un suffisso da
+    solo, italiano o di un altro paese (`pd.it`, `gov.it`, `co.uk`, `com.au`), un servizio di posta personale intero
+    (`gmail.com`, `libero.it`), un nome senza punto. È la regola che `DropBroadImageSenders` aveva già, uguale.
+  - Non è mai larga una voce con la @ (un indirizzo intero, anche `x@co.uk`), né un'organizzazione (`amazon.it`,
+    `unibo.it`, `amazon.co.uk`, un comune o una ditta sotto `pd.it`).
+  - Una voce che non si decifra resta com'è, e il suo cifrato torna nel file. L'eccezione è scritta apposta, anche se
+    oggi non servirebbe: il segnaposto ("(testo cifrato non leggibile su questo PC, rif. ...)") ha un punto, e due
+    pezzi che non sono un suffisso. Provato: con il segnaposto senza il punto e senza l'eccezione cadono il controllo
+    nuovo e due di S-26; con l'eccezione passano.
+  - La riga del registro c'era, allargata: "immagini: 6 voci di "Mostra immagini" (co.uk, gmail.com, libero.it, com.au,
+    pd.it, gov.it) valevano per chiunque scriva da un intero servizio di posta o da un intero suffisso e sono uscite;
+    per quei mittenti le immagini restano bloccate finché non si preme di nuovo "Mostra immagini"" (al singolare con
+    una voce sola; `Store.BroadImagesLine`). Nomina solo servizi e suffissi, mai indirizzi.
+  - Da dove possono venire voci così: `gmail.com` e gli altri servizi Missiva non li ha mai scritti (l'elenco dei
+    servizi di posta personale è lo stesso dal 26 settembre); `co.uk` sì, premendo "Mostra immagini" su un messaggio di
+    `x@co.uk` prima di K-02; e poi a mano, o da una copia importata prima di T-17.
+  - Un controllo di prima cambia: "K-02, impostazioni di prima: le voci che sono un suffisso italiano intero ...
+    escono all'avvio": `co.uk` ora esce anche lui; il nome lo dice.
+  - Controlli: 2. Impostazioni finte con 14 voci scritte e rilette da una cartella di prova, come all'avvio: escono le 6
+    larghe, restano le altre 8, la riga è quella, all'avvio dopo non esce nulla, "Mostra immagini" premuto di nuovo su
+    un mittente di Gmail ricorda il suo indirizzo. E la stessa regola dall'avvio e da una copia importata, con l'elenco
+    che non si decifra. Caduti tutti e due con la regola di prima all'avvio (con loro il controllo di K-02 cambiato).
+- **U-02, Annulla nelle conferme sugli inoltri** (`be115ba`).
+  - `Dialog.AskCancelFirst` (lo usavano Elimina di un contatto di Google e una domanda della copia di sicurezza): Annulla
+    è il pulsante di Invio e quello di Esc, e ha il fuoco quando la finestra si apre; il pulsante che conferma non è
+    predefinito. Per confermare si sceglie il pulsante (con il mouse, o Tab e poi Invio o Spazio).
+  - Solo le due conferme di `Rules.ForwardQuestion`: nella finestra della regola (`RuleWindow.SaveAsync`) e nella
+    casella dell'elenco che accende una regola (`RulesView.SetEnabledAsync`). Le altre domande delle regole ("vale per
+    tutti i messaggi", Elimina, Esegui ora) restano com'erano.
+  - Nessun controllo leggeva quale pulsante è predefinito, e senza aprire le finestre non c'è un modo migliore che
+    leggere i sorgenti senza commenti (`Ch1Code`): `Dialog.Build` (Annulla con `IsCancel` e `IsDefault`, il fuoco, il
+    pulsante principale non predefinito) e le due chiamate.
+  - Controlli: 1. Caduto con la finestra rimessa a `Dialog.Ask`, e di nuovo con la casella rimessa a `Dialog.Ask`.
+- **U-02, l'inoltro ricordato quando la regola vale per tutti i messaggi** (`7be9873`).
+  - Prima la finestra chiedeva "La regola vale per tutti i messaggi" e poi, se un inoltro verso fuori diventava attivo,
+    anche la domanda sugli inoltri: due domande di fila per la stessa regola. E una regola accesa che inoltrava già
+    fuori, a cui si toglievano le condizioni, aveva solo la prima, senza l'inoltro.
+  - Ora al massimo una domanda. La forma scelta:
+    - se c'è da chiedere per gli inoltri (`Rules.ForwardQuestion`), solo quella, e senza condizioni dice tutte e due
+      le cose. Titolo "La regola vale per tutti i messaggi e li manda fuori"; testo "Non hai scelto condizioni: la regola
+      agirà su ogni messaggio che arriva nella Posta in arrivo, e tutti verranno inoltrati a ..., fuori dalla tua
+      organizzazione, anche quando non guardi. Chi entra di nascosto ...", con Annulla predefinito. Spenta: "La regola è
+      spenta: quando la accendi, agirà su ogni messaggio che arriva nella Posta in arrivo (non hai scelto condizioni), e
+      tutti verranno inoltrati a ...";
+    - altrimenti, senza condizioni, "La regola vale per tutti i messaggi" (`Rules.AllMessagesQuestion`), che se la regola
+      manda la posta fuori lo dice: "Non hai scelto condizioni: la regola agirà su ogni messaggio che arriva nella Posta
+      in arrivo, e lo manderà a ..., fuori dalla tua organizzazione. Salvarla lo stesso?" ("dalla tua casella" per un
+      account personale). Senza inoltri verso fuori il testo è quello di prima, parola per parola, e "Salva" resta il
+      pulsante predefinito, com'era.
+  - La domanda sugli inoltri ora viene per prima; la casella dell'elenco (accendere) non cambia.
+  - Un controllo di prima cambia: "U-02, un indirizzo esterno nuovo in una regola che ne ha già di nascosti ...": la
+    regola dell'account personale non ha condizioni, e la domanda ora comincia con "Non hai scelto condizioni"; il nome
+    lo dice.
+  - Controlli: 2. I testi (accesa con gli inoltri di prima, inoltro nuovo accesa e spenta, account personale, senza
+    inoltri, inoltro dentro l'organizzazione, con condizioni anche nascoste): caduto con la domanda sulle condizioni
+    senza gli inoltri, e con la domanda sugli inoltri senza la parte sulle condizioni. L'ordine nella finestra, letto
+    dal sorgente: caduto con la finestra che fa tutte e due le domande di fila.
+- **U-01, il `template` nella citazione** (`c9ea4ee`).
+  - `template` è fra gli elementi che `MailHtml.Outgoing` toglie con il contenuto (`NotQuoted`). Prima, sul codice di
+    `7be9873`: un originale con un template che conteneva uno script, un `onclick` e un'immagine con `onerror` ripartiva
+    com'era (fuori non c'era nulla da togliere, e la visita non entra nel contenuto di un template); con un attributo di
+    evento fuori, si riscriveva dall'albero con il template com'era. Ora non riparte nulla di tutto quello, nel corpo, in
+    testa e in una tabella.
+  - **Il ramo di `IHtmlTemplateElement` in `InnerHtml` è tolto**, perché nessuna strada ci arriva più. `InnerHtml` ha
+    due chiamanti. `Clean` (la pagina del riquadro) salta `template` prima di quel ramo (`NeverWritten`). `Outgoing`
+    visita tutti gli elementi che `InnerHtml` può scrivere (gli stessi figli dallo stesso documento, compresi quelli di
+    un modulo o di un pulsante di cui resta il contenuto), e ogni elemento che si chiama `template`, in qualunque spazio
+    dei nomi, va fra quelli tolti. Un template dentro un altro sta nel contenuto del primo, a cui si arrivava solo da
+    quel ramo. Se un giorno uno ci arrivasse, si scriverebbe vuoto.
+  - I messaggi normali della serie di K-04 ripartono uguali byte per byte: il controllo di K-04 (14 messaggi) passa.
+  - Un controllo di prima cambia: "U-01, template: nella pagina del riquadro non si scrive mai ...; nell'HTML che
+    riparte resta com'era": ora si aspetta che nell'HTML che riparte non ci sia; il nome lo dice.
+  - Controlli: 1. Caduto sul codice di prima, e di nuovo con la sola parola tolta da `NotQuoted` (con lui il controllo
+    di U-01 cambiato).
+
+### Controlli e suite
+
+- 8 controlli nuovi: `core` da 26 a 30, `interfaccia` da 31 a 35. Tre controlli di prima cambiati, detti sopra.
+- Suite completa (`--prova-bozze`) sul codice di `c9ea4ee`: **1176 controlli, tutto bene, in 226 secondi**. Dopo quel
+  giro sono cambiati solo i documenti.
+- Prima, sul codice di `d13c8cb`, all'inizio di questo lavoro: 1168, tutto bene, in 167 secondi. 1168 e non 1167:
+  questa volta il servizio WebClient di Windows era acceso (non l'ho toccato), e il controllo di T-31 ha misurato e
+  contato, nei due giri.
+- I nomi dei due giri confrontati con uno script, tolte le cifre: 8 nuovi; 3 con il nome cambiato (quelli detti
+  sopra); 10 diversi solo per un pezzo casuale o per un numero scritto con il separatore; nessuno sparito.
+- Compilazione da capo (`--no-incremental`) prima dell'ultimo giro: Release 0 errori e 0 avvisi, Debug 0 errori e 0
+  avvisi. La versione che si installa non è stata pubblicata né provata.
+
+### Che cosa vede chi usa Missiva
+
+Niente di questo è stato provato a finestra.
+
+1. **K-02.** Per chi scrive da sotto uno dei nomi che mancavano (`bozen.it`, `suedtirol.it`, `reggio-emilia.it`,
+   `la-spezia.it`, `florence.it`, `lom.it`...) logo, "Mostra immagini" e avvisi sui link valgono per il suo ente, come
+   già per `pd.it` o `veneto.it`.
+2. **Scelta 25.** Se nelle impostazioni c'è una voce come `gmail.com` o `co.uk` (o, dopo il punto 1, `bozen.it`), al
+   primo avvio esce e il registro lo dice: per quei mittenti le immagini tornano bloccate finché non si preme di nuovo
+   "Mostra immagini", che da allora ricorda l'indirizzo o l'ente. Se non ce n'è, nulla cambia.
+3. **U-02.** Nelle conferme di una regola che manda la posta fuori Invio annulla: per confermare si preme il pulsante
+   "Inoltra a ..." o "Accendi la regola".
+4. **U-02.** Salvando una regola senza condizioni che manda la posta fuori arriva una domanda sola, che dice tutte e due
+   le cose.
+5. **U-01. Niente che si veda.**
+
+### Scelte fatte qui, da rivedere
+
+- **K-02.** Solo i nomi accentati in `xn--`, non scritti con le lettere accentate (vedi "Non verificato"). I loghi
+  salvati sotto un suffisso di prima (`bozen.it.png`) restano sul disco, inutili, come quelli di K-02.
+- **Scelta 25.** Larga è anche una voce come `aruba.it` o `tim.it` (il primo pezzo è un servizio di posta personale):
+  "Mostra immagini" per loro ricorda l'indirizzo dal 26 settembre, quindi una voce così può essere solo scritta a mano o
+  importata. Esce, come già da una copia importata.
+- **U-02, la forma della domanda sola**: quella sugli inoltri prima e, se c'è, da sola; "vale per tutti i messaggi"
+  tiene "Salva" come pulsante predefinito anche quando nomina gli inoltri (Annulla solo nelle due conferme sugli
+  inoltri, come chiedeva la scelta).
+- **U-01.** Il template si toglie in ogni spazio dei nomi, anche un `template` dentro un disegno, che per l'HTML non è un
+  template.
+
+### Non verificato
+
+- **Niente a finestra**: le due conferme con Invio ed Esc (il comportamento è letto dal codice di `Dialog.Build`, non
+  premuto), la domanda sola nella finestra della regola, la riga del registro al primo avvio.
+- **La lista pubblica dei suffissi**: qui non c'è rete, l'ha letta la sessione che coordina; il file è usato com'era.
+- **Un indirizzo con il dominio scritto con le lettere accentate** (`x@comune.südtirol.it`, non in `xn--`):
+  `Settings.ImageKey` gli dà il suffisso (`südtirol.it`), `SenderLogos.DomainOf` nessun dominio, com'era. Come Gmail,
+  IMAP (MimeKit) e Graph danno un indirizzo così non l'ho guardato.
+- **Le impostazioni vere**: se dentro ci siano voci che usciranno non l'ho guardato; lo dirà il registro al primo avvio.
+- **La Missiva installata e la versione finale** non sono state eseguite né pubblicate.
+
+### Prove a mano per l'autore
+
+Dopo l'unione in main e l'installazione.
+
+1. **Scelta 25 e K-02.** Al primo avvio cerca nel registro la riga che comincia con "immagini:" (la prova 1 della
+   revisione del 13 ottobre cercava "valevano per un intero suffisso italiano": ora la riga è questa, per tutte le voci
+   larghe). Se c'è, apri un messaggio di uno di quei mittenti: le immagini sono bloccate; premi "Mostra immagini" e
+   riapri: si vedono. Se non c'è, non è uscito nulla.
+2. **U-02.** In Impostazioni, Posta, Regole, con un account Outlook: crea una regola senza condizioni che inoltra a un
+   tuo indirizzo esterno. Compare una domanda sola, "La regola vale per tutti i messaggi e li manda fuori": premi Invio
+   e la regola non si salva; premi "Inoltra a ..." e si salva. Spegnila e riaccendila dalla casella: Invio lascia la
+   casella spenta. Poi a una regola accesa che inoltra fuori con una condizione togli la condizione e salva: la domanda
+   "La regola vale per tutti i messaggi" nomina l'indirizzo. Alla fine elimina la regola di prova.
+3. **U-01.** Da un account Gmail rispondi o inoltra a te stesso una newsletter normale: il messaggio arrivato è come
+   prima.

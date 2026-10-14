@@ -26,9 +26,11 @@ public sealed record PageHeader(string Subject, bool Sun, (string Email, Color C
 /// <summary>
 /// Come appare il segnaposto di WPF del riquadro vuoto, per rifarlo uguale nella pagina (ReadingPage.Empty): il carattere e
 /// la sua dimensione, i colori della busta e del testo sul fondo della pagina, lo zoom del riquadro e di quanto il centro
-/// del riquadro sta sotto quello della pagina (i margini attorno a WebView2).
+/// del riquadro sta sotto quello della pagina (i margini attorno a WebView2). Fonts sono i nomi dei caratteri com'è scritto
+/// FontFamily.Source di WPF, separati da virgole: il valore per il CSS lo scrive la pagina (ReadingPage.CssFonts), e i due
+/// colori sono colori, non testi: nella pagina non entra una stringa fatta altrove (revisione del 14 ottobre 2026, U-04).
 /// </summary>
-public sealed record EmptyLook(string Font, double FontSize, string Glyph, string Text, double Zoom, double Down);
+public sealed record EmptyLook(string Fonts, double FontSize, Color Glyph, Color Text, double Zoom, double Down);
 
 /// <summary>
 /// La pagina del riquadro di lettura: tutta la conversazione, con intestazioni nello stile Fluent di Missiva e il
@@ -95,11 +97,23 @@ public sealed class ReadingPage
     {
         // Le misure di WPF in pixel dello schermo: la pagina ha lo zoom del riquadro, che le ingrandirebbe.
         string Px(double v) => (v / look.Zoom).ToString("0.###", CultureInfo.InvariantCulture) + "px";
-        var body = $"<div class=\"empty\" style=\"font-family:{look.Font};font-size:{Px(look.FontSize)};padding-top:{Px(2 * look.Down)}\">" +
-                   $"<span class=\"glyph\" style=\"font-size:{Px(48)};color:{look.Glyph}\"></span>" +
-                   $"<span style=\"margin-top:{Px(12)};color:{look.Text}\">Seleziona un elemento da leggere</span></div>";
+        var body = $"<div class=\"empty\" style=\"font-family:{CssFonts(look.Fonts)};font-size:{Px(look.FontSize)};padding-top:{Px(2 * look.Down)}\">" +
+                   $"<span class=\"glyph\" style=\"font-size:{Px(48)};color:{Hex(look.Glyph)}\"></span>" +
+                   $"<span style=\"margin-top:{Px(12)};color:{Hex(look.Text)}\">Seleziona un elemento da leggere</span></div>";
         return new ReadingPage { Html = Document(body, light, false, hold: false) };
     }
+
+    /// <summary>
+    /// I caratteri del segnaposto come valore di font-family dentro un attributo style: ogni nome fra apici, poi quelli di
+    /// riserva. Lì la codifica dell'HTML (E) non basterebbe: protegge il bordo dell'attributo, non la sintassi del CSS, dove
+    /// un apice o un punto e virgola nel nome chiuderebbero la stringa o la dichiarazione. Quindi entra solo un nome di
+    /// carattere (HtmlToFlow.FontName: lettere, cifre, spazi, trattini; mai un indirizzo), gli altri si saltano. I nomi
+    /// vengono dalle risorse di WPF, non da un'email né dalle impostazioni: è una difesa in più, e con i nomi di sempre il
+    /// valore è quello di prima, carattere per carattere.
+    /// </summary>
+    internal static string CssFonts(string families) =>
+        string.Join(",", families.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(HtmlToFlow.FontName).OfType<string>().Select(f => $"'{f}'")
+            .Append("'Segoe UI'").Append("sans-serif"));
 
     /// <summary>
     /// Oggetto e avviso delle immagini bloccate. Stanno nella pagina, non nella finestra, perché cambino insieme al corpo:
@@ -290,7 +304,7 @@ public sealed class ReadingPage
         // Senza rete, dalla copia su disco (BodyCache).
         if (entry.Body?.OfflineCopy is { } saved)
             h.Append($"<div class=\"warn\" title=\"Missiva tiene una copia cifrata dei messaggi aperti: quando torna la rete si apre quello del server.\">" +
-                     $"<span class=\"glyph\"></span><span>Non in linea: copia del {saved:dd/MM/yyyy} alle {saved:HH:mm}.</span></div>");
+                     $"<span class=\"glyph\"></span><span>Non in linea: copia del {E(saved.ToString("dd/MM/yyyy"))} alle {E(saved.ToString("HH:mm"))}.</span></div>");
         // Dalla copia, una busta PEC o un messaggio firmato: la firma la controlla Pec con la busta del server, che senza rete
         // non c'è. Senza questa fascia una busta finta sembrerebbe vera, senza la rossa che avrebbe avuto in linea.
         if (entry.Body is { OfflineCopy: not null, Pec: null } copy && Missiva.Pec.Wants(copy))

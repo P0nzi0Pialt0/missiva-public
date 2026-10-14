@@ -175,9 +175,13 @@ public static class FlowToHtml
                 Image(image, sb, images);
                 return;
             case Hyperlink link:
-                sb.Append("<a href=\"").Append(WebUtility.HtmlEncode(link.NavigateUri?.ToString() ?? "")).Append("\">");
+                // Solo i link che Missiva lascia scrivere (LinkWindow, HtmlToFlow) e tel:. Da un RTF incollato, o di una firma
+                // o di un modello, WPF fa un link con qualunque indirizzo (javascript:, file://server/...): di quelli resta
+                // il testo (revisione del 13 ottobre 2026, K-05). Prima partivano com'erano.
+                bool sent = link.NavigateUri is { IsAbsoluteUri: true, Scheme: "http" or "https" or "mailto" or "tel" };
+                if (sent) sb.Append("<a href=\"").Append(WebUtility.HtmlEncode(link.NavigateUri!.ToString())).Append("\">");
                 foreach (var i in link.Inlines) Inline(i, sb, images);
-                sb.Append("</a>");
+                if (sent) sb.Append("</a>");
                 return;
             case Span span:
                 var closeSpan = Open(span, sb);

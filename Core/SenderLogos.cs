@@ -74,7 +74,9 @@ public static class SenderLogos
 
     /// <summary>
     /// Il dominio del marchio: di auto-confirm@amazon.it amazon.it, di newsletter@insider.sky.it sky.it; null per la posta
-    /// personale o certificata e per indirizzi strani.
+    /// personale o certificata e per indirizzi strani. Dalla revisione del 13 ottobre 2026 (K-02) anche i suffissi di .it
+    /// (Safety.IsItalianSuffix: gov.it, edu.it, i nomi geografici): di protocollo@ente.gov.it il dominio è ente.gov.it.
+    /// Prima era gov.it per tutti, e il primo ente con un messaggio autenticato dava logo e segno "autenticato" agli altri.
     /// </summary>
     public static string? DomainOf(string email)
     {
@@ -84,7 +86,7 @@ public static class SenderLogos
         if (host.Length is < 4 or > 253 || !host.Contains('.') || host.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '.' or '-'))) return null;
         var labels = host.Split('.');
         if (labels.Any(l => l.Length == 0) || labels.All(l => l.All(char.IsAsciiDigit))) return null;
-        int keep = labels.Length >= 3 && TwoLevel.Contains(labels[^2] + "." + labels[^1]) ? 3 : 2;
+        int keep = labels.Length >= 3 && (TwoLevel.Contains(labels[^2] + "." + labels[^1]) || Safety.IsItalianSuffix(labels[^2], labels[^1])) ? 3 : 2;
         var domain = string.Join('.', labels[^Math.Min(keep, labels.Length)..]);
         if (Personal.Contains(domain) || labels.Contains("pec")) return null;
         return domain;

@@ -138,16 +138,13 @@ public sealed class P7mWindow : Window
         if (!Dialog.ConfirmOpenWebPage(this, name)) return;
         try
         {
-            var dir = Path.Combine(Safety.TempDir, Guid.NewGuid().ToString("N")[..8]);
-            Directory.CreateDirectory(dir);
-            var path = Path.Combine(dir, name);
-            File.WriteAllBytes(path, result.Content);
-            if (!Safety.MarkFromInternet(path) && !Dialog.ConfirmOpenUnmarked(this, name))
+            var temp = Safety.WriteTemp(name, result.Content);
+            if (!temp.Marked && !Dialog.ConfirmOpenUnmarked(this, name))
             {
-                try { Directory.Delete(dir, true); } catch { }
+                temp.Discard();
                 return;
             }
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(temp.Release()) { UseShellExecute = true });
         }
         catch (Exception ex)
         {
