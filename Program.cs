@@ -31,6 +31,20 @@ static class Program
         // qui vuol dire che .NET ha caricato Missiva. Niente finestre, niente dati, niente mutex, e codice di uscita 0
         // (13 ottobre 2026: con un file intermedio rimasto vecchio l'eseguibile si chiudeva prima di Main, a ogni avvio).
         if (args is ["--versione"]) return;
+        // Aggiornamenti da GitHub (Updates): privato\rilascio.ps1 legge così, senza aprire nulla, il numero, il repository e la
+        // chiave pubblica che l'eseguibile appena compilato porta.
+        if (args is ["--dati-aggiornamenti", var described])
+        {
+            File.WriteAllText(described, Updates.Describe());
+            return;
+        }
+        // Il nuovo eseguibile di un aggiornamento, avviato dalla Missiva che esce: aspetta che sia uscita, si mette al posto di
+        // quella installata e la riavvia (Updates.InstallFromHere). Niente finestre, niente dati, niente mutex.
+        if (args is ["--installa-aggiornamento", var processId, var installed])
+        {
+            Environment.ExitCode = Updates.InstallFromHere(processId, installed);
+            return;
+        }
         // Il processo dei PDF dell'anteprima degli allegati (PdfWorker): niente finestre, niente dati, niente mutex.
         if (args is ["--pdf-worker"])
         {

@@ -1,29 +1,47 @@
-# Installa (o aggiorna) Missiva per l'utente corrente, senza permessi di amministratore:
+﻿# Installa (o aggiorna) Missiva per l'utente corrente, senza permessi di amministratore:
 # compila la versione finale, la prova, la mette in %LOCALAPPDATA%\Programs\Missiva, crea il collegamento nel menu
 # Start e la registra in Impostazioni, App installate, da dove si disinstalla, e fra le app di posta per i link mailto:.
 # Impostazioni e account non vengono toccati.
 # Uso: pwsh -ExecutionPolicy Bypass -File installa.ps1
 # Con -InCartella percorso compila e prova allo stesso modo, ma mette i file in quella cartella e si ferma lì: non
 # tocca la Missiva installata, né il menu Start né il registro (serve a provare questo script).
+# Da un rilascio pubblicato su GitHub (lo zip estratto: accanto a questo script c'è Missiva.exe e non ci sono i sorgenti)
+# non compila: prova quell'eseguibile e installa quello, il resto è uguale. Senza i sorgenti non servono né .NET né
+# PowerShell 7: gira con Windows PowerShell 5.1, quello di ogni Windows (powershell -ExecutionPolicy Bypass -File
+# installa.ps1). Per questo il file è UTF-8 con BOM: senza, 5.1 storpierebbe le lettere accentate dei messaggi.
 param([string]$InCartella)
 $ErrorActionPreference = "Stop"
 $dir = if ($InCartella) { $InCartella } else { Join-Path $env:LOCALAPPDATA "Programs\Missiva" }
 $exe = Join-Path $dir "Missiva.exe"
+$release = (Test-Path (Join-Path $PSScriptRoot "Missiva.exe")) -and -not (Test-Path (Join-Path $PSScriptRoot "Missiva.csproj"))
 
-# Prima si compila e si prova, in una cartella a parte, e solo dopo si tocca la Missiva installata: se la compilazione
-# non riesce o l'eseguibile nuovo non parte, quella di prima resta dov'è. Fino al 13 ottobre 2026 la cartella di
-# installazione si svuotava prima di compilare, e quel giorno una compilazione che aveva riusato un file intermedio del
-# giorno prima (in obj\...\R2R il pezzo di Missiva.dll che finisce nell'eseguibile, di un'altra compilazione rispetto al
-# codice precompilato) ha lasciato un eseguibile che si chiudeva a ogni avvio ("MVID mismatch" nel registro eventi).
-$staging = Join-Path $PSScriptRoot "bin\installazione"
-if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
-# I file intermedi del codice precompilato (ReadyToRun) si rifanno ogni volta da capo: sono quelli rimasti vecchi.
-Get-ChildItem (Join-Path $PSScriptRoot "obj\Release") -Recurse -Directory -Filter R2R -ErrorAction SilentlyContinue |
-    Remove-Item -Recurse -Force
+if ($release) {
+    # Da un rilascio l'eseguibile c'è già: si copia in una cartella a parte fra i file temporanei, e da lì si prova e si
+    # installa come quello compilato (la cartella del rilascio potrebbe essere proprio quella di installazione).
+    $staging = Join-Path ([IO.Path]::GetTempPath()) ("missiva-installazione-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+    New-Item -ItemType Directory $staging | Out-Null
+    Copy-Item (Join-Path $PSScriptRoot "Missiva.exe") $staging
+    Write-Host "Installo Missiva da un rilascio..."
+} else {
+    # Prima si compila e si prova, in una cartella a parte, e solo dopo si tocca la Missiva installata: se la compilazione
+    # non riesce o l'eseguibile nuovo non parte, quella di prima resta dov'è. Fino al 13 ottobre 2026 la cartella di
+    # installazione si svuotava prima di compilare, e quel giorno una compilazione che aveva riusato un file intermedio del
+    # giorno prima (in obj\...\R2R il pezzo di Missiva.dll che finisce nell'eseguibile, di un'altra compilazione rispetto al
+    # codice precompilato) ha lasciato un eseguibile che si chiudeva a ogni avvio ("MVID mismatch" nel registro eventi).
+    $staging = Join-Path $PSScriptRoot "bin\installazione"
+    if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
+    # I file intermedi del codice precompilato (ReadyToRun) si rifanno ogni volta da capo: sono quelli rimasti vecchi.
+    Get-ChildItem (Join-Path $PSScriptRoot "obj\Release") -Recurse -Directory -Filter R2R -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force
 
-Write-Host "Compilo Missiva..."
-dotnet publish (Join-Path $PSScriptRoot "Missiva.csproj") -c Release -o $staging --nologo -v q
-if ($LASTEXITCODE -ne 0) { throw "Compilazione non riuscita. La Missiva installata non è stata toccata." }
+    Write-Host "Compilo Missiva..."
+    dotnet publish (Join-Path $PSScriptRoot "Missiva.csproj") -c Release -o $staging --nologo -v q
+    if ($LASTEXITCODE -ne 0) { throw "Compilazione non riuscita. La Missiva installata non è stata toccata." }
+}
+# Accanto all'eseguibile disinstalla.ps1, e le licenze: MIT e BSD chiedono le note a chi distribuisce i binari.
+foreach ($name in "disinstalla.ps1", "LICENSE", "TERZE-PARTI.md") {
+    if (Test-Path (Join-Path $PSScriptRoot $name)) { Copy-Item (Join-Path $PSScriptRoot $name) $staging -Force }
+}
 
 # L'eseguibile nuovo si avvia una volta con --versione: esce subito con 0, senza finestre e senza toccare i dati
 # (Program.Main). Se .NET non riesce a caricarlo esce con un errore, e ci si ferma qui.
@@ -32,10 +50,10 @@ $start.UseShellExecute = $false
 $check = [System.Diagnostics.Process]::Start($start)
 if (-not $check.WaitForExit(120000)) {
     $check.Kill()
-    throw "L'eseguibile appena compilato non risponde. La Missiva installata non è stata toccata."
+    throw "L'eseguibile nuovo non risponde. La Missiva installata non è stata toccata."
 }
 if ($check.ExitCode -ne 0) {
-    throw ("L'eseguibile appena compilato non parte (codice 0x{0:X8}). La Missiva installata non è stata toccata." -f $check.ExitCode)
+    throw ("L'eseguibile nuovo non parte (codice 0x{0:X8}). La Missiva installata non è stata toccata." -f $check.ExitCode)
 }
 
 # La versione la dice l'eseguibile appena compilato (Missiva.csproj, MissivaGitVersion): il numero per App installate e
@@ -45,16 +63,21 @@ $version = "{0}.{1}.{2}" -f $info.FileMajorPart, $info.FileMinorPart, $info.File
 $described = if ($info.ProductVersion) { $info.ProductVersion } else { $version }
 # (Fino al 14 ottobre 2026 era "0.3.0+" con il commit intero: se ne tengono sette cifre.)
 $previous = if (Test-Path $exe) { (Get-Item $exe).VersionInfo.ProductVersion -replace '\+([0-9a-f]{7})[0-9a-f]{33}$', ' ($1)' }
-Write-Host "Compilata e provata: Missiva $described."
+$made = if ($release) { "provata" } else { "compilata e provata" }
+Write-Host "Missiva $described $made."
 
 # Missiva aperta dalla cartella di installazione blocca i file: le si chiede di uscire come con Esci, anche quando è
 # nascosta nell'area di notifica (senza finestra CloseMainWindow non la trova), con "esci" sul suo canale con nome
 # (Program.MailtoPipe, solo per questo utente); le scritture aperte chiedono se salvare la bozza. Le versioni di prima,
 # che non conoscono "esci", si chiudono come premendo la X; senza risposta, dopo qualche secondo si terminano.
+# L'opzione CurrentUserOnly dal lato di chi si collega c'è solo in PowerShell 7 (.NET), come in disinstalla.ps1: con
+# Windows PowerShell 5.1 ci si collega senza, e "esci" arriva lo stesso.
+$pipeOptions = [System.IO.Pipes.PipeOptions]::None
+if ([enum]::GetNames([System.IO.Pipes.PipeOptions]) -contains "CurrentUserOnly") { $pipeOptions = [System.IO.Pipes.PipeOptions]"CurrentUserOnly" }
 Get-Process Missiva -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } | ForEach-Object {
     Write-Host "Chiudo Missiva per aggiornarla..."
     try {
-        $pipe = New-Object System.IO.Pipes.NamedPipeClientStream(".", "Missiva-mailto-$($_.SessionId)", [System.IO.Pipes.PipeDirection]::Out, [System.IO.Pipes.PipeOptions]::CurrentUserOnly)
+        $pipe = New-Object System.IO.Pipes.NamedPipeClientStream(".", "Missiva-mailto-$($_.SessionId)", [System.IO.Pipes.PipeDirection]::Out, $pipeOptions)
         $pipe.Connect(3000)
         $writer = New-Object System.IO.StreamWriter($pipe)
         $writer.WriteLine("esci")
@@ -80,9 +103,8 @@ for ($try = 1; (Test-Path $dir) -and (Get-ChildItem $dir).Count -gt 0; $try++) {
 New-Item -ItemType Directory -Force $dir | Out-Null
 Get-ChildItem $staging | Move-Item -Destination $dir -Force
 Remove-Item $staging -Recurse -Force
-Copy-Item (Join-Path $PSScriptRoot "disinstalla.ps1") $dir -Force
 if ($InCartella) {
-    Write-Host "Missiva $described compilata e provata in $dir. Quella installata non è stata toccata."
+    Write-Host "Missiva $described $made in $dir. Quella installata non è stata toccata."
     return
 }
 

@@ -42,6 +42,14 @@ public sealed class Settings
     public bool StartWithWindows { get; set; }
     /// <summary>L'avviso dei testi cifrati che non si decifrano più (App, all'avvio) è già stato dato: una volta, non a ogni avvio.</summary>
     public bool UnreadableTold { get; set; }
+    /// <summary>
+    /// "Controlla da solo gli aggiornamenti" (Impostazioni, Generali, Informazioni; solo nei rilasci, Updates): una richiesta
+    /// a GitHub due minuti dopo l'avvio e poi una al giorno. Acceso di base; spento, nessuna richiesta se non con "Controlla ora".
+    /// </summary>
+    public bool UpdatesAuto { get; set; } = true;
+    /// <summary>La versione offerta nella barra degli aggiornamenti e chiusa con la X, e il giorno: fino al giorno dopo non torna.</summary>
+    public string? UpdateDismissed { get; set; }
+    public DateTime? UpdateDismissedOn { get; set; }
 
     // Elenco messaggi (come Impostazioni, Posta, Elenco messaggi di Outlook)
     /// <summary>Posta in arrivo evidenziata, per account (solo Microsoft). Se manca vale "sì".</summary>

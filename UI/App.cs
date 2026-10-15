@@ -217,6 +217,16 @@ public sealed class App : Application
         if (args.FirstOrDefault(Mailto.Is) is { } link) _ = main.OpenMailtoAsync(link);
         ListenForMailto();
         Log.Startup("canale mailto");
+        // Aggiornamenti da GitHub (Updates, solo nei rilasci): il controllo due minuti dopo l'avvio; e, dopo un aggiornamento,
+        // com'è andato (una riga nel registro, la voce di App installate, la barra se non è riuscito) e la cartella scaricata
+        // che si toglie, in sottofondo, quando l'avvio è finito da un pezzo.
+        main.StartUpdateChecks();
+        _ = Log.GuardAsync("dopo un aggiornamento", async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10));
+            var notice = await Task.Run(() => Updates.AfterStart(Path.Combine(Store.Dir, Updates.FolderName), AppVersion.Number, WriteInstalledVersion));
+            if (notice != null) main.ShowUpdateFailure(notice);
+        });
 #if DEBUG
         StartThemeFlip();
         DevTools.WatchKeys();
@@ -334,6 +344,21 @@ public sealed class App : Application
         SenderLogos.Flush(); // i domini visti negli ultimi secondi, in attesa del loro salvataggio
         Store.Flush(); // le impostazioni in attesa di SaveSoon (un gruppo chiuso, lo zoom, una ricerca fatti un attimo prima di uscire)
         base.OnExit(e);
+        // Aggiornamento confermato (UpdateOnExit): il nuovo eseguibile aspetta che questo processo sia uscito e prende il posto
+        // dell'eseguibile che gira, poi riapre Missiva (Updates.HandOver).
+        if (updateOnExit is { } update)
+        {
+            try
+            {
+                if (Environment.ProcessPath is { } installed)
+                    Updates.HandOver(update, AppVersion.Number, installed, Environment.ProcessId, Path.Combine(Store.Dir, Updates.FolderName));
+            }
+            catch (Exception ex)
+            {
+                Log.Error("passaggio al nuovo eseguibile", ex);
+            }
+            return;
+        }
         if (!restartAfterExit) return;
         // Riavvio chiesto dopo l'importazione di una copia di sicurezza: la copia nuova aspetta che questa sia uscita (--riavvio).
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!, "--riavvio") { UseShellExecute = false }); }
@@ -350,6 +375,20 @@ public sealed class App : Application
     {
         Log.Write("riavvio di Missiva chiesto dopo l'importazione di una copia di sicurezza");
         restartAfterExit = true;
+        ExitAll();
+    }
+
+    /// <summary>L'aggiornamento scaricato, controllato e confermato (MainWindow.Updates.cs): all'uscita passa la mano al nuovo eseguibile.</summary>
+    Updates.Prepared? updateOnExit;
+
+    /// <summary>
+    /// Aggiorna, dopo la conferma: Missiva esce come con Esci, con le domande delle scritture aperte; se una viene annullata
+    /// resta aperta e non si aggiorna (CancelExit). Mai nella versione di prova, dove Aggiorna scrive solo nel registro.
+    /// </summary>
+    public void UpdateOnExit(Updates.Prepared prepared)
+    {
+        Log.Write($"aggiornamento a {prepared.Manifest.Number} confermato: Missiva esce come con Esci");
+        updateOnExit = prepared;
         ExitAll();
     }
 
@@ -432,6 +471,12 @@ public sealed class App : Application
         restartAfterExit = false;
         UpdateTray();
         Log.Write("uscita annullata");
+        if (updateOnExit is { } update)
+        {
+            updateOnExit = null;
+            Log.Write($"aggiornamento a {update.Manifest.Number} annullato con l'uscita");
+            (MainWindow as MainWindow)?.UpdateCancelled(update);
+        }
     }
 
     /// <summary>
@@ -457,6 +502,28 @@ public sealed class App : Application
         catch (Exception ex)
         {
             Log.Error("avvio con Windows", ex);
+        }
+#endif
+    }
+
+    /// <summary>
+    /// Dopo un aggiornamento riuscito, il numero nuovo nella voce di App installate (Updates.WriteDisplayVersion), se Missiva
+    /// sta dove la mette installa.ps1. Nella versione di prova la chiave non si scrive mai: solo il registro.
+    /// </summary>
+    static bool WriteInstalledVersion(string version)
+    {
+#if DEBUG || PROVA
+        Log.Write($"prova: scriverei DisplayVersion {version} in HKCU\\{Updates.UninstallKey}");
+        return false;
+#else
+        try
+        {
+            return Environment.ProcessPath is { } exe && Updates.WriteDisplayVersion(version, exe, Updates.InstallFolder);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("voce di App installate dopo l'aggiornamento", ex);
+            return false;
         }
 #endif
     }

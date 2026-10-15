@@ -97,6 +97,14 @@
     </PropertyGroup>
   </Target>
 
+  <!-- Gli aggiornamenti da GitHub (15 ottobre 2026, richiesta dell'autore): solo un rilascio li controlla. privato\rilascio.ps1
+       compila con -p:MissivaAggiornamenti=proprietario/repository, che finisce nell'eseguibile (Updates.Repository);
+       senza, come con installa.ps1, una prova o una Debug, Missiva non chiede nulla a GitHub e si aggiorna rilanciando
+       installa.ps1. Così il nome dell'account non sta nei sorgenti, e chi compila da sé non riceve gli eseguibili di un altro. -->
+  <ItemGroup Condition="'$(MissivaAggiornamenti)' != ''">
+    <AssemblyMetadata Include="MissivaAggiornamenti" Value="$(MissivaAggiornamenti)" />
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Assets\*.ico" />
     <Resource Include="Assets\*.png" />

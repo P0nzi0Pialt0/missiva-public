@@ -44,6 +44,12 @@ static partial class DevTools
             ProvaBozze.RunAudit(auditOutput, args.Length > 2 ? args[2] : null);
             return true;
         }
+        // Un pacchetto di privato\rilascio.ps1 (zip, manifesto, firma) controllato dallo stesso codice di Missiva, su un GitHub finto.
+        if (args is ["--verifica-pacchetto", var package, var publicKey, var packageOutput])
+        {
+            ProvaBozze.VerifyPackage(package, publicKey, packageOutput);
+            return true;
+        }
         if (args is ["--scrivi-inviti", var folder, ..])
         {
             ProvaBozze.WriteInvites(folder);

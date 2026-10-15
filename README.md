@@ -15,11 +15,33 @@ Il manuale completo, con tutto quello che Missiva fa e quello che manca, è in [
 - Versione 0.3. È un progetto personale, usato tutti i giorni da chi l'ha scritto: funziona, ma non ha garanzie né
   assistenza.
 - L'interfaccia è solo in italiano.
-- Non c'è ancora un programma di installazione già compilato: Missiva si compila sul proprio PC (un comando, sotto).
+- Si installa da un rilascio già compilato, senza altro da installare prima, e poi si aggiorna da sola; oppure si
+  compila sul proprio PC (un comando). Tutti e due i modi sono sotto.
 - Gli account Microsoft personali funzionano subito. Per Gmail serve una registrazione gratuita su Google Cloud, da
   fare una volta: la guida è più sotto.
 
 ## Installare
+
+### Da un rilascio
+
+Serve Windows 11, e nient'altro. Dall'[ultimo rilascio](../../releases/latest) scarica `Missiva-0.3.N.zip` ed
+estrailo in una cartella; in Esplora file, con il tasto destro dentro quella cartella, scegli Apri nel Terminale, e lì
+lancia:
+
+```
+powershell -ExecutionPolicy Bypass -File installa.ps1
+```
+
+Lo script prova che l'eseguibile parta e lo mette in `%LOCALAPPDATA%\Programs\Missiva`, senza permessi di
+amministratore. Missiva compare nel menu Start e in Impostazioni, App installate, da dove si disinstalla. Missiva non
+ha un certificato di firma del codice: la prima volta che la apri Windows può avvisare che "ha protetto il PC"
+(Ulteriori informazioni, Esegui comunque).
+
+Da lì **si aggiorna da sola**: quando esce una versione nuova una barra in fondo all'elenco dei messaggi lo dice, e
+Aggiorna la scarica, la controlla e riapre Missiva aggiornata. Accetta solo aggiornamenti firmati con la chiave di chi
+pubblica Missiva. Come funziona, che cosa controlla e che cosa vede GitHub: [docs/aggiornamenti.md](docs/aggiornamenti.md).
+
+### Dai sorgenti
 
 Servono Windows 11, [.NET 10 SDK](https://dotnet.microsoft.com/download) e PowerShell 7 (il comando `pwsh`: su
 Windows non c'è di serie, si installa dal Microsoft Store o con `winget install Microsoft.PowerShell`).
@@ -32,7 +54,8 @@ pwsh -ExecutionPolicy Bypass -File installa.ps1
 
 Lo script compila Missiva, prova che l'eseguibile parta e lo mette in `%LOCALAPPDATA%\Programs\Missiva`, senza
 permessi di amministratore. Missiva compare nel menu Start e in Impostazioni, App installate, da dove si disinstalla.
-Per aggiornarla si rilancia lo stesso comando: impostazioni e account restano.
+Per aggiornarla si rilancia lo stesso comando: impostazioni e account restano. Compilata così non si aggiorna da sola
+(non sa da dove prendere gli aggiornamenti, e non accetta gli eseguibili di nessuno).
 
 Per aprire con Missiva i link di posta (mailto:) delle pagine web, dopo l'installazione sceglila in Impostazioni, App,
 App predefinite, Missiva: Windows non lascia farlo ai programmi.

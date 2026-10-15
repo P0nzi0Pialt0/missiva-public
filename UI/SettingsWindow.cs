@@ -170,7 +170,44 @@ public sealed class SettingsWindow : Window
         p.Children.Add(version);
         p.Children.Add(Question("Il terzo numero cresce a ogni modifica di Missiva. La data e il codice fra parentesi sono quelli dell'ultima " +
                                 "modifica compresa in questa versione: per sapere se una correzione c'è, si confronta con la data in cui è stata fatta."));
+        p.Children.Add(Section("Aggiornamenti"));
+        foreach (var part in UpdatesPart()) p.Children.Add(part);
         return p;
+    }
+
+    /// <summary>
+    /// Gli aggiornamenti da GitHub (Updates; 15 ottobre 2026, richiesta dell'autore): in un rilascio la casella del controllo
+    /// automatico e "Controlla ora", con l'esito; compilata dai sorgenti, o senza la chiave, che cosa fare per aggiornarla.
+    /// </summary>
+    IEnumerable<UIElement> UpdatesPart()
+    {
+        switch (Updates.Current)
+        {
+            case Updates.Mode.FromSources:
+                yield return Question("Questa Missiva è stata compilata dai sorgenti: non controlla gli aggiornamenti. Si aggiorna rilanciando " +
+                                      "installa.ps1 dalla cartella dei sorgenti, oppure installando un rilascio pubblicato, che poi si aggiorna da solo.");
+                yield break;
+            case Updates.Mode.NoKey:
+                yield return Question("Questa versione non ha la chiave con cui Missiva controlla la firma degli aggiornamenti: non li cerca. " +
+                                      "Si aggiorna scaricando un rilascio più nuovo e lanciando il suo installa.ps1.");
+                yield break;
+        }
+        yield return Check("Controlla da solo gli aggiornamenti", S.UpdatesAuto, v => S.UpdatesAuto = v, refresh: false);
+        var status = Question(MainWindow.LastUpdateLine ?? "Nessun controllo in questa sessione.");
+        var now = new Button { Content = "Controlla ora", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(14, 5, 14, 5) };
+        now.Click += async (_, _) =>
+        {
+            if (Application.Current.MainWindow is not MainWindow main) return;
+            now.IsEnabled = false;
+            status.Text = "Controllo in corso…";
+            try { status.Text = await main.CheckUpdatesAsync(automatic: false); }
+            finally { now.IsEnabled = true; }
+        };
+        yield return now;
+        yield return status;
+        yield return Question("Con la casella accesa Missiva chiede a GitHub qual è l'ultima versione pubblicata due minuti dopo l'avvio e poi una volta al " +
+                              "giorno; se è più nuova lo dice con una barra in fondo all'elenco, e si aggiorna solo con Aggiorna. Accetta solo " +
+                              "aggiornamenti firmati con la chiave di chi pubblica Missiva.");
     }
 
     // ---------------------------------------------------------------- pezzi comuni

@@ -100,6 +100,7 @@ static partial class ProvaBozze
         new("scelte3", Choices3Tests, Audit: true), // scelte del 12 ottobre, terzo gruppo: prove e guardie per chi sviluppa, TestingProvider, cartelle, non letti (ProvaBozze.Scelte3.cs)
         new("core", CoreReviewTests, Audit: true), // revisione del 13 ottobre: sei consigli sul modulo Core, K-01..K-06 (ProvaBozze.Core.cs)
         new("interfaccia", UiReviewTests, Audit: true), // revisione del 14 ottobre: cinque consigli sull'interfaccia, U-01..U-05 (ProvaBozze.Interfaccia.cs)
+        new("aggiornamenti", UpdatesTests), // aggiornamenti da GitHub, 15 ottobre: firma, manifesto, rete, zip, sostituzione (ProvaBozze.Aggiornamenti.cs)
         new("caduta", RobCrash, Manual: true), // solo a mano: chiude il processo con un errore su un altro thread (C-24)
     ];
 

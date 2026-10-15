@@ -968,6 +968,32 @@
                         </ListBox>
                     </DockPanel>
                     <StackPanel VerticalAlignment="Bottom">
+                    <!-- Aggiornamenti da GitHub (MainWindow.Updates.cs): una versione nuova pubblicata, con Novità, Aggiorna e la X;
+                         con Aggiorna l'avanzamento dello scaricamento, con Annulla -->
+                    <Border x:Name="UpdateBar" Visibility="Collapsed" HorizontalAlignment="Stretch" Margin="12,0,12,8"
+                            CornerRadius="6" BorderThickness="1" Padding="14,6,6,6"
+                            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" />
+                        </Border.Effect>
+                        <DockPanel>
+                            <Button x:Name="UpdateCloseButton" DockPanel.Dock="Right" Click="OnUpdateClose" Template="{StaticResource SubtleButton}" Background="Transparent"
+                                    Padding="10,4" ToolTip="Chiudi: per questa versione la barra torna domani" AutomationProperties.Name="Chiudi la barra dell'aggiornamento">
+                                <TextBlock Text="&#xE711;" Style="{StaticResource Glyph}" FontSize="11" />
+                            </Button>
+                            <Button x:Name="UpdateCancelButton" DockPanel.Dock="Right" Content="Annulla" Click="OnUpdateCancel" Template="{StaticResource SubtleButton}" Background="Transparent"
+                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4" Visibility="Collapsed"
+                                    ToolTip="Ferma lo scaricamento: Missiva resta com'è" AutomationProperties.Name="Annulla lo scaricamento dell'aggiornamento" />
+                            <Button x:Name="UpdateNowButton" DockPanel.Dock="Right" Content="Aggiorna" Click="OnUpdateNow" Template="{StaticResource SubtleButton}" Background="Transparent"
+                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
+                                    ToolTip="Scarica la versione nuova e la controlla; poi, dopo una domanda, Missiva si chiude e si riapre aggiornata" AutomationProperties.Name="Aggiorna Missiva" />
+                            <Button x:Name="UpdateNewsButton" DockPanel.Dock="Right" Content="Novità" Click="OnUpdateNews" Template="{StaticResource SubtleButton}" Background="Transparent"
+                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
+                                    ToolTip="Che cosa cambia nella versione nuova" AutomationProperties.Name="Novità della versione nuova" />
+                            <TextBlock DockPanel.Dock="Left" Text="&#xE896;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock x:Name="UpdateText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                        </DockPanel>
+                    </Border>
                     <!-- Posta in uscita, come l'Outlook classico: i messaggi inviati senza rete partono quando torna -->
                     <Border x:Name="OutboxBar" Visibility="Collapsed" HorizontalAlignment="Stretch" Margin="12,0,12,8"
                             CornerRadius="6" BorderThickness="1" Padding="14,6,6,6"

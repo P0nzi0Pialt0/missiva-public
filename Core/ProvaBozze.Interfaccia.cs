@@ -1017,13 +1017,15 @@ static partial class ProvaBozze
         // In nessun sorgente, prove comprese, il nome di un programma scritto fra virgolette come primo argomento.
         var literal = files.Where(f => System.Text.RegularExpressions.Regex.IsMatch(Code(f), @"\b(?:ProcessStartInfo|Process\.Start)\(\s*[$@]*""[\w.\\/:%-]")).Select(Path.GetFileName).ToList();
         // Nel programma (non nelle prove): ogni avvio letto, con che cosa avvia e se passa dalla shell.
-        string[] opened = ["uri.AbsoluteUri", "url", "WebRuntimeLink", "Store.Dir", "temp.Release()"], programs = ["Environment.ProcessPath!", "ExplorerPath"];
+        // Dal 15 ottobre 2026 anche gli aggiornamenti (Updates): il nuovo eseguibile scaricato e controllato, provato e poi avviato
+        // per la sostituzione (prepared.Exe), e da lui quello installato, il percorso dell'eseguibile che girava (installed).
+        string[] opened = ["uri.AbsoluteUri", "url", "WebRuntimeLink", "Store.Dir", "temp.Release()"], programs = ["Environment.ProcessPath!", "ExplorerPath", "prepared.Exe", "installed"];
         var starts = files.Where(f => !Path.GetFileName(f).StartsWith("ProvaBozze")).SelectMany(f => U5Starts(Code(f)).Select(s => (File: Path.GetFileName(f), s.First, s.Shell))).ToList();
         var wrong = starts.Where(s => s.Shell == null || (s.Shell == true ? !opened.Contains(s.First) : !programs.Contains(s.First))).Select(s => $"{s.File}: {s.First}").ToList();
         // Il percorso passato a Esplora file sta fra virgolette: uno che ne contiene una non si passa.
         string safety = Code(Path.Combine(root, "Core", "Safety.cs"));
         int quote = safety.IndexOf("if (path.Contains('\"')) return;", StringComparison.Ordinal), explorer = safety.IndexOf("ProcessStartInfo(ExplorerPath, $\"/select,\\\"{path}\\\"\")", StringComparison.Ordinal);
-        Check(literal.Count == 0 && wrong.Count == 0 && starts.Count >= 12 && starts.Count(s => s.Shell == false) == 2 && quote > 0 && explorer > quote,
+        Check(literal.Count == 0 && wrong.Count == 0 && starts.Count >= 12 && starts.Count(s => s.Shell == false) == 5 && quote > 0 && explorer > quote,
               $"U-05, gli avvii di altri programmi nei sorgenti: nessuno con il nome di un programma senza percorso, prove comprese; nel programma sono {starts.Count}, tutti letti: {starts.Count(s => s.Shell == true)} passano a Windows " +
               $"un indirizzo o un file da aprire ({string.Join(", ", starts.Where(s => s.Shell == true).Select(s => s.First).Distinct())}), {starts.Count(s => s.Shell == false)} avviano un programma dal suo percorso intero " +
               $"({string.Join(", ", starts.Where(s => s.Shell == false).Select(s => s.First))})" +

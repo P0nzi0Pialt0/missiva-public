@@ -12,11 +12,28 @@ Aggiungi account parte dall'indirizzo email, come Outlook e Thunderbird: Missiva
 
 ## Installare
 
-Servono .NET 10 SDK e PowerShell 7 (il comando `pwsh`: su Windows non c'è di serie, si installa dal Microsoft Store o
-con `winget install Microsoft.PowerShell`; `installa.ps1` è scritto per il 7 e con il Windows PowerShell 5.1 di serie
-non è mai stato eseguito). Dalla cartella dei sorgenti: `pwsh -ExecutionPolicy Bypass -File installa.ps1`. Missiva finisce in
-`%LOCALAPPDATA%\Programs\Missiva`, compare nel menu Start e in Impostazioni, App installate (da dove si disinstalla).
-Per aggiornarla basta rilanciare lo stesso comando.
+Da un rilascio pubblicato su GitHub (la pagina Releases): si scarica `Missiva-0.3.N.zip`, si estrae in una cartella e
+da lì si lancia `powershell -ExecutionPolicy Bypass -File installa.ps1`. Non serve altro: lo script vede che accanto
+c'è `Missiva.exe` e non i sorgenti, prova l'eseguibile e lo installa, anche con il Windows PowerShell 5.1 di serie.
+Missiva finisce in `%LOCALAPPDATA%\Programs\Missiva`, compare nel menu Start e in Impostazioni, App installate (da dove
+si disinstalla), e da lì si aggiorna da sola (sotto, "Aggiornamenti"). Senza un certificato di firma del codice, la
+prima apertura di un file scaricato può far dire a Windows che "ha protetto il PC" (Ulteriori informazioni, Esegui
+comunque).
+
+Dai sorgenti servono .NET 10 SDK e PowerShell 7 (il comando `pwsh`: su Windows non c'è di serie, si installa dal
+Microsoft Store o con `winget install Microsoft.PowerShell`). Dalla cartella dei sorgenti: `pwsh -ExecutionPolicy
+Bypass -File installa.ps1`; il risultato è lo stesso, ma una Missiva compilata così non si aggiorna da sola: per
+aggiornarla si rilancia lo stesso comando.
+
+Aggiornamenti: due minuti dopo l'avvio e poi una volta al giorno una Missiva installata da un rilascio chiede a GitHub
+se c'è una versione nuova. Se c'è, una barra in fondo all'elenco dei messaggi dice "È disponibile Missiva 0.3.N del
+gg/mm/aaaa", con Novità (che cosa cambia), Aggiorna e la X (chiusa, per quella versione torna il giorno dopo). Aggiorna
+scarica la versione nuova (l'avanzamento è nella barra, con Annulla), la controlla, chiede conferma e poi chiude
+Missiva come Esci (i messaggi che stai scrivendo chiedono se salvare la bozza) e la riapre aggiornata. In Impostazioni,
+Generali, Informazioni ci sono la versione, la casella **Controlla da solo gli aggiornamenti** (spenta, nessuna
+richiesta a GitHub), **Controlla ora** con l'esito dell'ultimo controllo; in una Missiva compilata dai sorgenti, al
+loro posto, che si aggiorna con `installa.ps1`. Che cosa controlla prima di accettare un aggiornamento e che cosa vede
+GitHub: `docs/aggiornamenti.md`.
 
 La versione cambia a ogni modifica: i primi due numeri si scrivono a mano nel progetto, il terzo è il numero delle
 modifiche (i commit di git) e cresce da solo, e accanto ci sono la data e il codice dell'ultima modifica compresa, per
@@ -430,6 +447,10 @@ che serve a chi arriva: se i passi cambiano, si correggono in quel file.
   mittenti" in Cosa c'è; una ricerca nel DNS, poi il logo dal suo sito): parte quando l'elenco mostra un suo messaggio,
   di norma una volta ogni 30 giorni per azienda, e non dice quale messaggio né se l'hai aperto; il sito vede però
   l'indirizzo IP e il momento. Spenta la casella dei loghi non parte più.
+- Una Missiva installata da un rilascio chiede a GitHub se c'è una versione nuova due minuti dopo l'avvio e poi una
+  volta al giorno (GitHub vede l'indirizzo IP, l'ora e il nome "Missiva"; si spegne in Impostazioni, Generali,
+  Informazioni), e accetta un aggiornamento solo se è firmato con la chiave di chi pubblica Missiva, più nuovo, con
+  l'impronta giusta e i soli file attesi (`docs/aggiornamenti.md`).
 - I link si aprono nel tuo browser, mai dentro Missiva.
 - Allegati salvati o aperti con il marchio "scaricato da Internet": Office li apre in Visualizzazione protetta e
   SmartScreen controlla gli eseguibili. I tipi di file che possono avviare programmi o collegarsi da soli a un server
@@ -539,4 +560,5 @@ basta: è cifrata per il tuo utente di Windows, e altrove non si legge.
 
 Serve .NET 10 SDK: `dotnet build` compila la versione di prova, che si avvia con `strumenti\prova.ps1` su una copia dei
 dati (avviata da sola, senza `MISSIVA_DATA`, si chiude subito: lavorerebbe sui dati veri); per installare
-`installa.ps1`, che vuole anche PowerShell 7 (vedi sopra).
+`installa.ps1`, con PowerShell 7 (vedi sopra). Compilata così Missiva non controlla gli aggiornamenti: solo un rilascio
+(`-p:MissivaAggiornamenti=proprietario/repository` e una chiave pubblica in `Core/UpdateKey.cs`) lo fa.
