@@ -644,6 +644,13 @@ public partial class ReadingView : UserControl
         Log.Write($"prova: {action} sul messaggio aperto");
         Do([action, "0"]);
     }
+
+    /// <summary>Prove ("allegato N" in MISSIVA_KEYS): il clic sull'allegato N del primo messaggio della pagina (un .p7m nella sua finestra).</summary>
+    internal void TestOpenAttachment(int index)
+    {
+        Log.Write($"prova: apro l'allegato {index} del messaggio aperto");
+        Do(["open", "0", index.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+    }
 #endif
 
     /// <summary>

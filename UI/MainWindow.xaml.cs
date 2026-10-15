@@ -288,11 +288,13 @@ public partial class MainWindow : Window
             }
         }
         // Formato del testo: --formato-finto apre Nuovo messaggio con il testo formattato come con la barra (con MISSIVA_DUMP
-        // la chiusura scrive l'HTML che partirebbe); --rispondi 2 apre la risposta al messaggio 2 (la firma delle risposte)
+        // la chiusura scrive l'HTML che partirebbe; con --foto quello delle foto della pagina GitHub); --rispondi 2 apre la
+        // risposta al messaggio 2 (la firma delle risposte)
         if (cli.Contains("--formato-finto") && accounts.Count > 0)
         {
             var compose = new ComposeWindow(Providers.ToList(), folder?.Account.Provider ?? accounts[0].Provider, ComposeMode.New, null, null) { Owner = this };
-            compose.Loaded += (_, _) => compose.TestFormat();
+            DevTools.HideForPhotos(compose); // con --foto non si vede e non prende il fuoco, e ha il testo delle foto della pagina GitHub
+            compose.Loaded += (_, _) => { if (cli.Contains("--foto")) compose.TestPhoto(); else compose.TestFormat(); };
             ShowCompose(compose);
         }
         if (int.TryParse(Arg("--rispondi"), out var replyRow) && replyRow >= 0)

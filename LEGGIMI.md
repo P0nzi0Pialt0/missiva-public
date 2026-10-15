@@ -128,10 +128,10 @@ L'accesso è come nel nuovo Outlook: si apre il browser, scegli l'account Google
 Google però lo permette solo alle app registrate su Google Cloud: ognuno registra la propria, una volta sola, gratis, e
 vale per tutti i propri account Gmail.
 
-La guida passo per passo è in [README.md](README.md), "Gmail: registrare la tua app su Google Cloud": i sette passi, la
-pagina di Google che avvisa dell'app non verificata, il calendario e i contatti (facoltativi), Google Workspace, che
-cosa fare se qualcosa non va, che cosa resta sul PC e come togliere l'accesso. Sta lì e non qui perché è la prima cosa
-che serve a chi arriva: se i passi cambiano, si correggono in quel file.
+La guida passo per passo è in [docs/gmail.md](docs/gmail.md), "Gmail: registrare la tua app su Google Cloud": i sette
+passi, la pagina di Google che avvisa dell'app non verificata, il calendario e i contatti (facoltativi), Google
+Workspace, che cosa fare se qualcosa non va, che cosa resta sul PC e come togliere l'accesso. Ci rimanda anche la
+pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel file.
 
 ## Cosa c'è
 

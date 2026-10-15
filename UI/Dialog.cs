@@ -95,6 +95,9 @@ public static class Dialog
             WindowStartupLocation = owner is { IsVisible: true } ? WindowStartupLocation.CenterOwner : WindowStartupLocation.CenterScreen,
         };
         if (owner is { IsVisible: true }) window.Owner = owner;
+#if DEBUG
+        DevTools.HideForPhotos(window); // le foto della pagina GitHub (--foto): nessuna domanda sullo schermo di chi usa il PC
+#endif
 
         var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
         panel.Children.Add(new TextBlock { Text = heading, FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });

@@ -302,6 +302,50 @@ public partial class ComposeWindow
         SubjectBox.Text = "Prova del formato";
         Log.Write("prova: testo formattato inserito (--formato-finto)");
     }
+
+    /// <summary>
+    /// Le foto della pagina GitHub (--formato-finto --foto): una risposta scritta e formattata come con la barra (un elenco
+    /// puntato, il grassetto, l'evidenziatore), dalla casella di lavoro delle foto a una cliente (ProvaBozze.Foto.cs).
+    /// </summary>
+    internal void TestPhoto()
+    {
+        if (FromBox.Items.OfType<Sender>().FirstOrDefault(s => s.Provider.Account.Email.EndsWith("@studio-esempio.example", StringComparison.OrdinalIgnoreCase)) is { } work)
+            FromBox.SelectedItem = work;
+        var doc = Editor.Document;
+        var at = signatureLine ?? (Block?)signature;
+        if (at == null) doc.Blocks.Clear();
+        void Add(Block block)
+        {
+            if (at != null) doc.Blocks.InsertBefore(at, block);
+            else doc.Blocks.Add(block);
+        }
+        Paragraph Line(string text = "") => new(new Run(text));
+        quiet = true; // niente suggerimenti
+        ToBox.Text = "Giulia Neri <giulia.neri@comune-esempio.example>";
+        quiet = false;
+        SubjectBox.Text = "Re: Progetto della biblioteca: osservazioni";
+        Add(Line("Gentile Giulia,"));
+        Add(Line());
+        Add(Line("grazie per le osservazioni della commissione: le abbiamo già accolte nelle tavole aggiornate."));
+        var list = new List { MarkerStyle = TextMarkerStyle.Disc };
+        foreach (var item in new[] { "la sala lettura passa da 40 a 56 posti a sedere;", "la sala ragazzi ha un ingresso separato, dal cortile;", "sul lato nord aggiungiamo due lucernari." })
+            list.ListItems.Add(new ListItem(Line(item)));
+        Add(list);
+        var last = new Paragraph(new Run("Le mando le tavole "));
+        last.Inlines.Add(new Bold(new Run("entro venerdì")));
+        last.Inlines.Add(new Run(", così le vediamo insieme nella "));
+        var meeting = new Run("riunione di lunedì alle 10");
+        last.Inlines.Add(meeting);
+        last.Inlines.Add(new Run("."));
+        Add(last);
+        new TextRange(meeting.ContentStart, meeting.ContentEnd).ApplyPropertyValue(TextElement.BackgroundProperty, Brush("#FFF100"));
+        Add(Line());
+        Add(Line("Cordiali saluti,"));
+        Add(Line("Ada Galli"));
+        Add(Line("Studio Esempio Architetti"));
+        Editor.CaretPosition = last.ContentEnd;
+        Log.Write("prova: testo delle foto inserito (--formato-finto --foto)");
+    }
 #endif
 
     // ---------------------------------------------------------------- firma

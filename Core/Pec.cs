@@ -205,6 +205,7 @@ public static class Pec
     {
 #if DEBUG
         if (TestRoots != null && MailAutoconfig.InDomain(domain, "pec-prova.it")) return "Gestore PEC di prova";
+        if (TestRoots != null && MailAutoconfig.InDomain(domain, "pec-esempio.example")) return "Gestore PEC Esempio"; // le foto della pagina GitHub (ProvaBozze.Foto.cs)
 #endif
         return MailAutoconfig.PecProviderOf(domain);
     }

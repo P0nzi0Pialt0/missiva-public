@@ -162,6 +162,9 @@ public sealed class App : Application
         if (hidden) System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         var main = new MainWindow();
         MainWindow = main;
+#if DEBUG
+        DevTools.HideForPhotos(main); // le foto della pagina GitHub (--foto): la finestra non si vede e non prende il fuoco
+#endif
         Log.Startup("finestra creata");
         if (hidden)
         {

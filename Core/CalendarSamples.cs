@@ -23,6 +23,7 @@ static class CalendarSamples
 
     public static CalendarData For(MailAccount account, DateTime from, DateTime to)
     {
+        if (Environment.GetCommandLineArgs().Contains("--foto")) return Photo(account, from, to);
         var calendars = new List<CalendarInfo>
         {
             new("principale", "Calendario", "#0F6CBD", true),
@@ -77,6 +78,59 @@ static class CalendarSamples
         soon = soon.AddSeconds(-soon.Second);
         if (soon >= from && soon < to)
             events.Add(E("Telefonata con il notaio", soon, soon.AddMinutes(30), reminder: true, minutes: 15, response: "accepted"));
+        return new CalendarData { Calendars = calendars, Events = events.Where(e => e.End > from && e.Start < to).ToList(), From = from, To = to };
+    }
+
+    /// <summary>
+    /// Le foto della pagina GitHub (--calendario-finto --foto): la settimana di lavoro di Ada Galli, architetta, con il
+    /// calendario personale e i compleanni; persone e luoghi inventati (come i dati di ProvaBozze.Foto.cs). Nessun
+    /// promemoria: le foto non fanno partire notifiche.
+    /// </summary>
+    internal static CalendarData Photo(MailAccount account, DateTime from, DateTime to)
+    {
+        var calendars = new List<CalendarInfo>
+        {
+            new("principale", "Calendario", "#0F6CBD", true),
+            new("personale", "Personale", "#8764B8", false),
+            new("compleanni", "Compleanni", "#107C10", false, CanEdit: false),
+        };
+        Address maria = new() { Name = "Maria Rossi", Email = "maria.rossi@studio-esempio.example" };
+        Address paolo = new() { Name = "Paolo Conti", Email = "paolo.conti@impresa-esempio.example" };
+        Address giulia = new() { Name = "Giulia Neri", Email = "giulia.neri@comune-esempio.example" };
+        var events = new List<CalendarEvent>();
+        int n = 0;
+        void E(string subject, DateTime start, DateTime end, string location = "", string calendar = "principale", bool allDay = false, bool recurring = false,
+               Address? organizer = null, string response = "organizer", List<Attendee>? attendees = null, string preview = "") =>
+            events.Add(new()
+            {
+                Id = $"foto-{account.Id}-{++n}", CalendarId = calendar, Subject = subject, Start = start, End = end, AllDay = allDay, Location = location,
+                Response = response, IsRecurring = recurring, Attendees = attendees ?? new(), ReminderOn = false, IsOrganizer = organizer == null,
+                Organizer = organizer, SeriesMasterId = recurring ? $"foto-serie-{account.Id}-{subject.Length}" : "", Preview = preview,
+                ShowAs = response == "tentativelyAccepted" ? "tentative" : "busy",
+            });
+        var firstMonday = from.Date.AddDays(-(((int)from.DayOfWeek + 6) % 7));
+        for (var monday = firstMonday; monday < to; monday = monday.AddDays(7))
+        {
+            DateTime At(int day, double hour) => monday.AddDays(day).AddHours(hour);
+            E("Punto settimanale", At(0, 9.5), At(0, 10), "Sala riunioni", recurring: true);
+            E("Sopralluogo in cantiere", At(0, 14), At(0, 16), "Via del Lavoro 14", organizer: paolo, response: "accepted",
+              attendees: [new(paolo, "accepted", false), new(maria, "accepted", false)]);
+            E("Revisione delle tavole", At(1, 10), At(1, 11.5), "Studio", attendees: [new(maria, "accepted", false)]);
+            E("Pranzo con Chiara", At(1, 13), At(1, 14), "In centro", "personale");
+            E("Chiamata con il Comune", At(1, 16.5), At(1, 17.5), "Telefono", organizer: giulia, response: "accepted");
+            E("Progetto della biblioteca", At(2, 9), At(2, 12), "Sala grande", attendees: [new(maria, "accepted", false), new(giulia, "tentativelyAccepted", false)],
+              preview: "Le osservazioni della commissione e le tavole aggiornate.");
+            E("Fornitore delle finiture", At(2, 10.5), At(2, 11.5), "Studio", organizer: paolo, response: "tentativelyAccepted");
+            E("Dentista", At(2, 15), At(2, 16), "", "personale");
+            E("Compleanno di Chiara", At(2, 0), At(3, 0), calendar: "compleanni", allDay: true);
+            E("Presentazione al cliente", At(3, 10), At(3, 11.5), "Sala grande", attendees: [new(maria, "accepted", false), new(paolo, "accepted", false)]);
+            E("Verifica del soppalco", At(3, 14), At(3, 15), "Cantiere", organizer: paolo, response: "accepted");
+            E("Corso di aggiornamento", At(3, 17.5), At(3, 19), "Ordine degli Architetti");
+            E("Ferie di Elena", At(4, 0), At(5, 0), allDay: true);
+            E("Firma del contratto", At(4, 9.5), At(4, 10.5), "Studio notarile");
+            E("Consegna del progetto", At(4, 15), At(4, 16), "Comune", organizer: giulia, response: "accepted");
+            E("Mercato con Chiara", At(5, 9.5), At(5, 11.5), "Piazza grande", "personale");
+        }
         return new CalendarData { Calendars = calendars, Events = events.Where(e => e.End > from && e.Start < to).ToList(), From = from, To = to };
     }
 }

@@ -3515,7 +3515,7 @@ static partial class ProvaBozze
         }
 
         /// <param name="usage">Lo scopo (extendedKeyUsage): di base la protezione della posta.</param>
-        static X509Certificate2 Leaf(string subject, X509Certificate2? issuer, DateTimeOffset now, string? email, string usage = "1.3.6.1.5.5.7.3.4")
+        internal static X509Certificate2 Leaf(string subject, X509Certificate2? issuer, DateTimeOffset now, string? email, string usage = "1.3.6.1.5.5.7.3.4")
         {
             var key = RSA.Create(2048);
             var request = new CertificateRequest(subject, key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -4722,6 +4722,18 @@ static partial class ProvaBozze
             return "(" + string.Concat(boxes.Select(b => $"({Quote(string.IsNullOrEmpty(b.Name) ? null : b.Name)} NIL {Quote(b.LocalPart)} {Quote(b.Domain)})")) + ")";
         }
 
+        /// <summary>
+        /// La struttura con i tipi veri degli allegati e con le immagini nel testo (cid:) come parti inline: solo per le
+        /// caselle delle foto (ProvaBozze.Foto.cs). Di base ogni allegato è application/octet-stream e le immagini nel testo
+        /// non ci sono, come le prove si aspettano.
+        /// </summary>
+        public bool TrueTypes;
+
+        /// <summary>Le parti dopo il testo, nell'ordine della struttura (dalla 2): gli allegati, e con TrueTypes anche le immagini nel testo.</summary>
+        List<MimePart> Files(MimeMessage mime) => TrueTypes
+            ? mime.BodyParts.OfType<MimePart>().Where(p => p.IsAttachment || p.ContentId != null).ToList()
+            : mime.Attachments.OfType<MimePart>().ToList();
+
         /// <summary>La risposta a FETCH: busta e struttura, il messaggio intero (BODY.PEEK[]) o le parti chieste (BODY.PEEK[2], BODY.PEEK[2.MIME]).</summary>
         byte[] Fetch(Message m, int seq, string request)
         {
@@ -4737,8 +4749,11 @@ static partial class ProvaBozze
                       $"{Addresses(mime.ReplyTo.Count > 0 ? mime.ReplyTo : mime.From)} {Addresses(mime.To)} {Addresses(mime.Cc)} {Addresses(mime.Bcc)} NIL \"<{mime.MessageId}>\")");
             if (request.Contains("BODYSTRUCTURE"))
             {
-                var files = mime.Attachments.OfType<MimePart>().Select(a =>
-                    $"(\"application\" \"octet-stream\" (\"name\" \"{a.FileName}\") NIL NIL \"base64\" {a.Content?.Stream?.Length ?? 0} NIL (\"attachment\" (\"filename\" \"{a.FileName}\")) NIL NIL)");
+                var files = Files(mime).Select(a => !TrueTypes
+                    ? $"(\"application\" \"octet-stream\" (\"name\" \"{a.FileName}\") NIL NIL \"base64\" {a.Content?.Stream?.Length ?? 0} NIL (\"attachment\" (\"filename\" \"{a.FileName}\")) NIL NIL)"
+                    : $"(\"{a.ContentType.MediaType}\" \"{a.ContentType.MediaSubtype}\" (\"name\" \"{a.FileName ?? a.ContentType.Name}\") {(a.ContentId != null ? $"\"<{a.ContentId}>\"" : "NIL")} NIL " +
+                      $"\"{(a.ContentTransferEncoding == ContentEncoding.Base64 ? "base64" : "7bit")}\" {a.Content?.Stream?.Length ?? 0}{(a.ContentType.MediaType == "text" ? " 1" : "")} NIL " +
+                      $"(\"{(a.IsAttachment ? "attachment" : "inline")}\" (\"filename\" \"{a.FileName ?? a.ContentType.Name}\")) NIL NIL)");
                 // Il testo con la sua misura vera, come un server vero (prima sempre 10): ImapProvider.Prefetchable la somma per
                 // decidere se un messaggio grande si copia. È la misura di quello che BODY.PEEK[1] restituisce qui sotto.
                 Write($" BODYSTRUCTURE ((\"text\" \"html\" (\"charset\" \"utf-8\") NIL NIL \"7bit\" {Encoding.UTF8.GetByteCount(mime.HtmlBody ?? mime.TextBody ?? "")} 1 NIL NIL NIL NIL)" +
@@ -4795,7 +4810,7 @@ static partial class ProvaBozze
                     output.Write(textBytes);
                     continue;
                 }
-                var part = mime.Attachments.OfType<MimePart>().ElementAt(index); // gli stessi della struttura: un .eml allegato non è fra questi
+                var part = Files(mime)[index]; // gli stessi della struttura: un .eml allegato non è fra questi
                 var data = new MemoryStream();
                 if (section.Groups[2].Success)
                 {
@@ -5013,13 +5028,18 @@ static partial class ProvaBozze
     /// SMTP finto (STARTTLS) sta sulla porta dopo; la versione di prova con MISSIVA_IMAP_FINTO=1 ne accetta il certificato.
     /// </param>
     /// <param name="old">--imap-finto porta vecchi: i messaggi di prova sono di qualche giorno fa (l'elenco parte senza il gruppo "Oggi").</param>
-    public static void ServeImap(int port, bool noTrash = false, string? password = null, bool old = false)
+    /// <param name="photo">
+    /// --imap-finto porta foto studio|personale|pec: al posto dei messaggi di prova una delle caselle finte delle foto della
+    /// pagina GitHub (ProvaBozze.Foto.cs).
+    /// </param>
+    public static void ServeImap(int port, bool noTrash = false, string? password = null, bool old = false, string? photo = null)
     {
         var fake = new FakeImap(new Flavor(Gmail: false), port) { LogCommands = true, ExpectedPassword = password, EchoToIdlers = true, AnnounceOnNoop = true };
         var smtp = new FakeSmtp(port + 1) { ExpectedPassword = password };
         GC.KeepAlive(smtp);
         if (noTrash) fake.Folders.Remove(fake.TrashFolder);
-        foreach (var (from, name, subject, html, flags) in new[]
+        if (photo != null) FillFoto(fake, photo);
+        else foreach (var (from, name, subject, html, flags) in new[]
         {
             ("preventivi@fornitore-prova.it", "Fornitore di prova", "Preventivo per la ristrutturazione dello studio", "<p>Buongiorno,</p><p>in allegato trova il preventivo richiesto.</p><p>Cordiali saluti</p>", ""),
             ("segreteria@ordine-prova.it", "Segreteria dell'Ordine", "Convocazione dell'assemblea di ottobre", "<p>Gentile iscritto,</p><p>l'assemblea si terrà il 15 ottobre alle 17.</p>", "\\Seen"),
@@ -5033,13 +5053,16 @@ static partial class ProvaBozze
         }
         // Una newsletter con List-Unsubscribe (un clic, autenticata dal server della casella), per provare "Annulla iscrizione":
         // indirizzi .example, che non esistono; nella versione di prova la POST va comunque solo nel registro.
-        var news = new MimeMessage { Subject = "Notizie della settimana", Date = DateTimeOffset.Now.AddHours(-20).AddDays(old ? -3 : 0), Body = new TextPart("html") { Text = "<p>Gentile iscritto,</p><p>ecco le notizie della settimana.</p>" } };
-        news.From.Add(new MailboxAddress("Notizie di prova", "notizie@notizie-prova.example"));
-        news.To.Add(new MailboxAddress("Mario Rossi", "mario@studio-prova.it"));
-        news.Headers.Add("Authentication-Results", "studio-prova.it; dkim=pass header.i=@notizie-prova.example; dmarc=pass header.from=notizie-prova.example");
-        news.Headers.Add("List-Unsubscribe", "<https://liste.notizie-prova.example/via?id=123>, <mailto:via@notizie-prova.example?subject=unsubscribe>");
-        news.Headers.Add("List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
-        fake.Add("INBOX", news, "\\Seen");
+        if (photo == null)
+        {
+            var news = new MimeMessage { Subject = "Notizie della settimana", Date = DateTimeOffset.Now.AddHours(-20).AddDays(old ? -3 : 0), Body = new TextPart("html") { Text = "<p>Gentile iscritto,</p><p>ecco le notizie della settimana.</p>" } };
+            news.From.Add(new MailboxAddress("Notizie di prova", "notizie@notizie-prova.example"));
+            news.To.Add(new MailboxAddress("Mario Rossi", "mario@studio-prova.it"));
+            news.Headers.Add("Authentication-Results", "studio-prova.it; dkim=pass header.i=@notizie-prova.example; dmarc=pass header.from=notizie-prova.example");
+            news.Headers.Add("List-Unsubscribe", "<https://liste.notizie-prova.example/via?id=123>, <mailto:via@notizie-prova.example?subject=unsubscribe>");
+            news.Headers.Add("List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+            fake.Add("INBOX", news, "\\Seen");
+        }
         Log.Write($"server IMAP finto sulla porta {fake.Port}, SMTP finto sulla porta {smtp.Port}{(password != null ? ", con una password sola" : "")}");
         // Mentre gira, le righe scritte in comandi.txt nella sua cartella dei dati (MISSIVA_DATA): "arrivo Oggetto" mette un
         // messaggio da leggere nella Posta in arrivo e lo annuncia a chi è in IDLE (EXISTS), come un arrivo vero; "letto 7"

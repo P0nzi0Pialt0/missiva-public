@@ -21,10 +21,11 @@ namespace Missiva;
 /// Missiva.exe --scrivi-pec cartella
 ///   scrive buste PEC e fatture .p7m di prova (firmate con certificati fatti al volo) da aprire con --eml; con
 ///   --pec-radice cartella\radice-di-prova.cer la radice di prova vale come attendibile nella versione di prova.
-/// Missiva.exe --imap-finto porta [senza-cestino] [password=...]
+/// Missiva.exe --imap-finto porta [senza-cestino] [password=...] [foto studio|personale|pec]
 ///   tiene aperto il server IMAP finto con qualche messaggio, per un account IMAP nella versione di prova
 ///   (MISSIVA_IMAP_FINTO=1: senza TLS verso 127.0.0.1), e un server SMTP finto sulla porta dopo; con senza-cestino il
-///   server non ha il Cestino, con password=... IMAP e SMTP accettano solo quella.
+///   server non ha il Cestino, con password=... IMAP e SMTP accettano solo quella; con foto una delle caselle finte
+///   delle foto della pagina GitHub (ProvaBozze.Foto.cs).
 /// Variabile MISSIVA_DUMP=cartella: salva l'HTML di ogni messaggio aperto e di ogni messaggio scritto (alla chiusura).
 /// Variabile MISSIVA_KEYS=file: ogni riga scritta nel file ("ctrl+shift+r", "esc") arriva come tasto (WatchKeys); anche
 /// "clic N", "testo ...", "fine sessione", "chiudi finestra", "apri finestra", "menu area di notifica", "deseleziona",
@@ -62,7 +63,8 @@ static partial class DevTools
         }
         if (args is ["--imap-finto", var port, ..] && int.TryParse(port, out var number))
         {
-            ProvaBozze.ServeImap(number, args.Contains("senza-cestino"), args.FirstOrDefault(a => a.StartsWith("password="))?["password=".Length..], args.Contains("vecchi"));
+            ProvaBozze.ServeImap(number, args.Contains("senza-cestino"), args.FirstOrDefault(a => a.StartsWith("password="))?["password=".Length..], args.Contains("vecchi"),
+                                 args.SkipWhile(a => a != "foto").Skip(1).FirstOrDefault());
             return true;
         }
         if (args is ["--page-thread", var threadEmail, var threadOut, ..])
@@ -142,6 +144,47 @@ static partial class DevTools
     /// <summary>I tasti modificatori di un tasto mandato da WatchKeys, che la tastiera vera non ha premuti.</summary>
     public static ModifierKeys ForcedModifiers { get; private set; }
 
+    /// <summary>Le foto della pagina GitHub (--foto, con i dati finti di ProvaBozze.Foto.cs).</summary>
+    public static bool Photos { get; } = Environment.GetCommandLineArgs().Contains("--foto");
+
+    /// <summary>
+    /// Con --foto una finestra di Missiva nasce fuori dallo schermo, senza il fuoco e senza il pulsante nella barra delle
+    /// applicazioni, per non disturbare chi usa il PC mentre la prova la fotografa. WPF non la mostra a DWM (PrintWindow ne
+    /// vede solo lo sfondo, i pulsanti di Windows e WebView2): la sua parte di WPF la scrive "foto cartella" (SavePictures).
+    /// </summary>
+    public static void HideForPhotos(Window window)
+    {
+        if (!Photos) return;
+        window.ShowActivated = false;
+        window.ShowInTaskbar = false;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Left = -12000;
+        window.Top = 0;
+    }
+
+    /// <summary>
+    /// "foto cartella" (--foto): ogni finestra aperta di Missiva disegnata da WPF (RenderTargetBitmap, con la scala dello
+    /// schermo) in cartella\HWND.png, con la trasparenza dove WPF non disegna (lo sfondo di Windows e WebView2): lo strumento
+    /// delle foto la mette sopra quello che PrintWindow vede della stessa finestra.
+    /// </summary>
+    static void SavePictures(string folder)
+    {
+        Directory.CreateDirectory(folder);
+        foreach (var window in Application.Current.Windows.OfType<Window>().Where(w => w.IsVisible))
+        {
+            var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(window);
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Round(window.ActualWidth * dpi.DpiScaleX), (int)Math.Round(window.ActualHeight * dpi.DpiScaleY),
+                dpi.PixelsPerInchX, dpi.PixelsPerInchY, System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(window);
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+            var name = $"{handle.ToInt64():X}.png";
+            using (var file = File.Create(Path.Combine(folder, name))) encoder.Save(file);
+            Log.Write($"foto: \"{window.Title}\" in {name} ({bitmap.PixelWidth}x{bitmap.PixelHeight})");
+        }
+    }
+
     /// <summary>
     /// Con MISSIVA_KEYS=file, le righe scritte nel file arrivano come tasti all'elemento con il fuoco della finestra attiva
     /// di Missiva, con PreviewKeyDown e KeyDown come la tastiera: per provare le scorciatoie quando SendInput non arriva
@@ -192,6 +235,11 @@ static partial class DevTools
             box.Text = combo[6..];
             box.CaretIndex = box.Text.Length;
             Log.Write($"testo di prova \"{box.Text}\" in {box.Name}");
+            return;
+        }
+        if (Photos && combo.StartsWith("foto ", StringComparison.OrdinalIgnoreCase))
+        {
+            SavePictures(combo[5..].Trim());
             return;
         }
         if (combo.Equals("fine sessione", StringComparison.OrdinalIgnoreCase))
@@ -440,6 +488,12 @@ static partial class DevTools
             if (combo.Equals("anteprima", StringComparison.OrdinalIgnoreCase))
             {
                 main.TestPreview();
+                return;
+            }
+            // "allegato 0": il clic sul primo allegato del messaggio aperto (per le foto della pagina GitHub: la fattura .p7m).
+            if (combo.StartsWith("allegato ", StringComparison.OrdinalIgnoreCase) && int.TryParse(combo[9..], out var attachment) && main.FindName("Reader") is UI.ReadingView reading)
+            {
+                reading.TestOpenAttachment(attachment);
                 return;
             }
             // "toast account=...;message=...[;action=reply] [| reply=testo] [| snooze=...]": il gestore del clic o di un

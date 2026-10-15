@@ -109,6 +109,9 @@ public sealed class P7mWindow : Window
         Log.Write($"file firmato {Log.Private(result.Name)}: firma {result.Signature}, {result.Layers} buste, {result.Content.Length / 1024} KB");
         var window = new P7mWindow(result, text);
         if (owner is { IsVisible: true }) window.Owner = owner;
+#if DEBUG
+        DevTools.HideForPhotos(window); // le foto della pagina GitHub (--foto): non si vede e non prende il fuoco
+#endif
         window.Show();
     }
 

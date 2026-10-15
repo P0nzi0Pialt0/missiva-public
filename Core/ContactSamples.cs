@@ -52,6 +52,7 @@ static class ContactSamples
     /// </summary>
     public static List<Contact>? Load(MailAccount account, IReadOnlyCollection<string> args)
     {
+        if (args.Contains("--foto")) return Photo(account);
         if (account.Kind == AccountKind.Microsoft && args.Contains("--contatti-senza-consenso")) return null;
         if (args.Contains("--contatti-vuoto") && Store.Settings.Accounts.FindIndex(a => a.Id == account.Id) == 2) return [];
         var list = For(account);
@@ -63,6 +64,11 @@ static class ContactSamples
     public static void AddLocal()
     {
         if (ContactBook.Local.Count > 0) return;
+        if (Environment.GetCommandLineArgs().Contains("--foto"))
+        {
+            ContactBook.Add(PhotoLocal());
+            return;
+        }
         ContactBook.Add(
         [
             new() { ServerId = null, GivenName = "Anna", Surname = "Bianchi", DisplayName = "Anna Bianchi", Emails = ["anna.bianchi@studio-prova.example"], Mobile = "+39 333 000 0001", Company = "Studio Bianchi" },
@@ -70,6 +76,37 @@ static class ContactSamples
             new() { GivenName = "Carlo", Surname = "Esposito", DisplayName = "Carlo Esposito", Emails = ["carlo.esposito@esempio-prova.example"], HomePhone = "06 000 0007" },
         ]);
     }
+
+    /// <summary>I contatti di Missiva delle foto della pagina GitHub (--contatti-finti --foto).</summary>
+    internal static List<Contact> PhotoLocal() =>
+    [
+        new() { GivenName = "Chiara", Surname = "Fontana", DisplayName = "Chiara Fontana", Emails = ["chiara.fontana@posta-esempio.example"], Mobile = "+39 333 000 0107", Notes = "Gite al lago: porta lei il pranzo." },
+        new() { DisplayName = "Biblioteca civica", Emails = ["prestiti@biblioteca-esempio.example"], BusinessPhone = "+39 051 000 0108", Address = "Piazza della Biblioteca 1, 40121 Bologna" },
+        new() { DisplayName = "Palestra Esempio", Emails = ["info@palestra-esempio.example"], BusinessPhone = "+39 051 000 0109" },
+    ];
+
+    /// <summary>
+    /// Le foto della pagina GitHub (--contatti-finti --foto): i colleghi, i clienti e i fornitori di Ada Galli, con i dati
+    /// inventati di ProvaBozze.Foto.cs (domini .example, numeri con gli zeri). Luca Bianchi ha la scheda più ricca.
+    /// </summary>
+    internal static List<Contact> Photo(MailAccount account) =>
+    [
+        new() { Source = account.Id, ServerId = Id(account, 1), GivenName = "Luca", Surname = "Bianchi", DisplayName = "Luca Bianchi",
+                Emails = ["luca.bianchi@cucine-bianchi.example", "cucine.bianchi@pec-esempio.example"], Mobile = "+39 333 000 0101", BusinessPhone = "+39 051 000 0101",
+                Company = "Cucine Bianchi S.r.l.", JobTitle = "Titolare", Address = "Via del Lavoro 14, 40127 Bologna", Website = "www.cucine-bianchi.example",
+                Notes = "Preventivo della cucina: in attesa delle due modifiche.\nPreferisce essere chiamato al mattino." },
+        new() { Source = account.Id, ServerId = Id(account, 2), GivenName = "Maria", Surname = "Rossi", DisplayName = "Maria Rossi", Emails = ["maria.rossi@studio-esempio.example"],
+                Mobile = "+39 333 000 0102", Company = "Studio Esempio Architetti", JobTitle = "Architetta" },
+        new() { Source = account.Id, ServerId = Id(account, 3), GivenName = "Mario", Surname = "Rossi", DisplayName = "Mario Rossi", Emails = ["mario.rossi@commercialisti-esempio.example"],
+                BusinessPhone = "+39 051 000 0103", Company = "Studio Rossi Commercialisti", JobTitle = "Commercialista" },
+        new() { Source = account.Id, ServerId = Id(account, 4), GivenName = "Giulia", Surname = "Neri", DisplayName = "Giulia Neri", Emails = ["giulia.neri@comune-esempio.example"],
+                BusinessPhone = "+39 051 000 0104", Company = "Comune di Esempio", JobTitle = "Ufficio Lavori pubblici" },
+        new() { Source = account.Id, ServerId = Id(account, 5), GivenName = "Paolo", Surname = "Conti", DisplayName = "Paolo Conti", Emails = ["paolo.conti@impresa-esempio.example"],
+                Mobile = "+39 333 000 0105", Company = "Impresa Conti Costruzioni", JobTitle = "Direttore di cantiere" },
+        new() { Source = account.Id, ServerId = Id(account, 6), GivenName = "Elena", Surname = "Marino", DisplayName = "Elena Marino", Emails = ["elena.marino@studio-esempio.example"],
+                Mobile = "+39 333 000 0106", Company = "Studio Esempio Architetti", JobTitle = "Geometra" },
+        new() { Source = account.Id, ServerId = Id(account, 7), DisplayName = "Segreteria dello studio", Emails = ["segreteria@studio-esempio.example"], BusinessPhone = "+39 051 000 0100" },
+    ];
 
     /// <summary>Migliaia di contatti con nomi diversi (--contatti-molti): l'elenco deve creare solo le righe in vista.</summary>
     public static IEnumerable<Contact> Many(MailAccount account, int count) =>
