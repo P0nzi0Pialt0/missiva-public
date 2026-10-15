@@ -200,7 +200,7 @@ public sealed class PersonCard : Window
                 row.Children.Add(text);
                 messages.Children.Add(Opener(row, m, $"{m.Subject}, {m.Date:d MMM yyyy}"));
             }
-            var names = found.SelectMany(m => m.AttachmentNames.Select(n => (Name: n, Message: m))).Take(8).ToList();
+            var names = found.SelectMany(m => Pec.ShownAttachments(m.AttachmentNames).Select(n => (Name: n, Message: m))).Take(8).ToList();
             if (names.Count == 0) files.Children.Add(Secondary("Nessun allegato nei messaggi trovati."));
             foreach (var (name, m) in names)
             {

@@ -894,8 +894,11 @@ public sealed class MessageItem : Observable
     public double PreviewHeight => S.PreviewLines >= 2 ? SmallFontSize * 2.8 : double.NaN;
     public Visibility AvatarVisibility => S.ShowSenderImages && !IsChild ? Visibility.Visible : Visibility.Collapsed;
     List<AttachmentChip>? attachmentChips;
-    /// <summary>Le pastiglie degli allegati, fatte una volta per riga: i nomi non cambiano e ogni lettura ne faceva di nuove (la riga le legge due volte).</summary>
-    public List<AttachmentChip> AttachmentChips => attachmentChips ??= S.ShowAttachmentPreviews ? Summary.AttachmentNames.Take(3).Select(n => new AttachmentChip(n)).ToList() : new();
+    /// <summary>
+    /// Le pastiglie degli allegati, fatte una volta per riga: i nomi non cambiano e ogni lettura ne faceva di nuove (la riga
+    /// le legge due volte). Senza le parti tecniche della posta certificata e delle firme (Pec.ShownAttachments), come nel riquadro.
+    /// </summary>
+    public List<AttachmentChip> AttachmentChips => attachmentChips ??= S.ShowAttachmentPreviews ? Pec.ShownAttachments(Summary.AttachmentNames).Take(3).Select(n => new AttachmentChip(n)).ToList() : new();
     public Visibility ChipsVisibility => AttachmentChips.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>La riga dell'oggetto è blu quando il messaggio non è letto, come in Outlook.</summary>

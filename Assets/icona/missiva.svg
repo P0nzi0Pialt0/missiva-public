@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="ombra" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#1B1240" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#1B1240" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="corpo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9483FB"/>
+      <stop offset="1" stop-color="#4C3DD1"/>
+    </linearGradient>
+    <linearGradient id="lembo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#BDB3FF"/>
+      <stop offset="1" stop-color="#8576F2"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="#000000" fill-opacity="0"/>
+  <ellipse cx="128" cy="222" rx="102" ry="14" fill="url(#ombra)"/>
+  <rect x="22" y="58" width="212" height="152" rx="26" fill="url(#corpo)"/>
+  <path d="M26 202 L104 132 M230 202 L152 132" fill="none" stroke="#3A2DAE" stroke-opacity="0.34" stroke-width="5" stroke-linecap="round"/>
+  <path d="M29 71 Q29 61 41 61 H215 Q227 61 227 71 L140.5 141 Q128 151 115.5 141 Z" fill="url(#lembo)"/>
+  <path d="M31 71 L115.5 139.5 Q128 149 140.5 139.5 L225 71" fill="none" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

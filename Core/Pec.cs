@@ -61,6 +61,19 @@ public static class Pec
         || contentType.Equals("application/pkcs7-signature", StringComparison.OrdinalIgnoreCase)
         || contentType.Equals("application/x-pkcs7-signature", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// I nomi degli allegati come li mostrano l'elenco (le pastiglie), i suggerimenti della ricerca e la scheda della
+    /// persona: senza le parti tecniche della busta PEC e della firma S/MIME, come il riquadro (IsSignaturePart: daticert.xml
+    /// e le firme .p7s; nella busta di una PEC anche postacert.eml, che il riquadro apre come il messaggio vero). Dal 16
+    /// ottobre 2026, scelta dell'autore: prima l'elenco mostrava le pastiglie daticert.xml e smime.p7s. La graffetta resta:
+    /// dentro postacert.eml possono esserci allegati veri, e dall'elenco non si vedono.
+    /// </summary>
+    public static IEnumerable<string> ShownAttachments(IReadOnlyList<string> names)
+    {
+        bool envelope = names.Any(n => n.Equals("daticert.xml", StringComparison.OrdinalIgnoreCase));
+        return names.Where(n => !IsSignaturePart(n, "") && !(envelope && n.Equals("postacert.eml", StringComparison.OrdinalIgnoreCase)));
+    }
+
     /// <summary>Un messaggio da aprire come PEC o come messaggio firmato: la busta ha daticert.xml, o la firma smime.p7s.</summary>
     public static bool Wants(MessageBody body) => body.Pec == null && body.Attachments.Any(a => IsSignaturePart(a.Name, a.ContentType));
 

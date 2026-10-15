@@ -51,6 +51,12 @@ static partial class DevTools
             ProvaBozze.VerifyPackage(package, publicKey, packageOutput);
             return true;
         }
+        // L'icona di Missiva dai disegni di Assets\icona (DevTools.Icona.cs).
+        if (args is ["--icona", var iconSources, var iconOutput])
+        {
+            DrawIcon(iconSources, iconOutput);
+            return true;
+        }
         if (args is ["--scrivi-inviti", var folder, ..])
         {
             ProvaBozze.WriteInvites(folder);

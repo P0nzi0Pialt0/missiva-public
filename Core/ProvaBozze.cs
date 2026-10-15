@@ -3683,6 +3683,19 @@ static partial class ProvaBozze
     static async Task PecTestsAsync()
     {
         Report.Add("--- Posta certificata e file firmati");
+        // Le parti tecniche della busta e della firma non sono pastiglie nell'elenco, come nel riquadro (16 ottobre 2026, scelta dell'autore).
+        var envelopeNames = new List<string> { "postacert.eml", "daticert.xml", "smime.p7s" };
+        var signedNames = new List<string> { "Preventivo.pdf", "smime.p7s" };
+        var normalNames = new List<string> { "postacert.eml", "foto.jpg" };
+        var pecAccount = new UI.AccountItem(new ImapProvider(new MailAccount { Kind = AccountKind.Imap, Email = "ada@pec-prova.example", Imap = new ImapServer() }));
+        var pecRow = new UI.MessageItem(new MessageSummary { Id = "pec", FolderId = "INBOX", HasAttachments = true, AttachmentNames = envelopeNames }, pecAccount);
+        var signedRow = new UI.MessageItem(new MessageSummary { Id = "firmato", FolderId = "INBOX", HasAttachments = true, AttachmentNames = signedNames }, pecAccount);
+        Check(!Pec.ShownAttachments(envelopeNames).Any() && Pec.ShownAttachments(signedNames).SequenceEqual(new[] { "Preventivo.pdf" })
+              && Pec.ShownAttachments(normalNames).SequenceEqual(normalNames)
+              && pecRow.AttachmentChips.Count == 0 && pecRow.AttachmentVisibility == System.Windows.Visibility.Visible
+              && signedRow.AttachmentChips.Select(c => c.Name).SequenceEqual(new[] { "Preventivo.pdf" }),
+              "elenco: la busta di una PEC e la firma di un messaggio firmato non danno pastiglie (daticert.xml, smime.p7s, il postacert.eml della busta); " +
+              "un postacert.eml fuori da una busta e gli allegati veri sì; la graffetta resta");
         var keys = new PecKeys();
         MessageBody Opened(byte[] raw, out MessageSummary summary)
         {

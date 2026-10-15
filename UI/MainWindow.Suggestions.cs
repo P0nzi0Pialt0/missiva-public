@@ -286,7 +286,7 @@ public partial class MainWindow
     {
         var words = typed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         foreach (var m in messages)
-            foreach (var name in m.AttachmentNames.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var name in Pec.ShownAttachments(m.AttachmentNames).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if (!words.All(w => name.Contains(w, StringComparison.CurrentCultureIgnoreCase))) continue;
                 var chip = new AttachmentChip(name);
