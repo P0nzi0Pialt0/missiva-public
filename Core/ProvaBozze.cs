@@ -4256,6 +4256,15 @@ static partial class ProvaBozze
         public bool ExactList;
         /// <summary>Attesa prima di rispondere a EXAMINE, come Gmail su una cartella grande (fino a 0,3 s).</summary>
         public TimeSpan ExamineDelay;
+        /// <summary>
+        /// Le risposte a UID FETCH più lunghe di Chunk byte vanno a pezzi di quella misura, con Pause fra uno e l'altro, come
+        /// da una rete lenta: per l'avanzamento di uno scaricamento e per Annulla a metà (ritocchi del 16 ottobre 2026). Null,
+        /// di base: in una volta sola, come sempre.
+        /// </summary>
+        public (int Chunk, TimeSpan Pause)? Trickle;
+        /// <summary>I byte delle risposte a pezzi già mandati, e quante volte il client ha chiuso la connessione a metà di una.</summary>
+        public long TrickleSent;
+        public int TrickleCut;
         /// <summary>Il server non risponde al LOGOUT (per un minuto e mezzo): la chiusura del provider non deve aspettarlo.</summary>
         public volatile bool SilentLogout;
         /// <summary>La password arrivata con AUTHENTICATE PLAIN o LOGIN (nel registro dei comandi non va).</summary>
@@ -4558,7 +4567,30 @@ static partial class ProvaBozze
                             break;
                         case "UID FETCH":
                             foreach (var m in Current().Where(m => Uids(words[2]).Contains(m.Uid)).ToList())
-                                await stream.WriteAsync(Fetch(m, Current().IndexOf(m) + 1, rest));
+                            {
+                                var answer = Fetch(m, Current().IndexOf(m) + 1, rest);
+                                if (Trickle is not { } slow || answer.Length <= slow.Chunk)
+                                {
+                                    await stream.WriteAsync(answer);
+                                    continue;
+                                }
+                                // A pezzi, come da una rete lenta; se il client chiude la connessione a metà, il server smette e lo dice.
+                                for (int at = 0; at < answer.Length; at += slow.Chunk)
+                                {
+                                    try
+                                    {
+                                        await stream.WriteAsync(answer.AsMemory(at, Math.Min(slow.Chunk, answer.Length - at)));
+                                        await stream.FlushAsync();
+                                    }
+                                    catch (IOException)
+                                    {
+                                        Interlocked.Increment(ref TrickleCut);
+                                        throw;
+                                    }
+                                    Interlocked.Add(ref TrickleSent, Math.Min(slow.Chunk, answer.Length - at));
+                                    await Task.Delay(slow.Pause);
+                                }
+                            }
                             await Send($"{tag} OK fatto\n");
                             break;
                         case "FETCH":

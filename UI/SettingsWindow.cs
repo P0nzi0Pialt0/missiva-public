@@ -172,6 +172,14 @@ public sealed class SettingsWindow : Window
                                 "modifica compresa in questa versione: per sapere se una correzione c'è, si confronta con la data in cui è stata fatta."));
         p.Children.Add(Section("Aggiornamenti"));
         foreach (var part in UpdatesPart()) p.Children.Add(part);
+        p.Children.Add(Rule());
+        p.Children.Add(Section("Registri"));
+        p.Children.Add(Question("Nella cartella dei dati di Missiva c'è il registro (missiva.log), che dice che cosa ha fatto e che cosa non è riuscito: " +
+                                "serve a capire un problema."));
+        // Dal menu della rotellina, che ora apre subito le Impostazioni (ritocchi del 16 ottobre).
+        var logs = new Button { Content = "Apri la cartella dei registri", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 0), Padding = new Thickness(14, 5, 14, 5) };
+        logs.Click += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Store.Dir) { UseShellExecute = true });
+        p.Children.Add(logs);
         return p;
     }
 
@@ -206,8 +214,8 @@ public sealed class SettingsWindow : Window
         yield return now;
         yield return status;
         yield return Question("Con la casella accesa Missiva chiede a GitHub qual è l'ultima versione pubblicata due minuti dopo l'avvio e poi una volta al " +
-                              "giorno; se è più nuova lo dice con una barra in fondo all'elenco, e si aggiorna solo con Aggiorna. Accetta solo " +
-                              "aggiornamenti firmati con la chiave di chi pubblica Missiva.");
+                              "giorno; se è più nuova lo dice con il pulsante \"Aggiornamento\" nella barra del titolo, e si aggiorna solo con Aggiorna. " +
+                              "Accetta solo aggiornamenti firmati con la chiave di chi pubblica Missiva.");
     }
 
     // ---------------------------------------------------------------- pezzi comuni
@@ -465,7 +473,49 @@ public sealed class SettingsWindow : Window
         p.Children.Add(Rule());
         p.Children.Add(Section("Suono"));
         p.Children.Add(Check("Riproduci un suono con le notifiche", S.NotificationSound, on => S.NotificationSound = on, refresh: false));
+        foreach (var part in IconNumberPart()) p.Children.Add(part);
         return p;
+    }
+
+    /// <summary>
+    /// Il numero sull'icona di Missiva (ritocchi del 16 ottobre 2026, richiesta dell'autore): che cosa conta e per quali
+    /// account, con la stessa regola sull'icona della barra delle applicazioni e nel suggerimento dell'area di notifica
+    /// (IconCount). Ogni cambio si salva e il numero si rifà subito, senza ricaricare l'elenco.
+    /// </summary>
+    IEnumerable<UIElement> IconNumberPart()
+    {
+        static void Refresh()
+        {
+            if (Application.Current.MainWindow is MainWindow main) main.RefreshBadge();
+        }
+        var accounts = new List<CheckBox>();
+        yield return Rule();
+        yield return Section("Numero sull'icona di Missiva");
+        yield return Question("Il numero nel cerchio sull'icona di Missiva nella barra delle applicazioni; lo stesso dice il suggerimento dell'icona " +
+                              "vicino all'orologio.");
+        yield return Radios("icona", S.IconNumber, v =>
+            {
+                S.IconNumber = v;
+                foreach (var box in accounts) box.IsEnabled = v != IconNumberKind.None;
+                Refresh();
+            }, false,
+            (IconNumberKind.Unread, "Messaggi da leggere nella Posta in arrivo"),
+            (IconNumberKind.New, "Messaggi nuovi arrivati da quando hai guardato Missiva"),
+            (IconNumberKind.None, "Nessun numero"));
+        yield return new TextBlock { Text = "Conta questi account", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 2) };
+        if (S.Accounts.Count == 0) yield return Question("Nessun account.");
+        foreach (var account in S.Accounts.ToList())
+        {
+            var box = Check(account.Email, !S.IconNumberOff.Contains(account.Id), on =>
+            {
+                S.IconNumberOff.Remove(account.Id);
+                if (!on) S.IconNumberOff.Add(account.Id);
+                Refresh();
+            }, refresh: false);
+            box.IsEnabled = S.IconNumber != IconNumberKind.None;
+            accounts.Add(box);
+            yield return box;
+        }
     }
 
     /// <summary>

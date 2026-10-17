@@ -398,7 +398,8 @@ public sealed class App : Application
     // ---------------------------------------------------------------- area di notifica
 
     TrayIcon? tray;
-    int trayUnread;
+    int trayCount;
+    IconNumberKind trayKind;
 
     /// <summary>La finestra principale è nascosta nell'area di notifica (letta anche fuori dal thread dell'interfaccia).</summary>
     public static volatile bool WindowHidden;
@@ -430,7 +431,7 @@ public sealed class App : Application
             tray.OpenRequested += () => (MainWindow as MainWindow)?.ShowFromTray();
             tray.NewMessageRequested += () => (MainWindow as MainWindow)?.NewFromTray();
             tray.ExitRequested += ExitAll;
-            UpdateTrayTip(trayUnread);
+            UpdateTrayTip(trayKind, trayCount);
             Log.Write("icona nell'area di notifica");
         }
         catch (Exception ex)
@@ -439,13 +440,16 @@ public sealed class App : Application
         }
     }
 
-    /// <summary>Nel suggerimento dell'icona i non letti delle Posta in arrivo, come sull'icona della barra delle applicazioni.</summary>
-    public void UpdateTrayTip(int unread)
+    /// <summary>
+    /// Nel suggerimento dell'icona lo stesso numero dell'icona nella barra delle applicazioni, con la stessa regola
+    /// (IconCount: da leggere, nuovi o nessuno, per gli account scelti; ritocchi del 16 ottobre 2026).
+    /// </summary>
+    public void UpdateTrayTip(IconNumberKind kind, int count)
     {
-        trayUnread = unread;
+        (trayKind, trayCount) = (kind, count);
         if (tray == null) return;
         var name = tray.Tip.StartsWith("Missiva (prova)") ? "Missiva (prova)" : "Missiva";
-        tray.Tip = unread > 0 ? $"{name}: {unread} da leggere" : name;
+        tray.Tip = IconCount.TrayTip(name, kind, count);
     }
 
 #if DEBUG
@@ -1169,6 +1173,9 @@ public sealed class App : Application
                 (rows, unread) => (MainWindow as MainWindow)?.AddIncoming(p, rows, unread, ticket),
                 () =>
                 {
+                    // Gli stessi messaggi, anche con le notifiche spente, contano per il numero "Messaggi nuovi" sull'icona
+                    // (IconCount, ritocchi del 16 ottobre).
+                    if (announce.Count > 0) (MainWindow as MainWindow)?.CountArrived(p, announce);
                     if (announce.Count > 0) Notify(p, announce);
                     announced = clock.ElapsedMilliseconds;
                 },

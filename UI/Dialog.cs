@@ -41,6 +41,17 @@ public static class Dialog
     public static Choice Ask(Window? owner, string heading, string body, string primary) => Build(owner, heading, body, primary, true);
 
     /// <summary>
+    /// La domanda prima di aprire un tipo di file che può avviare programmi (chi chiama guarda Safety.IsDangerous): dal
+    /// riquadro e, per un file scaricato, dal pannello degli scaricamenti (ritocchi del 16 ottobre 2026), con lo stesso
+    /// testo di prima. Vero se si può aprire.
+    /// </summary>
+    public static bool ConfirmOpenDangerous(Window? owner, string fileName) =>
+        Ask(owner, "Aprire un file che può avviare programmi?",
+            $"\"{fileName}\" è un tipo di file che può eseguire codice sul PC: è il modo più comune con cui le email infettano un computer. " +
+            "Aprilo solo se lo aspettavi e ti fidi di chi lo ha mandato. Windows lo controllerà comunque prima di avviarlo.",
+            "Apri comunque") == Choice.Primary;
+
+    /// <summary>
     /// Il marchio web non si è potuto scrivere (Safety.MarkFromInternet falso): un documento di Office o un tipo pericoloso
     /// si apre solo dopo una conferma, perché senza marchio Office non lo apre in Visualizzazione protetta e SmartScreen non
     /// lo guarda. Gli altri tipi (PDF, immagini, testi) si aprono come prima. Vero se si può aprire.

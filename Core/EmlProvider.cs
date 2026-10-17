@@ -89,14 +89,21 @@ public sealed class EmlProvider(MimeMessage message, IMailProvider sender) : IMa
 
     public Task<MessageBody> GetBodyAsync(MessageSummary m, CancellationToken cancel = default) => Task.FromResult(body);
     public Task<List<MessageSummary>> GetConversationAsync(MessageSummary m, CancellationToken cancel = default) => Task.FromResult(new List<MessageSummary> { Summary });
-    public Task<byte[]> GetAttachmentAsync(MessageSummary m, Attachment attachment) =>
-        attachment.Content != null ? Task.FromResult(attachment.Content) : Task.FromException<byte[]>(new MailException("Allegato non trovato."));
-    public Task<byte[]> GetRawAsync(MessageSummary m, int limit = int.MaxValue, CancellationToken cancel = default)
+    /// <summary>Gli allegati di un .eml sono già in memoria: arrivano subito, tutti in un passo dell'avanzamento.</summary>
+    public Task<byte[]> GetAttachmentAsync(MessageSummary m, Attachment attachment, IProgress<long>? progress = null, CancellationToken cancel = default)
+    {
+        if (attachment.Content == null) return Task.FromException<byte[]>(new MailException("Allegato non trovato."));
+        progress?.Report(attachment.Content.Length);
+        return Task.FromResult(attachment.Content);
+    }
+    public Task<byte[]> GetRawAsync(MessageSummary m, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null)
     {
         using var ms = new MemoryStream();
         message.WriteTo(ms);
         var raw = ms.ToArray();
-        return Task.FromResult(raw.Length > limit ? raw[..limit] : raw);
+        raw = raw.Length > limit ? raw[..limit] : raw;
+        progress?.Report(raw.Length);
+        return Task.FromResult(raw);
     }
 
     // ---------------------------------------------------------------- risposte: dall'account del messaggio che lo conteneva

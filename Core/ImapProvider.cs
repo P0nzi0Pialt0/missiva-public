@@ -1246,10 +1246,12 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         };
     }
 
-    static async Task<byte[]> ContentOf(IMailFolder f, UniqueId uid, BodyPartBasic part)
+    /// <param name="cancel">Solo per gli allegati scaricati (GetAttachmentAsync): interrotto, MailKit chiude la connessione.</param>
+    /// <param name="progress">I byte arrivati nella misura di Attachment.Size (TransferProgress).</param>
+    static async Task<byte[]> ContentOf(IMailFolder f, UniqueId uid, BodyPartBasic part, CancellationToken cancel = default, IProgress<long>? progress = null)
     {
         using var ms = new MemoryStream();
-        switch (await f.GetBodyPartAsync(uid, part))
+        switch (await f.GetBodyPartAsync(uid, part, cancel, TransferProgress.For(progress, part.ContentTransferEncoding)))
         {
             case MimePart p when p.Content != null: await p.Content.DecodeToAsync(ms); break;
             case MessagePart m when m.Message != null: await m.Message.WriteToAsync(ms); break;
@@ -1257,29 +1259,44 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         return ms.ToArray();
     }
 
-    public Task<byte[]> GetAttachmentAsync(MessageSummary message, Attachment attachment) => AttachmentAsync(message, attachment, main);
+    public Task<byte[]> GetAttachmentAsync(MessageSummary message, Attachment attachment, IProgress<long>? progress = null, CancellationToken cancel = default) =>
+        AttachmentAsync(message, attachment, main, progress, cancel);
 
-    Task<byte[]> AttachmentAsync(MessageSummary message, Attachment attachment, Connection on)
+    /// <param name="cancel">
+    /// Annulla del gestore degli scaricamenti (ritocchi del 16 ottobre 2026): a differenza delle altre richieste arriva ai
+    /// comandi di MailKit, che si interrompono e chiudono la connessione (si riapre alla richiesta dopo, 1-2 s): così il
+    /// trasferimento si ferma davvero, invece di continuare fino in fondo per un allegato che nessuno aspetta più.
+    /// </param>
+    Task<byte[]> AttachmentAsync(MessageSummary message, Attachment attachment, Connection on, IProgress<long>? progress = null, CancellationToken cancel = default)
     {
-        if (attachment.Content != null) return Task.FromResult(attachment.Content);
+        if (attachment.Content != null)
+        {
+            progress?.Report(attachment.Content.Length);
+            return Task.FromResult(attachment.Content);
+        }
         return RunAsync(async client =>
         {
             var f = await ExamineOrOpenAsync(client, message.FolderId, on);
             var uid = Uid(message);
-            var s = (await f.FetchAsync(new[] { uid }, MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure)).FirstOrDefault();
+            var s = (await f.FetchAsync(new[] { uid }, MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure, cancel)).FirstOrDefault();
             var part = s?.BodyParts.FirstOrDefault(p => p.PartSpecifier == attachment.Id) ?? throw new MailException("Allegato non trovato.");
-            return await ContentOf(f, uid, part);
-        }, on);
+            return await ContentOf(f, uid, part, cancel, progress);
+        }, on, cancel);
     }
 
     /// <summary>Sulla principale la cartella aperta in lettura e scrittura (come per le azioni), sulle altre in sola lettura.</summary>
     Task<IMailFolder> ExamineOrOpenAsync(ImapClient client, string folderId, Connection on) =>
         on == main ? OpenAsync(client, folderId) : ExamineAsync(client, folderId);
 
-    public Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default) => RunAsync(async client =>
+    public Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null) => RunAsync(async client =>
     {
         var f = await ExamineAsync(client, message.FolderId);
-        await using var stream = limit < int.MaxValue ? await f.GetStreamAsync(Uid(message), "", 0, limit) : await f.GetStreamAsync(Uid(message), "");
+        // Il messaggio intero (Salva con nome .eml, dal gestore degli scaricamenti) si ferma davvero con Annulla: il token arriva
+        // al comando, e interrotto MailKit chiude la connessione delle bozze. Con limit (l'Origine, la posta certificata) come
+        // prima: si guarda solo prima di partire (ritocchi del 16 ottobre 2026).
+        var transfer = TransferProgress.For(progress, null);
+        await using var stream = limit < int.MaxValue ? await f.GetStreamAsync(Uid(message), "", 0, limit, CancellationToken.None, transfer)
+                                                      : await f.GetStreamAsync(Uid(message), "", cancel, transfer);
         var raw = new byte[stream.Length];
         await stream.ReadExactlyAsync(raw);
         return raw;

@@ -32,9 +32,11 @@ public sealed class TestingProvider(IMailProvider real) : IMailProvider, IDispos
     public Task<List<MessageSummary>> GetRecentKeysAsync(MailFolder inbox, DateTime sinceUtc, int max) => real.GetRecentKeysAsync(inbox, sinceUtc, max);
     public Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, IReadOnlyList<MessageSummary> keys) => real.GetRecentAsync(inbox, keys);
     public Task<List<MessageSummary>> GetConversationAsync(MessageSummary message, CancellationToken cancel = default) => real.GetConversationAsync(message, cancel);
-    public Task<byte[]> GetAttachmentAsync(MessageSummary message, Attachment attachment) => real.GetAttachmentAsync(message, attachment);
+    public Task<byte[]> GetAttachmentAsync(MessageSummary message, Attachment attachment, IProgress<long>? progress = null, CancellationToken cancel = default) =>
+        real.GetAttachmentAsync(message, attachment, progress, cancel);
     public Task<List<Category>> GetCategoriesAsync() => real.GetCategoriesAsync();
-    public Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default) => real.GetRawAsync(message, limit, cancel);
+    public Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null) =>
+        real.GetRawAsync(message, limit, cancel, progress);
     public Task<List<MessageSummary>> GetNewAsync(DateTime sinceUtc) => real.GetNewAsync(sinceUtc);
     /// <summary>Per le regole di Missiva: UID SEARCH e FETCH in sola lettura, al provider vero; le azioni delle regole restano scritture.</summary>
     public Task<Arrivals?> GetArrivedAsync(string? mark, DateTime sinceUtc) => real.GetArrivedAsync(mark, sinceUtc);

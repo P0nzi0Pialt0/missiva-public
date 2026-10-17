@@ -1760,9 +1760,22 @@ public partial class ReadingView : UserControl
         return bytes;
     }
 
-    /// <summary>I byte di un allegato: quelli già scaricati per l'anteprima, o dal provider.</summary>
-    Task<byte[]> AttachmentBytesAsync(IMailProvider p, Entry entry, Attachment attachment) =>
-        previewBytes.FirstOrDefault(b => b.Attachment == attachment).Bytes is { } kept ? Task.FromResult(kept) : p.GetAttachmentAsync(entry.Summary, attachment);
+    /// <summary>
+    /// I byte di un allegato: quelli già scaricati per l'anteprima (subito, in un passo dell'avanzamento), o dal provider, con
+    /// l'avanzamento e l'annullamento del gestore degli scaricamenti (DownloadList).
+    /// </summary>
+    Task<byte[]> AttachmentBytesAsync(IMailProvider p, Entry entry, Attachment attachment, IProgress<long>? progress = null, CancellationToken cancel = default)
+    {
+        if (previewBytes.FirstOrDefault(b => b.Attachment == attachment).Bytes is { } kept)
+        {
+            progress?.Report(kept.Length);
+            return Task.FromResult(kept);
+        }
+        return p.GetAttachmentAsync(entry.Summary, attachment, progress, cancel);
+    }
+
+    /// <summary>La dimensione da aspettare per il gestore degli scaricamenti: quella dell'allegato, o quella dei byte già in memoria; null se non si sa.</summary>
+    static long? ExpectedSize(Attachment attachment) => attachment.Size > 0 ? attachment.Size : attachment.Content?.Length;
 
     public void ClosePreview()
     {
@@ -1802,7 +1815,7 @@ public partial class ReadingView : UserControl
     /// <param name="external">Apri, dall'anteprima: con il programma di Windows anche i tipi che Missiva sa mostrare.</param>
     async Task OpenAttachmentAsync(Entry entry, Attachment attachment, bool save, bool external = false)
     {
-        if (provider == null) return;
+        if (provider is not { } p) return;
         var owner = Window.GetWindow(this);
         var name = Safety.SafeFileName(attachment.Name);
         // PDF, immagini e testi si vedono nel riquadro, senza file temporanei né altri programmi.
@@ -1811,12 +1824,7 @@ public partial class ReadingView : UserControl
             await PreviewAsync(entry, attachment);
             return;
         }
-        if (!save && Safety.IsDangerous(name) &&
-            Dialog.Ask(owner, "Aprire un file che può avviare programmi?",
-                $"\"{name}\" è un tipo di file che può eseguire codice sul PC: è il modo più comune con cui le email infettano un computer. " +
-                "Aprilo solo se lo aspettavi e ti fidi di chi lo ha mandato. Windows lo controllerà comunque prima di avviarlo.",
-                "Apri comunque") != Choice.Primary)
-            return;
+        if (!save && Safety.IsDangerous(name) && !Dialog.ConfirmOpenDangerous(owner, name)) return;
         // Una pagina web allegata va al browser: prima una conferma sua, senza il rosso (scelte del 12 ottobre, T-10).
         if (!save && !Dialog.ConfirmOpenWebPage(owner, name)) return;
         try
@@ -1824,43 +1832,54 @@ public partial class ReadingView : UserControl
             // Un file firmato (.p7m: fatture elettroniche, documenti firmati) si apre in Missiva: firma verificata e contenuto.
             if (!save && P7m.IsP7m(name))
             {
-                await P7mWindow.ShowAsync(owner, await AttachmentBytesAsync(provider, entry, attachment), name);
+                await P7mWindow.ShowAsync(owner, await AttachmentBytesAsync(p, entry, attachment), name);
                 return;
             }
             // Un messaggio allegato (.eml) si apre in Missiva, nel riquadro confinato come gli altri, non con un altro programma.
             if (!save && EmlRequested != null && (attachment.ContentType.Equals("message/rfc822", StringComparison.OrdinalIgnoreCase)
                                                   || name.EndsWith(".eml", StringComparison.OrdinalIgnoreCase)))
             {
-                EmlRequested(provider, await AttachmentBytesAsync(provider, entry, attachment), name, InJunk(entry.Summary, junk));
+                EmlRequested(p, await AttachmentBytesAsync(p, entry, attachment), name, InJunk(entry.Summary, junk));
                 return;
             }
-            if (save)
-            {
-                // Dove e con che nome l'ha scelto l'utente nella finestra di Windows (che chiede prima di sovrascrivere): si
-                // scrive lì com'è, e il marchio web si prova a mettere.
-                var dialog = new SaveFileDialog { FileName = name };
-                if (dialog.ShowDialog(owner) != true) return;
-                await File.WriteAllBytesAsync(dialog.FileName, await AttachmentBytesAsync(provider, entry, attachment));
-                Safety.MarkFromInternet(dialog.FileName);
-                return;
-            }
-            // In una cartella temporanea nuova, con un nome neutro finché non si apre (Safety.WriteTemp; revisione del 14
-            // ottobre, U-03). Il marchio web: Visualizzazione protetta di Office e controllo di SmartScreen. Se non si scrive
-            // (cartella temporanea senza flussi alternativi) un documento di Office o un tipo pericoloso non si apre in
-            // silenzio (audit, S-10), e se la risposta è no il file non ha mai avuto il suo nome.
-            var bytes = await AttachmentBytesAsync(provider, entry, attachment);
-            var temp = await Task.Run(() => Safety.WriteTemp(name, bytes));
-            if (!temp.Marked && !Dialog.ConfirmOpenUnmarked(owner, name))
-            {
-                temp.Discard();
-                return;
-            }
-            Process.Start(new ProcessStartInfo(temp.Release()) { UseShellExecute = true });
         }
         catch (Exception ex)
         {
             Log.Error("allegato", ex);
             Dialog.Show(owner, "Allegato non disponibile", ex.Message);
+            return;
+        }
+        // Gli altri passano dal gestore degli scaricamenti (DownloadList, ritocchi del 16 ottobre 2026): un elemento nella barra
+        // del titolo dice che è partito, quanto manca e com'è finito, con Annulla. Un errore lo dice l'elemento, non più una finestra.
+        Task<byte[]> Fetch(IProgress<long> progress, CancellationToken cancel) => AttachmentBytesAsync(p, entry, attachment, progress, cancel);
+        if (save)
+        {
+            // Dove e con che nome l'ha scelto l'utente nella finestra di Windows (che chiede prima di sovrascrivere): si
+            // scrive lì com'è, solo a scaricamento finito, e il marchio web si prova a mettere.
+            var dialog = new SaveFileDialog { FileName = name };
+            if (dialog.ShowDialog(owner) != true) return;
+            await DownloadList.Session.SaveAsync(dialog.FileName, ExpectedSize(attachment), Fetch, p.Account.Id, InJunk(entry.Summary, junk));
+            return;
+        }
+        // In una cartella temporanea nuova, con un nome neutro finché non si apre (Safety.WriteTemp, dal gestore; revisione del
+        // 14 ottobre, U-03). Il marchio web: Visualizzazione protetta di Office e controllo di SmartScreen. Se non si scrive
+        // (cartella temporanea senza flussi alternativi) un documento di Office o un tipo pericoloso non si apre in
+        // silenzio (audit, S-10), e se la risposta è no il file non ha mai avuto il suo nome.
+        var (item, temp) = await DownloadList.Session.FetchToTempAsync(name, ExpectedSize(attachment), Fetch);
+        if (temp == null) return; // annullato o non riuscito: lo dice l'elemento
+        if (!temp.Marked && !Dialog.ConfirmOpenUnmarked(owner, name))
+        {
+            DownloadList.Session.NotOpened(item, temp);
+            return;
+        }
+        try
+        {
+            Process.Start(new ProcessStartInfo(temp.Release()) { UseShellExecute = true });
+            DownloadList.Session.Opened(item, temp);
+        }
+        catch (Exception ex)
+        {
+            DownloadList.Session.Failed(item, ex); // scaricato ma non aperto: lo dice l'elemento, con il motivo
         }
     }
 
@@ -1875,7 +1894,7 @@ public partial class ReadingView : UserControl
     async Task SaveAllAsync(Entry entry, List<Attachment> attachments)
     {
         // Il pulsante della pagina resta attivo mentre la scelta della cartella è aperta: un secondo clic ne apriva un'altra.
-        if (provider == null || attachments.Count == 0 || savingAll) return;
+        if (provider is not { } p || attachments.Count == 0 || savingAll) return;
         var owner = Window.GetWindow(this);
         var skipped = attachments.Where(a => Safety.IsDangerous(Safety.SafeFileName(a.Name))).ToList();
         var why = skipped.Count == 1
@@ -1898,22 +1917,14 @@ public partial class ReadingView : UserControl
         {
             savingAll = false;
         }
-        try
-        {
-            foreach (var attachment in attachments)
-            {
-                // Mai sopra un file che c'è già: " (2)", " (3)"... (Safety.WriteNewAsync).
-                var path = await Safety.WriteNewAsync(dialog.FolderName, Safety.SafeFileName(attachment.Name), await AttachmentBytesAsync(provider, entry, attachment));
-                Safety.MarkFromInternet(path);
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error("salvataggio degli allegati", ex);
-            Dialog.Show(owner, "Allegati non salvati", ex.Message);
-            return;
-        }
+        // Dal gestore degli scaricamenti (ritocchi del 16 ottobre 2026): un elemento per file, in coda, uno alla volta, mai sopra
+        // un file che c'è già (" (2)", " (3)"...: Safety.WriteNewAsync) e con il marchio web. Uno non riuscito non ferma gli altri.
+        // Il provider è quello del messaggio di adesso: aprendone un altro intanto, i file che restano vengono ancora da qui.
+        var files = attachments.Select(a => new DownloadList.SaveAllFile(Safety.SafeFileName(a.Name), ExpectedSize(a),
+            (progress, cancel) => AttachmentBytesAsync(p, entry, a, progress, cancel))).ToList();
+        var saving = DownloadList.Session.SaveAllAsync(dialog.FolderName, files, p.Account.Id, InJunk(entry.Summary, junk));
         if (skipped.Count > 0) Dialog.Show(owner, skipped.Count == 1 ? "Un allegato non salvato" : $"{skipped.Count} allegati non salvati", why);
+        await saving;
     }
 
     void OpenLink(Uri uri)

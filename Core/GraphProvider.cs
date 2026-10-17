@@ -950,8 +950,15 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         };
     }
 
-    public async Task<byte[]> GetAttachmentAsync(MessageSummary message, Attachment attachment) =>
-        attachment.Content ?? await DownloadAsync($"{MessageUrl(message.Id)}/attachments/{Segment(attachment.Id)}/$value", "l'allegato");
+    public async Task<byte[]> GetAttachmentAsync(MessageSummary message, Attachment attachment, IProgress<long>? progress = null, CancellationToken cancel = default)
+    {
+        if (attachment.Content is { } kept)
+        {
+            progress?.Report(kept.Length);
+            return kept;
+        }
+        return await DownloadAsync($"{MessageUrl(message.Id)}/attachments/{Segment(attachment.Id)}/$value", "l'allegato", cancel: cancel, progress: progress);
+    }
 
     /// <summary>Senza dati per tanto tempo, uno scaricamento si interrompe (le prove di --prova-bozze lo accorciano).</summary>
     internal static TimeSpan DownloadIdle = TimeSpan.FromSeconds(60);
@@ -960,9 +967,10 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// Allegati e messaggi interi. Non con Http, il cui limite di 60 s vale per tutta la risposta: un allegato da 20 MB
     /// sotto circa 3 Mbit/s (l'hotspot del telefono) non arrivava mai. Qui il limite vale per l'attesa: si interrompe solo
     /// se per 60 s non arriva nulla. Con limit si ferma dopo tanti byte (l'Origine), e il resto non arriva. Con cancel
-    /// superato (un altro messaggio aperto) smette fra un blocco e l'altro.
+    /// superato (un altro messaggio aperto, Annulla del gestore degli scaricamenti) smette fra un blocco e l'altro. Con
+    /// progress i byte arrivati dopo ogni blocco, e prima la lunghezza dichiarata dalla risposta, se c'è (IExpectedSize).
     /// </summary>
-    async Task<byte[]> DownloadAsync(string url, string what, int limit = int.MaxValue, CancellationToken cancel = default)
+    async Task<byte[]> DownloadAsync(string url, string what, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null)
     {
         using var request = Network.ApiRequest(HttpMethod.Get, Base + url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync());
@@ -977,6 +985,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             if (!response.IsSuccessStatusCode) throw new MailException($"Non riesco a scaricare {what}.", status: (int)response.StatusCode);
             await using var stream = await response.Content.ReadAsStreamAsync(idle.Token);
             using var result = new MemoryStream(response.Content.Headers.ContentLength is long length and < int.MaxValue ? (int)Math.Min(length, limit) : 0);
+            if (progress is IExpectedSize expected && response.Content.Headers.ContentLength is long declared and > 0) expected.Expect(Math.Min(declared, limit));
             var buffer = new byte[81920];
             while (result.Length < limit)
             {
@@ -984,6 +993,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                 int read = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, limit - result.Length)), idle.Token);
                 if (read == 0) break;
                 result.Write(buffer, 0, read);
+                progress?.Report(result.Length);
             }
             return result.ToArray();
         }
@@ -1105,8 +1115,8 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     public Task CopyAsync(IReadOnlyList<MessageSummary> messages, MailFolder destination) => EachAsync(messages, m =>
         SendAsync(HttpMethod.Post, $"{MessageUrl(m.Id)}/copy", new JsonObject { ["destinationId"] = destination.Id }));
 
-    public Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default) =>
-        DownloadAsync($"{MessageUrl(message.Id)}/$value", "il messaggio", limit, cancel);
+    public Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null) =>
+        DownloadAsync($"{MessageUrl(message.Id)}/$value", "il messaggio", limit, cancel, progress);
 
     public Task DeletePermanentlyAsync(IReadOnlyList<MessageSummary> messages) => UnreadSync.WriteAsync(Account.Id, () => EachAsync(messages, m =>
         SendAsync(HttpMethod.Delete, $"{MessageUrl(m.Id)}")));

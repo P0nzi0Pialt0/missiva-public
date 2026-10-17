@@ -150,8 +150,8 @@ amministratore. Missiva compare nel menu Start e in Impostazioni, App installate
 Missiva non ha un certificato di firma del codice: la prima volta che la apri Windows può avvisare che "ha protetto il
 PC". Premi Ulteriori informazioni, poi Esegui comunque.
 
-Da lì **si aggiorna da sola**: quando esce una versione nuova una barra in fondo all'elenco dei messaggi lo dice, e
-Aggiorna la scarica, la controlla e riapre Missiva aggiornata. Accetta solo aggiornamenti firmati con la chiave di chi
+Da lì **si aggiorna da sola**: quando esce una versione nuova un pulsante nella barra del titolo lo dice, e Aggiorna la
+scarica, la controlla e riapre Missiva aggiornata. Accetta solo aggiornamenti firmati con la chiave di chi
 pubblica Missiva: come funziona è in [docs/aggiornamenti.md](docs/aggiornamenti.md).
 
 ### Dai sorgenti

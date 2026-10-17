@@ -737,6 +737,8 @@ static partial class ProvaBozze
         if (Nullable.GetUnderlyingType(type) != null) return null;
         if (type.IsValueType) return Activator.CreateInstance(type);
         if (type.IsArray) return Array.CreateInstance(type.GetElementType()!, 0);
+        // L'avanzamento degli scaricamenti (ritocchi del 16 ottobre 2026: GetAttachmentAsync, GetRawAsync): uno vero, che nessuno guarda.
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IProgress<>)) return Activator.CreateInstance(typeof(Progress<>).MakeGenericType(type.GenericTypeArguments));
         if (depth > 6) throw new NotSupportedException($"il tipo {type.Name} contiene sé stesso troppe volte");
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
             return typeof(Task).GetMethod(nameof(Task.FromResult))!.MakeGenericMethod(type.GenericTypeArguments[0]).Invoke(null, [Ch3Sample(type.GenericTypeArguments[0], depth + 1)]);

@@ -524,7 +524,18 @@ public interface IMailProvider
     Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, IReadOnlyList<MessageSummary> keys) => Task.FromResult(keys.ToList());
     /// <summary>Tutti i messaggi della conversazione, anche di altre cartelle (per esempio le tue risposte).</summary>
     Task<List<MessageSummary>> GetConversationAsync(MessageSummary message, CancellationToken cancel = default);
-    Task<byte[]> GetAttachmentAsync(MessageSummary message, Attachment attachment);
+    /// <summary>Un allegato. Uno già in memoria (Attachment.Content: .eml, posta certificata) torna subito.</summary>
+    /// <param name="progress">
+    /// I byte arrivati, man mano (ritocchi del 16 ottobre 2026, il gestore degli scaricamenti, DownloadList): con Graph dalla
+    /// lettura della risposta, con Gmail e IMAP dall'avanzamento di MailKit, nella misura di Attachment.Size (per una parte
+    /// in base64 i tre quarti dei byte trasferiti). Se il server dice quanti ne arriveranno e l'avanzamento è anche un
+    /// IExpectedSize, lo sa prima.
+    /// </param>
+    /// <param name="cancel">
+    /// Annulla del gestore degli scaricamenti: ferma davvero la richiesta. Graph smette di leggere; con Gmail e IMAP il
+    /// comando si interrompe, e MailKit chiude la connessione, che si riapre alla richiesta dopo.
+    /// </param>
+    Task<byte[]> GetAttachmentAsync(MessageSummary message, Attachment attachment, IProgress<long>? progress = null, CancellationToken cancel = default);
     // Le azioni sui messaggi valgono per più messaggi insieme: Gmail manda un solo comando per cartella, Graph più
     // richieste alla volta. Le varianti per un messaggio solo passano da quelle.
     Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool read);
@@ -585,9 +596,12 @@ public interface IMailProvider
     /// <param name="limit">Al massimo tanti byte dall'inizio, e il resto non si scarica: l'Origine ne mostra 2 MB.</param>
     /// <param name="cancel">
     /// Superato (si è aperto un altro messaggio): Gmail e IMAP non partono se aspettavano la connessione, Graph smette di
-    /// leggere fra un blocco e l'altro.
+    /// leggere fra un blocco e l'altro. Per il messaggio intero (senza limit: Salva con nome .eml, dal gestore degli
+    /// scaricamenti) anche Gmail e IMAP interrompono il comando (ritocchi del 16 ottobre 2026), sulla loro connessione
+    /// delle bozze, che si riapre alla richiesta dopo; l'Origine e la posta certificata, con un limit, restano com'erano.
     /// </param>
-    Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default);
+    /// <param name="progress">I byte arrivati, man mano, come in GetAttachmentAsync.</param>
+    Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null);
     /// <summary>Eliminazione definitiva (dal Cestino).</summary>
     Task DeletePermanentlyAsync(IReadOnlyList<MessageSummary> messages);
     /// <summary>Invia; se il messaggio continua una bozza, la bozza sparisce dalle Bozze (Graph invia proprio quella).</summary>

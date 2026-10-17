@@ -115,19 +115,16 @@ public sealed class P7mWindow : Window
         window.Show();
     }
 
+    /// <summary>
+    /// Salva il documento dove si sceglie, con il marchio web, dal gestore degli scaricamenti (ritocchi del 16 ottobre 2026): è
+    /// già in memoria, quindi l'elemento finisce subito, ma c'è, con Apri e Mostra nella cartella; un errore lo dice lui.
+    /// </summary>
     void Save()
     {
         var dialog = new Microsoft.Win32.SaveFileDialog { FileName = Safety.SafeFileName(result.Name) };
         if (dialog.ShowDialog(this) != true) return;
-        try
-        {
-            File.WriteAllBytes(dialog.FileName, result.Content);
-            Safety.MarkFromInternet(dialog.FileName);
-        }
-        catch (Exception ex)
-        {
-            Dialog.Show(this, "Documento non salvato", ex.Message);
-        }
+        var content = result.Content;
+        _ = DownloadList.Session.SaveAsync(dialog.FileName, content.Length, (progress, _) => Task.FromResult(content));
     }
 
     /// <summary>Come gli allegati: nella cartella temporanea, con il marchio web, e la conferma per i tipi pericolosi e per le pagine web.</summary>

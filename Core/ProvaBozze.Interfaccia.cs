@@ -825,9 +825,12 @@ static partial class ProvaBozze
         {
             var others = Directory.GetFiles(Path.Combine(source, "UI"), "*.cs").Concat(Directory.GetFiles(Path.Combine(source, "Core"), "*.cs")).Append(Path.Combine(source, "Program.cs"))
                 .Where(f => Path.GetFileName(f) is var n && n != "Safety.cs" && !n.StartsWith("ProvaBozze")).Where(f => File.ReadAllText(f).Contains("Safety.TempDir")).Select(Path.GetFileName).ToList();
-            string reading = Ch1Code("UI", "ReadingView.xaml.cs") ?? "", signed = Ch1Code("UI", "P7mWindow.cs") ?? "";
-            Check(others.Count == 0 && reading.Contains("Safety.WriteTemp(name, bytes)") && signed.Contains("Safety.WriteTemp(name, result.Content)") && reading.Contains("await Safety.WriteNewAsync(dialog.FolderName,")
-                  && !reading.Contains("Guid.NewGuid()") && !signed.Contains("Guid.NewGuid()"),
+            string reading = Ch1Code("UI", "ReadingView.xaml.cs") ?? "", signed = Ch1Code("UI", "P7mWindow.cs") ?? "", downloads = Ch1Code("Core", "DownloadList.cs") ?? "";
+            // Dai ritocchi del 16 ottobre 2026 dal riquadro scrive il gestore degli scaricamenti (DownloadList), sempre con WriteTemp e WriteNewAsync.
+            Check(others.Count == 0 && reading.Contains("DownloadList.Session.FetchToTempAsync(name,") && downloads.Contains("Safety.WriteTemp(name, bytes, root)")
+                  && signed.Contains("Safety.WriteTemp(name, result.Content)") && reading.Contains("DownloadList.Session.SaveAllAsync(dialog.FolderName,")
+                  && downloads.Contains("await Safety.WriteNewAsync(folder, files[i].Name, bytes)")
+                  && !reading.Contains("Guid.NewGuid()") && !signed.Contains("Guid.NewGuid()") && !downloads.Contains("Guid.NewGuid()"),
                   "U-03, nei sorgenti: nella cartella degli allegati temporanei scrive solo Safety (WriteTemp, dal riquadro e dalla finestra dei file firmati), e \"Salva tutti\" scrive con WriteNewAsync" +
                   (others.Count == 0 ? "" : ": la nominano anche " + string.Join(", ", others)));
         }
@@ -1019,7 +1022,9 @@ static partial class ProvaBozze
         // Nel programma (non nelle prove): ogni avvio letto, con che cosa avvia e se passa dalla shell.
         // Dal 15 ottobre 2026 anche gli aggiornamenti (Updates): il nuovo eseguibile scaricato e controllato, provato e poi avviato
         // per la sostituzione (prepared.Exe), e da lui quello installato, il percorso dell'eseguibile che girava (installed).
-        string[] opened = ["uri.AbsoluteUri", "url", "WebRuntimeLink", "Store.Dir", "temp.Release()"], programs = ["Environment.ProcessPath!", "ExplorerPath", "prepared.Exe", "installed"];
+        // Dai ritocchi del 16 ottobre 2026 anche Apri dal pannello degli scaricamenti (MainWindow.OpenDownloaded): il file scaricato
+        // (downloaded), dopo le stesse domande del riquadro.
+        string[] opened = ["uri.AbsoluteUri", "url", "WebRuntimeLink", "Store.Dir", "temp.Release()", "downloaded"], programs = ["Environment.ProcessPath!", "ExplorerPath", "prepared.Exe", "installed"];
         var starts = files.Where(f => !Path.GetFileName(f).StartsWith("ProvaBozze")).SelectMany(f => U5Starts(Code(f)).Select(s => (File: Path.GetFileName(f), s.First, s.Shell))).ToList();
         var wrong = starts.Where(s => s.Shell == null || (s.Shell == true ? !opened.Contains(s.First) : !programs.Contains(s.First))).Select(s => $"{s.File}: {s.First}").ToList();
         // Il percorso passato a Esplora file sta fra virgolette: uno che ne contiene una non si passa.

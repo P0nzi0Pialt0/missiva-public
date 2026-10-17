@@ -13,14 +13,16 @@ Missiva stessa: quando esce una versione nuova lo dice, e si aggiorna solo quand
   qual è l'ultimo rilascio. Se è più nuovo scarica anche il manifesto (`aggiornamento.json`) e la sua firma, due file
   piccoli. In Impostazioni, Generali, Informazioni c'è la casella **Controlla da solo gli aggiornamenti** (accesa di
   base: spenta, Missiva non chiede più nulla) e il pulsante **Controlla ora**.
-- **La barra.** Se c'è una versione nuova, in fondo all'elenco dei messaggi compare "È disponibile Missiva 0.3.N del
-  gg/mm/aaaa", con **Novità**, **Aggiorna** e la X. Chiusa con la X, per quella versione torna il giorno dopo. Nessuna
-  finestra si apre da sola, e niente si scarica da solo.
-- **Aggiorna.** Missiva scarica lo zip del rilascio nella sua cartella dei dati (l'avanzamento è nella barra, con
-  Annulla), lo controlla, prova il nuovo eseguibile e chiede conferma. Poi si chiude come con Esci (i messaggi che stai
-  scrivendo chiedono se salvare la bozza; se annulli, Missiva resta com'è), e il nuovo eseguibile prende il posto di
-  quello che girava e riapre Missiva. Se qualcosa va storto prima della sostituzione resta la versione di prima, e
-  all'apertura successiva la barra lo dice.
+- **Il pulsante.** Se c'è una versione nuova, nella barra del titolo, a destra prima dei pulsanti della finestra,
+  compare il pulsante **Aggiornamento**, nel colore d'accento. Un clic apre un pannellino con "Missiva 0.3.N del
+  gg/mm/aaaa", le novità, **Aggiorna** e **Più tardi**: con Più tardi, per quella versione il pulsante torna il giorno
+  dopo. Nessuna finestra si apre da sola, e niente si scarica da solo.
+- **Aggiorna.** Missiva scarica lo zip del rilascio nella sua cartella dei dati (l'avanzamento è nel pulsante, con una
+  barra sottile e la percentuale, e nel pannellino, con Annulla), lo controlla, prova il nuovo eseguibile e chiede
+  conferma. Poi si chiude come con Esci (i messaggi che stai scrivendo chiedono se salvare la bozza; se annulli, Missiva
+  resta com'è), e il nuovo eseguibile prende il posto di quello che girava e riapre Missiva. Se qualcosa va storto
+  prima della sostituzione resta la versione di prima, e il pulsante dice "Aggiornamento non riuscito" (anche
+  all'apertura successiva, se l'intoppo è stato lì): il pannellino ne dice il motivo.
 
 ## Che cosa controlla Missiva prima di accettare un aggiornamento
 

@@ -65,11 +65,13 @@ public partial class MainWindow : Window
         Logos.Arrived += OnLogo;
         if (only == null) Log.Startup("loghi");
         ReadingView.ZoomChanged += ShowZoom;
+        if (only == null) WatchDownloads(); // il gestore degli scaricamenti nella barra del titolo (MainWindow.Downloads.cs)
         Closed += (_, _) =>
         {
             App.ThemeChanged -= OnThemeChanged;
             Logos.Arrived -= OnLogo;
             ReadingView.ZoomChanged -= ShowZoom;
+            if (only == null) UnwatchDownloads();
             // Anche se non si è mai vista (avviata nascosta nell'area di notifica), con lei esce Missiva.
             if (only == null && Application.Current.MainWindow == this) Application.Current.Shutdown();
         };
@@ -165,6 +167,8 @@ public partial class MainWindow : Window
         // Il cambio di giorno con Missiva aperta, anche nell'area di notifica: i gruppi Oggi e Ieri dell'elenco (CheckDay).
         snoozeTimer.Tick += (_, _) => CheckDay();
         Activated += (_, _) => CheckDay();
+        // Guardata la finestra principale, i messaggi nuovi del numero sull'icona ripartono da zero (ritocchi del 16 ottobre).
+        Activated += (_, _) => { if (only == null && fresh.Clear()) UpdateBadge(); };
         // Gli allegati aperti restano in %TEMP%\Missiva un'ora dopo l'ultima modifica, non fino all'uscita (audit, S-28).
         snoozeTimer.Tick += (_, _) => { _ = Task.Run(() => Safety.CleanTemp(TimeSpan.FromHours(1))); };
         CheckFlagReminders(DateTime.Now);
@@ -731,9 +735,9 @@ public partial class MainWindow : Window
             ShowFolders();
         }
         FitMaximized();
-        // La ricerca resta al centro senza coprire il nome né finire sotto i pulsanti di sistema.
-        double side = Math.Max(Brand.ActualWidth + 28, CaptionButtonsWidth() + 12);
-        SearchArea.Width = Math.Clamp(ActualWidth - 2 * side, 200, 520);
+        // La ricerca resta al centro senza coprire il nome né finire sotto i pulsanti di sistema e quelli della barra del
+        // titolo (aggiornamento: MainWindow.Updates.cs, FitTitleBar).
+        FitTitleBar();
         FitColumns();
     }
 
@@ -1323,11 +1327,30 @@ public partial class MainWindow : Window
     }
 
     int badge = -1;
+    IconNumberKind badgeKind;
     bool badgeQueued;
+    /// <summary>I messaggi nuovi da quando si è guardato Missiva, per il numero sull'icona con "Messaggi nuovi" (IconCount).</summary>
+    readonly FreshMail fresh = new();
+
+    /// <summary>
+    /// I messaggi nuovi che Missiva annuncia (App.CheckAccountAsync, gli stessi delle notifiche, anche con le notifiche
+    /// spente): con la finestra principale non attiva contano per il numero "Messaggi nuovi" sull'icona.
+    /// </summary>
+    internal void CountArrived(IMailProvider provider, List<MessageSummary> arrived)
+    {
+        if (only != null) return;
+        fresh.Add(provider.Account.Id, arrived, looking: IsActive && IsVisible && WindowState != WindowState.Minimized);
+        if (S.IconNumber == IconNumberKind.New) UpdateBadge();
+    }
+
+    /// <summary>Le scelte del numero sull'icona cambiate in Impostazioni, Generali, Notifiche: il numero si rifà subito.</summary>
+    internal void RefreshBadge() => UpdateBadge();
 
     /// <summary>
     /// Come il nuovo Outlook, sull'icona nella barra delle applicazioni i non letti delle Posta in arrivo di tutti gli
-    /// account, "99+" oltre 99. Accorpato: più cambi di fila (le Posta in arrivo di più account, un controllo che ne tocca
+    /// account, "99+" oltre 99; dai ritocchi del 16 ottobre 2026 a scelta (IconCount: da leggere, nuovi da quando si è
+    /// guardato Missiva, nessuno) e solo per gli account scelti, e lo stesso numero nel suggerimento dell'area di notifica.
+    /// Accorpato: più cambi di fila (le Posta in arrivo di più account, un controllo che ne tocca
     /// due) fanno un solo aggiornamento, dopo il disegno; prima icona, area di notifica e registro si rifacevano a ogni
     /// cambio, dentro il clic che apre un messaggio da leggere (audit, v2 V-05 e v1 V-09).
     /// </summary>
@@ -1345,15 +1368,18 @@ public partial class MainWindow : Window
     void UpdateBadgeNow()
     {
         UpdateUnified();
-        int count = accounts.SelectMany(a => a.Folders).Where(f => f.Folder.Kind == FolderKind.Inbox).Sum(f => f.Unread);
-        if (count == badge) return;
+        var kind = S.IconNumber;
+        int count = IconCount.Count(kind, accounts.SelectMany(a => a.Folders).Where(f => f.Folder.Kind == FolderKind.Inbox).Select(f => (f.Account.Provider.Account.Id, f.Unread)),
+                                    fresh, S.IconNumberOff);
+        if (count == badge && kind == badgeKind) return;
         badge = count;
-        App.Current.UpdateTrayTip(count);
+        badgeKind = kind;
+        App.Current.UpdateTrayTip(kind, count);
         TaskbarItemInfo ??= new System.Windows.Shell.TaskbarItemInfo();
         var accent = Application.Current.TryFindResource("SystemAccentColorDark1") is Color c ? c : Color.FromRgb(0xC4, 0x2B, 0x1C);
-        TaskbarItemInfo.Overlay = count > 0 ? BadgeImage(count > 99 ? "99+" : count.ToString(), accent) : null;
-        TaskbarItemInfo.Description = count > 0 ? $"{count} da leggere" : "";
-        Log.Write($"numero sull'icona: {count}");
+        TaskbarItemInfo.Overlay = IconCount.Badge(count) is { } text ? BadgeImage(text, accent) : null;
+        TaskbarItemInfo.Description = IconCount.Describe(kind, count);
+        Log.Write($"numero sull'icona: {count}{(kind == IconNumberKind.Unread ? "" : kind == IconNumberKind.New ? " (messaggi nuovi)" : " (nessun numero)")}");
     }
 
     /// <summary>Le immagini del numero già disegnate, per testo e colore: "1".."99+" per ogni colore principale visto (4 KB l'una).</summary>
@@ -4594,9 +4620,11 @@ public partial class MainWindow : Window
             Filter = "Messaggio di posta (*.eml)|*.eml",
         };
         if (dialog.ShowDialog(this) != true) return;
-        // Con il marchio web come gli allegati salvati (audit, S-10): chi lo riapre da un'altra parte è avvisato da Windows.
-        await RunAsync("salvataggio del messaggio", async () =>
-            await Safety.SaveDownloadedAsync(dialog.FileName, await item.Provider.GetRawAsync(item.Summary)));
+        // Con il marchio web come gli allegati salvati (audit, S-10): chi lo riapre da un'altra parte è avvisato da Windows. Dal
+        // gestore degli scaricamenti (ritocchi del 16 ottobre 2026): l'avanzamento, Annulla, e un errore detto dall'elemento.
+        var provider = item.Provider;
+        await DownloadList.Session.SaveAsync(dialog.FileName, null, (progress, cancel) => provider.GetRawAsync(item.Summary, int.MaxValue, cancel, progress),
+                                             provider.Account.Id, ReadingView.InJunk(item.Summary, item.Account.Folders.FirstOrDefault(f => f.Folder.Kind == FolderKind.Junk)?.Folder.Id));
     }
 
     async Task SavePdfAsync(MessageItem item, ReadingView? reader = null)
@@ -4957,8 +4985,28 @@ public partial class MainWindow : Window
         var settings = new SettingsWindow(() => ApplySettings(), RemoveAccountAsync, () => OnAddAccount(this, new RoutedEventArgs()), ManageAccountAsync, EditAutoRepliesAsync, RuleHostFor)
             { Owner = this };
         if (category != null && section != null) settings.Open(category, section);
+#if DEBUG
+        DevTools.HideForPhotos(settings); // le foto (--foto): non si vede e non prende il fuoco
+#endif
         settings.ShowDialog();
     }
+
+#if DEBUG
+    /// <summary>
+    /// Prove e foto ("impostazioni Generali Notifiche" in MISSIVA_KEYS): le Impostazioni su quella pagina, aperte dopo il
+    /// comando, così la finestra modale non ferma i comandi che seguono; "impostazioni chiudi" le chiude.
+    /// </summary>
+    internal void TestSettings(string what)
+    {
+        if (what.Equals("chiudi", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var open in OwnedWindows.OfType<SettingsWindow>().ToList()) open.Close();
+            return;
+        }
+        var parts = what.Split(' ', 2, StringSplitOptions.TrimEntries);
+        Dispatcher.BeginInvoke(() => OpenSettings(parts[0], parts.Length > 1 ? parts[1] : "Informazioni"));
+    }
+#endif
 
     // ---------------------------------------------------------------- regole
 
@@ -5323,19 +5371,11 @@ public partial class MainWindow : Window
         _ => $" {waiting} messaggi nella Posta in uscita non partiranno: le loro finestre si riaprono.",
     };
 
-    void OnSettingsMenu(object sender, RoutedEventArgs e)
-    {
-        var menu = new ContextMenu { PlacementTarget = SettingsButton, Placement = PlacementMode.Right };
-        var settings = new MenuItem { Header = "Impostazioni" };
-        settings.Click += (_, _) => OpenSettings();
-        var add = new MenuItem { Header = "Aggiungi account…" };
-        add.Click += OnAddAccount;
-        var logs = new MenuItem { Header = "Apri la cartella dei registri" };
-        logs.Click += (_, _) => Process.Start(new ProcessStartInfo(Store.Dir) { UseShellExecute = true });
-        menu.Items.Add(settings);
-        menu.Items.Add(add);
-        menu.Items.Add(new Separator());
-        menu.Items.Add(logs);
-        menu.IsOpen = true;
-    }
+    /// <summary>
+    /// La rotellina in fondo alla colonna delle app apre subito le Impostazioni, come in Outlook (ritocchi del 16 ottobre,
+    /// richiesta dell'autore: "non deve comparire aggiungi account, è ridondante"). Prima apriva un menu con Impostazioni,
+    /// Aggiungi account e Apri la cartella dei registri: Aggiungi account resta in fondo alle cartelle e in Impostazioni,
+    /// Account; la cartella dei registri è un pulsante di Impostazioni, Generali, Informazioni.
+    /// </summary>
+    void OnSettings(object sender, RoutedEventArgs e) => OpenSettings();
 }

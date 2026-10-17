@@ -44,6 +44,24 @@
                 </Trigger>
             </ControlTemplate.Triggers>
         </ControlTemplate>
+        <!-- Pulsante della barra del titolo (l'aggiornamento, gli scaricamenti): come SubtleButton, ma al passaggio del mouse uno
+             strato tenue sopra il fondo invece di un fondo nuovo, così si vede anche sul pulsante pieno del colore d'accento -->
+        <ControlTemplate x:Key="TitleButton" TargetType="Button">
+            <Grid>
+                <Border CornerRadius="4" Background="{TemplateBinding Background}" />
+                <Border x:Name="Hover" CornerRadius="4" Background="{DynamicResource SubtleFillColorSecondaryBrush}" Visibility="Hidden" />
+                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True" />
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Hover" Property="Visibility" Value="Visible" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter TargetName="Hover" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="Hover" Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
         <!-- Bandierina rossa di Contrassegna, che da disabilitata diventa tenue come le altre icone -->
         <Style x:Key="FlagGlyph" TargetType="TextBlock" BasedOn="{StaticResource Glyph}">
             <Setter Property="Foreground" Value="{DynamicResource CriticalBrush}" />
@@ -235,6 +253,50 @@
                     </Border>
                 </Popup>
             </Grid>
+            <!-- A destra, prima dei pulsanti della finestra: l'aggiornamento (MainWindow.Updates.cs) e gli scaricamenti, dentro la WindowChrome come la
+                 ricerca. Il margine destro (i pulsanti di sistema) e il nome che si toglie nella finestra stretta li mette FitTitleBar. -->
+            <StackPanel x:Name="TitleTools" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,11,144,0" WindowChrome.IsHitTestVisibleInChrome="True" SizeChanged="OnTitleToolsSize">
+                <Button x:Name="UpdateButton" Visibility="Collapsed" Click="OnUpdateButton" Template="{StaticResource TitleButton}" Height="30" MinWidth="34"
+                        Padding="10,0" Margin="0,0,4,0" Background="Transparent" AutomationProperties.Name="Aggiornamento di Missiva">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="UpdateGlyph" Text="&#xE777;" Style="{StaticResource Glyph}" FontSize="14" />
+                            <TextBlock x:Name="UpdateLabel" Text="Aggiornamento" FontSize="12" Margin="7,0,0,1" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <!-- La barra sottile dello scaricamento, sotto il testo: disegnata qui (la ProgressBar di Fluent sotto i 4 DIP non si vede) -->
+                        <Grid x:Name="UpdateProgress" Height="2" VerticalAlignment="Bottom" Margin="0,0,0,-5" Visibility="Collapsed" IsHitTestVisible="False">
+                            <Border CornerRadius="1" Background="{DynamicResource ControlStrongStrokeColorDefaultBrush}" Opacity="0.35" />
+                            <Border CornerRadius="1" Background="{DynamicResource AccentFillColorDefaultBrush}" RenderTransformOrigin="0,0">
+                                <Border.RenderTransform>
+                                    <ScaleTransform x:Name="UpdateProgressScale" ScaleX="0" />
+                                </Border.RenderTransform>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Button>
+                <!-- Gli scaricamenti degli allegati (MainWindow.Downloads.cs, DownloadList): c'è da quando ce n'è uno in questa sessione;
+                     mentre qualcosa scarica l'anello dell'avanzamento attorno all'icona e, con più di uno, quanti sono -->
+                <Button x:Name="DownloadsButton" Visibility="Collapsed" Click="OnDownloadsButton" Template="{StaticResource TitleButton}" Width="36" Height="30"
+                        Padding="0" Margin="0,0,4,0" Background="Transparent" AutomationProperties.Name="Scaricamenti" ToolTip="Scaricamenti">
+                    <Grid Width="26" Height="26">
+                        <Ellipse x:Name="DownloadsTrack" Margin="1" StrokeThickness="2" Stroke="{DynamicResource ControlStrongStrokeColorDefaultBrush}" Opacity="0.3"
+                                 Visibility="Collapsed" />
+                        <Path x:Name="DownloadsArc" StrokeThickness="2" Stroke="{DynamicResource AccentFillColorDefaultBrush}" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Visibility="Collapsed" RenderTransformOrigin="0.5,0.5">
+                            <Path.RenderTransform>
+                                <RotateTransform x:Name="DownloadsSpin" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <TextBlock x:Name="DownloadsGlyph" Text="&#xE896;" Style="{StaticResource Glyph}" FontSize="15" HorizontalAlignment="Center" />
+                        <Border x:Name="DownloadsCount" Visibility="Collapsed" MinWidth="13" Height="13" CornerRadius="6.5" Padding="3,0" HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom" Margin="0,0,-5,-3" Background="{DynamicResource AccentFillColorDefaultBrush}">
+                            <TextBlock x:Name="DownloadsCountText" FontSize="9" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                        </Border>
+                    </Grid>
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- Schede e barra dei comandi, come nel nuovo Outlook -->
@@ -375,8 +437,10 @@
                         ToolTip="Persone" Click="OnPeopleRail">
                     <TextBlock x:Name="PeopleRailGlyph" Text="&#xE716;" Style="{StaticResource Glyph}" FontSize="18" />
                 </Button>
+                <!-- Come in Outlook la rotellina apre subito le Impostazioni (ritocchi del 16 ottobre: prima un menu con Impostazioni,
+                     Aggiungi account e la cartella dei registri, che ora sta in Impostazioni, Generali, Informazioni) -->
                 <Button x:Name="SettingsButton" Style="{StaticResource RailButton}" DockPanel.Dock="Bottom" VerticalAlignment="Bottom"
-                        ToolTip="Account e impostazioni" Click="OnSettingsMenu" AutomationProperties.Name="Account e impostazioni">
+                        ToolTip="Impostazioni" Click="OnSettings" AutomationProperties.Name="Impostazioni">
                     <TextBlock Text="&#xE713;" Style="{StaticResource Glyph}" FontSize="18" />
                 </Button>
             </DockPanel>
@@ -968,32 +1032,6 @@
                         </ListBox>
                     </DockPanel>
                     <StackPanel VerticalAlignment="Bottom">
-                    <!-- Aggiornamenti da GitHub (MainWindow.Updates.cs): una versione nuova pubblicata, con Novità, Aggiorna e la X;
-                         con Aggiorna l'avanzamento dello scaricamento, con Annulla -->
-                    <Border x:Name="UpdateBar" Visibility="Collapsed" HorizontalAlignment="Stretch" Margin="12,0,12,8"
-                            CornerRadius="6" BorderThickness="1" Padding="14,6,6,6"
-                            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" />
-                        </Border.Effect>
-                        <DockPanel>
-                            <Button x:Name="UpdateCloseButton" DockPanel.Dock="Right" Click="OnUpdateClose" Template="{StaticResource SubtleButton}" Background="Transparent"
-                                    Padding="10,4" ToolTip="Chiudi: per questa versione la barra torna domani" AutomationProperties.Name="Chiudi la barra dell'aggiornamento">
-                                <TextBlock Text="&#xE711;" Style="{StaticResource Glyph}" FontSize="11" />
-                            </Button>
-                            <Button x:Name="UpdateCancelButton" DockPanel.Dock="Right" Content="Annulla" Click="OnUpdateCancel" Template="{StaticResource SubtleButton}" Background="Transparent"
-                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4" Visibility="Collapsed"
-                                    ToolTip="Ferma lo scaricamento: Missiva resta com'è" AutomationProperties.Name="Annulla lo scaricamento dell'aggiornamento" />
-                            <Button x:Name="UpdateNowButton" DockPanel.Dock="Right" Content="Aggiorna" Click="OnUpdateNow" Template="{StaticResource SubtleButton}" Background="Transparent"
-                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
-                                    ToolTip="Scarica la versione nuova e la controlla; poi, dopo una domanda, Missiva si chiude e si riapre aggiornata" AutomationProperties.Name="Aggiorna Missiva" />
-                            <Button x:Name="UpdateNewsButton" DockPanel.Dock="Right" Content="Novità" Click="OnUpdateNews" Template="{StaticResource SubtleButton}" Background="Transparent"
-                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
-                                    ToolTip="Che cosa cambia nella versione nuova" AutomationProperties.Name="Novità della versione nuova" />
-                            <TextBlock DockPanel.Dock="Left" Text="&#xE896;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <TextBlock x:Name="UpdateText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
-                        </DockPanel>
-                    </Border>
                     <!-- Posta in uscita, come l'Outlook classico: i messaggi inviati senza rete partono quando torna -->
                     <Border x:Name="OutboxBar" Visibility="Collapsed" HorizontalAlignment="Stretch" Margin="12,0,12,8"
                             CornerRadius="6" BorderThickness="1" Padding="14,6,6,6"

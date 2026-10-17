@@ -14,9 +14,9 @@
     </linearGradient>
   </defs>
   <rect width="256" height="256" fill="#000000" fill-opacity="0"/>
-  <ellipse cx="128" cy="222" rx="102" ry="14" fill="url(#ombra)"/>
-  <rect x="22" y="58" width="212" height="152" rx="26" fill="url(#corpo)"/>
-  <path d="M26 202 L104 132 M230 202 L152 132" fill="none" stroke="#3A2DAE" stroke-opacity="0.34" stroke-width="5" stroke-linecap="round"/>
-  <path d="M29 71 Q29 61 41 61 H215 Q227 61 227 71 L140.5 141 Q128 151 115.5 141 Z" fill="url(#lembo)"/>
-  <path d="M31 71 L115.5 139.5 Q128 149 140.5 139.5 L225 71" fill="none" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="128" cy="232" rx="112" ry="12" fill="url(#ombra)"/>
+  <rect x="8" y="44" width="240" height="172" rx="29" fill="url(#corpo)"/>
+  <path d="M12.5 207 L100.8 127.7 M243.5 207 L155.2 127.7" fill="none" stroke="#3A2DAE" stroke-opacity="0.34" stroke-width="5.7" stroke-linecap="round"/>
+  <path d="M15.9 58.7 Q15.9 47.4 29.5 47.4 H226.5 Q240.1 47.4 240.1 58.7 L142.1 138 Q128 149.3 113.9 138 Z" fill="url(#lembo)"/>
+  <path d="M18.2 58.7 L113.9 136.3 Q128 147 142.1 136.3 L237.8 58.7" fill="none" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 </svg>

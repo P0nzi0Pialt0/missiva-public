@@ -496,6 +496,25 @@ static partial class DevTools
                 main.TestPreview();
                 return;
             }
+            // Ritocchi del 16 ottobre: "aggiornamento offerta|scarica N|prova|errore|pannello|via" il pulsante dell'aggiornamento
+            // nella barra del titolo in ogni stato, con una versione finta; "impostazioni Categoria Sezione" le Impostazioni su
+            // quella pagina (senza fermare i comandi dopo: la finestra è modale), "impostazioni chiudi" le chiude.
+            if (combo.StartsWith("aggiornamento ", StringComparison.OrdinalIgnoreCase))
+            {
+                main.TestUpdate(combo[14..].Trim());
+                return;
+            }
+            if (combo.StartsWith("impostazioni ", StringComparison.OrdinalIgnoreCase))
+            {
+                main.TestSettings(combo[13..].Trim());
+                return;
+            }
+            // "scaricamenti prova|pannello|chiudi": il gestore degli scaricamenti con elementi finti in ogni stato, e il suo pannello.
+            if (combo.StartsWith("scaricamenti ", StringComparison.OrdinalIgnoreCase))
+            {
+                main.TestDownloads(combo[13..].Trim());
+                return;
+            }
             // "allegato 0": il clic sul primo allegato del messaggio aperto (per le foto della pagina GitHub: la fattura .p7m).
             if (combo.StartsWith("allegato ", StringComparison.OrdinalIgnoreCase) && int.TryParse(combo[9..], out var attachment) && main.FindName("Reader") is UI.ReadingView reading)
             {

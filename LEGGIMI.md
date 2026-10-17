@@ -26,10 +26,11 @@ Bypass -File installa.ps1`; il risultato è lo stesso, ma una Missiva compilata 
 aggiornarla si rilancia lo stesso comando.
 
 Aggiornamenti: due minuti dopo l'avvio e poi una volta al giorno una Missiva installata da un rilascio chiede a GitHub
-se c'è una versione nuova. Se c'è, una barra in fondo all'elenco dei messaggi dice "È disponibile Missiva 0.3.N del
-gg/mm/aaaa", con Novità (che cosa cambia), Aggiorna e la X (chiusa, per quella versione torna il giorno dopo). Aggiorna
-scarica la versione nuova (l'avanzamento è nella barra, con Annulla), la controlla, chiede conferma e poi chiude
-Missiva come Esci (i messaggi che stai scrivendo chiedono se salvare la bozza) e la riapre aggiornata. In Impostazioni,
+se c'è una versione nuova. Se c'è, nella barra del titolo, a destra, compare il pulsante **Aggiornamento**: un clic apre
+"Missiva 0.3.N del gg/mm/aaaa" con le novità, Aggiorna e Più tardi (per quella versione torna il giorno dopo). Aggiorna
+scarica la versione nuova (l'avanzamento è nel pulsante, con la percentuale, e nel pannellino, con Annulla), la
+controlla, chiede conferma e poi chiude Missiva come Esci (i messaggi che stai scrivendo chiedono se salvare la bozza) e
+la riapre aggiornata. Se qualcosa non va, il pulsante dice "Aggiornamento non riuscito" e il pannellino il motivo. In Impostazioni,
 Generali, Informazioni ci sono la versione, la casella **Controlla da solo gli aggiornamenti** (spenta, nessuna
 richiesta a GitHub), **Controlla ora** con l'esito dell'ultimo controllo; in una Missiva compilata dai sorgenti, al
 loro posto, che si aggiorna con `installa.ps1`. Che cosa controlla prima di accettare un aggiornamento e che cosa vede
@@ -175,14 +176,16 @@ pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel 
   Outlook; il pulsante con il sole le mostra su fondo chiaro, e in Visualizza c'è "Riquadro di lettura chiaro" per
   averle sempre così. Zoom del testo dei messaggi.
 - Impostazioni come in Outlook (Generali: Aspetto, Notifiche, Avvio e chiusura, Copia di sicurezza, Informazioni; Account: Account di
-  posta e Firme; Posta: Elenco messaggi, Riquadro di lettura, Gestione messaggi, Regole, Scrittura e risposta e Modelli): tema, notifiche per account e suono, dimensioni del testo, conversazioni, anteprima di
+  posta e Firme; Posta: Elenco messaggi, Riquadro di lettura, Gestione messaggi, Regole, Scrittura e risposta e Modelli), aperte
+  dall'ingranaggio in fondo alla colonna a sinistra: tema, notifiche per account e suono, numero sull'icona, dimensioni del testo, conversazioni, anteprima di
   0, 1 o 2 righe, mittente o oggetto all'inizio, immagini dei mittenti, anteprima degli allegati, intestazioni per
   data, quando segnare letti i messaggi aperti. Si applicano subito.
 - Messaggi segnati come letti subito, dopo alcuni secondi aperti nel riquadro, quando la selezione cambia o mai
   (Impostazioni, Posta, Gestione messaggi).
 - Lettura con allegati fra l'intestazione e il testo, come nel nuovo Outlook: icona del tipo di file e dimensione, clic
   per aprire, pulsante accanto per salvare, "Salva tutti" in una cartella (tranne i tipi di file che possono avviare
-  programmi, segnati in rosso: quelli si salvano uno per uno). Una pagina web allegata (.html, .htm, .svg, .mht) si
+  programmi, segnati in rosso: quelli si salvano uno per uno). Gli allegati aperti con un programma o salvati, i messaggi
+  salvati come .eml e i documenti dei file firmati passano dagli scaricamenti nella barra del titolo (sotto). Una pagina web allegata (.html, .htm, .svg, .mht) si
   apre nel browser solo dopo una domanda: è una pagina arrivata per posta, non scriverci password. Immagini esterne
   bloccate finché non le chiedi, al loro posto un riquadro grigio con l'icona e il testo alternativo (al massimo 160
   pixel di altezza, così il testo si vede subito): dopo Mostra immagini, per quel mittente si vedono sempre, in tutti
@@ -423,8 +426,19 @@ pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel 
   di un messaggio ha tre pulsanti: Rispondi (apre la risposta in una finestra di scrittura, dove si vede a chi va), Segna
   (lo contrassegna) ed Elimina (nel Cestino); nel menu "..." Posponi di un'ora e "Posponi...", con il giorno e l'ora da
   scegliere. Segna, Elimina e Posponi di un'ora lavorano senza aprire Missiva. Si spengono per account, e il suono per tutte, in
-  Impostazioni, Generali, Notifiche. Sull'icona nella barra delle applicazioni il numero dei messaggi da leggere nelle
-  Posta in arrivo.
+  Impostazioni, Generali, Notifiche. Sull'icona nella barra delle applicazioni un numero, a scelta in Impostazioni,
+  Generali, Notifiche, "Numero sull'icona di Missiva": i messaggi da leggere nelle Posta in arrivo (di base), i messaggi
+  nuovi arrivati da quando hai guardato Missiva (quelli delle notifiche, anche con le notifiche spente; tornano a zero
+  quando apri la finestra) o nessun numero, e per quali account ("Conta questi account"). Lo stesso numero lo dice il
+  suggerimento dell'icona vicino all'orologio.
+- Scaricamenti, come in un browser: aprire un allegato con un programma, salvarlo (Salva con nome, Salva tutti: uno per
+  file), salvare un messaggio come .eml o il documento di un file firmato mette un elemento negli scaricamenti, con
+  l'icona nella barra del titolo accanto all'aggiornamento: mentre scarica un anello dice quanto manca (con più file,
+  quanti sono), quando finisce compare per qualche secondo un segno di fatto, e un errore resta segnato finché non lo
+  guardi. Il clic apre l'elenco di questa sessione (gli ultimi 20), con lo stato di ognuno (in corso con la
+  percentuale, finito, non riuscito con il motivo, annullato), Annulla per quelli in corso (non resta nessun file a
+  metà), Apri e Mostra nella cartella per quelli finiti (Apri fa le stesse domande del riquadro), e "Cancella
+  l'elenco". L'anteprima nel riquadro non ci passa: lì si vede già che carica.
 - Scorciatoie come nel nuovo Outlook: Ctrl+N nuovo (un messaggio nella posta, un evento nel calendario; da ovunque
   Ctrl+Maiusc+M un messaggio e Ctrl+Maiusc+A un evento), Ctrl+R rispondi, Ctrl+Maiusc+R rispondi a tutti, Ctrl+F (o
   Ctrl+Maiusc+F) inoltra, Ctrl+Maiusc+V sposta in una cartella, Ctrl+Z annulla, Ctrl+. e Ctrl+, messaggio successivo e
@@ -552,8 +566,8 @@ basta: è cifrata per il tuo utente di Windows, e altrove non si legge.
   Windows: copiati su un altro PC o in un altro profilo, password e accessi vanno rifatti (lo dice la barra sotto
   l'account) e i testi cifrati non si leggono; nel file restano com'erano. Per cambiare PC c'è la copia di sicurezza
   (sopra).
-- Registro degli errori: `%LOCALAPPDATA%\Missiva\missiva.log` (anche dal pulsante con l'ingranaggio in fondo alla
-  colonna a sinistra, "Account e impostazioni", Apri la cartella dei registri),
+- Registro degli errori: `%LOCALAPPDATA%\Missiva\missiva.log` (anche da Impostazioni, Generali, Informazioni, Apri la
+  cartella dei registri; le Impostazioni si aprono con l'ingranaggio in fondo alla colonna a sinistra),
   senza oggetti dei messaggi né titoli degli eventi: si può mandare a chi ti aiuta.
 
 ## Compilare

@@ -32,6 +32,14 @@ public sealed class Settings
     public List<string> NotificationsOff { get; set; } = new();
     public bool NotificationSound { get; set; } = true;
     /// <summary>
+    /// Il numero sull'icona di Missiva, nella barra delle applicazioni e nel suggerimento dell'area di notifica (Impostazioni,
+    /// Generali, Notifiche; ritocchi del 16 ottobre 2026): i messaggi da leggere della Posta in arrivo, com'era e di base,
+    /// quelli nuovi arrivati da quando si è guardato Missiva, o nessuno (IconCount).
+    /// </summary>
+    public IconNumberKind IconNumber { get; set; } = IconNumberKind.Unread;
+    /// <summary>Gli account che il numero sull'icona non conta (identificativi), per tutte e due le scelte con il numero; di base nessuno.</summary>
+    public List<string> IconNumberOff { get; set; } = new();
+    /// <summary>
     /// Chiudendo la finestra Missiva resta nell'area di notifica (Impostazioni, Generali, Avvio e chiusura), come Outlook
     /// classico: controlla la posta, mostra le notifiche, manda gli invii pianificati. Falso: si chiude del tutto.
     /// </summary>
@@ -335,6 +343,7 @@ public sealed class Settings
         Drop(Focused);
         Drop(Pinned);
         NotificationsOff.RemoveAll(Mine);
+        IconNumberOff.RemoveAll(Mine);
         CollapsedAccounts.RemoveAll(Mine);
         HiddenCalendars.RemoveAll(Mine);
         CollapsedFolders.RemoveAll(Mine);
