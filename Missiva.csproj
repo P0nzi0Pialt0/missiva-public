@@ -110,6 +110,12 @@
     <Resource Include="Assets\*.png" />
   </ItemGroup>
 
+  <!-- Le traduzioni (Core/Lingua.cs, 21 ottobre 2026): un file JSON piatto per area, "testo italiano": "English text",
+       incorporato con il nome "lingue/en/<area>.json"; in inglese Lingua li legge tutti all'avvio e li unisce. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\lingue\en\*.json" LogicalName="lingue/en/%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="AngleSharp" Version="1.8.2" />
     <PackageReference Include="MailKit" Version="4.18.0" />

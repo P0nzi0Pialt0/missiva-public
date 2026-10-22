@@ -32,7 +32,7 @@ public sealed class ContactWindow : Window
         original = contact;
         this.targets = targets;
         Target = owner;
-        Title = contact == null ? "Nuovo contatto" : "Modifica contatto";
+        Title = contact == null ? T("Nuovo contatto") : T("Modifica contatto");
         Width = 560;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
@@ -44,7 +44,7 @@ public sealed class ContactWindow : Window
         if (owner != null)
         {
             // Un contatto di un account (Google, Outlook): di chi è, e che Salva lo scrive lì.
-            var from = new TextBlock { Text = $"Contatti di {PeopleView.Origin(owner)} di {owner.Account.Email}: Salva li cambia anche lì", FontSize = 12, Margin = new Thickness(0, 0, 0, 10) };
+            var from = new TextBlock { Text = T("Contatti di {0} di {1}: Salva li cambia anche lì", PeopleView.Origin(owner), owner.Account.Email), FontSize = 12, Margin = new Thickness(0, 0, 0, 10) };
             from.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryTextBrush");
             panel.Children.Add(from);
         }
@@ -65,22 +65,24 @@ public sealed class ContactWindow : Window
         }
         if (contact == null)
         {
-            where.Items.Add("In Missiva (su questo PC)");
-            foreach (var p in targets) where.Items.Add($"Contatti di {PeopleView.Origin(p)} di {p.Account.Email}");
+            where.Items.Add(T("In Missiva (su questo PC)"));
+            foreach (var p in targets) where.Items.Add(T("Contatti di {0} di {1}", PeopleView.Origin(p), p.Account.Email));
             where.SelectedIndex = 0;
-            Field("Dove", where);
+            Field(T("Dove"), where);
         }
-        Field("Nome", given);
-        Field("Cognome", surname);
-        Field("Nome mostrato", display);
-        Field("Posta elettronica (una per riga)", emails);
-        Field("Cellulare", mobile);
-        Field("Telefono ufficio", business);
-        Field("Telefono casa", home);
-        Field("Azienda", company);
-        Field("Ruolo", job);
-        Field("Indirizzo", address);
-        Field("Note (PEC, partita IVA...)", notes);
+        // "Nome" da solo è il nome di qualcosa (in inglese "Name", la stessa chiave nelle altre finestre); qui è il nome di
+        // battesimo accanto a Cognome, e in inglese si scrive a parte.
+        Field(Lingua.English ? "First name" : "Nome", given);
+        Field(T("Cognome"), surname);
+        Field(T("Nome mostrato"), display);
+        Field(T("Posta elettronica (una per riga)"), emails);
+        Field(T("Cellulare"), mobile);
+        Field(T("Telefono ufficio"), business);
+        Field(T("Telefono casa"), home);
+        Field(T("Azienda"), company);
+        Field(T("Ruolo"), job);
+        Field(T("Indirizzo"), address);
+        Field(T("Note (PEC, partita IVA...)"), notes);
         panel.Children.Add(form);
         panel.Children.Add(error);
         if ((contact ?? prefill) is { } shown)
@@ -100,8 +102,8 @@ public sealed class ContactWindow : Window
         }
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 20, 0, 0) };
-        var cancel = new Button { Content = "Annulla", MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
-        var save = new Button { Content = "Salva", MinWidth = 100, IsDefault = true };
+        var cancel = new Button { Content = T("Annulla"), MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+        var save = new Button { Content = T("Salva"), MinWidth = 100, IsDefault = true };
         save.SetResourceReference(StyleProperty, "AccentButtonStyle");
         save.Click += (_, _) => Save();
         buttons.Children.Add(cancel);
@@ -109,6 +111,9 @@ public sealed class ContactWindow : Window
         panel.Children.Add(buttons);
         Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = SystemParameters.WorkArea.Height - 80 };
         Loaded += (_, _) => given.Focus();
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto, anche in inglese): fuori dallo schermo, senza il fuoco
+#endif
     }
 
     void Save()
@@ -116,7 +121,7 @@ public sealed class ContactWindow : Window
         var list = emails.Text.Split(['\n', '\r', ';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (list.FirstOrDefault(e => !AccountTypes.LooksValid(e)) is { } bad)
         {
-            error.Text = $"Controlla l'indirizzo \"{bad}\".";
+            error.Text = T("Controlla l'indirizzo \"{0}\".", bad);
             error.Visibility = Visibility.Visible;
             return;
         }
@@ -132,9 +137,9 @@ public sealed class ContactWindow : Window
         result.JobTitle = job.Text.Trim();
         result.Address = address.Text.Trim();
         result.Notes = notes.Text.Trim();
-        if (result.Name == "(senza nome)")
+        if (result.Name == Contact.NoName)
         {
-            error.Text = "Scrivi almeno un nome, un indirizzo o l'azienda.";
+            error.Text = T("Scrivi almeno un nome, un indirizzo o l'azienda.");
             error.Visibility = Visibility.Visible;
             return;
         }

@@ -77,9 +77,17 @@ static class ContactSamples
         ]);
     }
 
-    /// <summary>I contatti di Missiva delle foto della pagina GitHub (--contatti-finti --foto).</summary>
-    internal static List<Contact> PhotoLocal() =>
-    [
+    /// <summary>
+    /// I contatti di Missiva delle foto della pagina GitHub (--contatti-finti --foto); in inglese (di base se Missiva è in
+    /// inglese) quelli delle foto inglesi.
+    /// </summary>
+    internal static List<Contact> PhotoLocal(bool? english = null) => english ?? Lingua.English
+    ? [
+        new() { GivenName = "Chloe", Surname = "Fontaine", DisplayName = "Chloe Fontaine", Emails = ["chloe.fontaine@homemail.example"], Mobile = "+1 212 555 0107", Notes = "Lake trips: she brings lunch." },
+        new() { DisplayName = "Easton Public Library", Emails = ["holds@easton-library.example"], BusinessPhone = "+1 212 555 0108", Address = "1 Library Square, Easton" },
+        new() { DisplayName = "Riverside Gym", Emails = ["info@riverside-gym.example"], BusinessPhone = "+1 212 555 0109" },
+    ]
+    : [
         new() { GivenName = "Chiara", Surname = "Fontana", DisplayName = "Chiara Fontana", Emails = ["chiara.fontana@posta-esempio.example"], Mobile = "+39 333 000 0107", Notes = "Gite al lago: porta lei il pranzo." },
         new() { DisplayName = "Biblioteca civica", Emails = ["prestiti@biblioteca-esempio.example"], BusinessPhone = "+39 051 000 0108", Address = "Piazza della Biblioteca 1, 40121 Bologna" },
         new() { DisplayName = "Palestra Esempio", Emails = ["info@palestra-esempio.example"], BusinessPhone = "+39 051 000 0109" },
@@ -87,10 +95,29 @@ static class ContactSamples
 
     /// <summary>
     /// Le foto della pagina GitHub (--contatti-finti --foto): i colleghi, i clienti e i fornitori di Ada Galli, con i dati
-    /// inventati di ProvaBozze.Foto.cs (domini .example, numeri con gli zeri). Luca Bianchi ha la scheda più ricca.
+    /// inventati di ProvaBozze.Foto.cs (domini .example, numeri con gli zeri). Luca Bianchi ha la scheda più ricca. In
+    /// inglese (di base se Missiva è in inglese) le persone delle foto inglesi, con i numeri americani riservati alla
+    /// finzione (555 0100-0199); Luca Bianchi, che fa la cucina, è italiano come in italiano.
     /// </summary>
-    internal static List<Contact> Photo(MailAccount account) =>
-    [
+    internal static List<Contact> Photo(MailAccount account, bool? english = null) => english ?? Lingua.English
+    ? [
+        new() { Source = account.Id, ServerId = Id(account, 1), GivenName = "Luca", Surname = "Bianchi", DisplayName = "Luca Bianchi",
+                Emails = ["luca.bianchi@bianchi-kitchens.example", "bianchi.kitchens@pec-esempio.example"], Mobile = "+39 333 000 0101", BusinessPhone = "+39 051 000 0101",
+                Company = "Bianchi Kitchens", JobTitle = "Owner", Address = "Via Emilia 120, 40127 Bologna, Italy", Website = "www.bianchi-kitchens.example",
+                Notes = "Kitchen quote: waiting for the two changes.\nPrefers calls in the morning." },
+        new() { Source = account.Id, ServerId = Id(account, 2), GivenName = "Emma", Surname = "Collins", DisplayName = "Emma Collins", Emails = ["emma.collins@northlight.example"],
+                Mobile = "+1 212 555 0102", Company = "Northlight Architects", JobTitle = "Architect" },
+        new() { Source = account.Id, ServerId = Id(account, 3), GivenName = "David", Surname = "Clarke", DisplayName = "David Clarke", Emails = ["david.clarke@clarkehale.example"],
+                BusinessPhone = "+1 212 555 0103", Company = "Clarke & Hale Accountants", JobTitle = "Accountant" },
+        new() { Source = account.Id, ServerId = Id(account, 4), GivenName = "Hannah", Surname = "Wright", DisplayName = "Hannah Wright", Emails = ["hannah.wright@easton-council.example"],
+                BusinessPhone = "+1 212 555 0104", Company = "City of Easton", JobTitle = "Public Works Department" },
+        new() { Source = account.Id, ServerId = Id(account, 5), GivenName = "Sam", Surname = "Turner", DisplayName = "Sam Turner", Emails = ["sam.turner@turner-build.example"],
+                Mobile = "+1 212 555 0105", Company = "Turner Construction", JobTitle = "Site manager" },
+        new() { Source = account.Id, ServerId = Id(account, 6), GivenName = "Priya", Surname = "Shah", DisplayName = "Priya Shah", Emails = ["priya.shah@northlight.example"],
+                Mobile = "+1 212 555 0106", Company = "Northlight Architects", JobTitle = "Project coordinator" },
+        new() { Source = account.Id, ServerId = Id(account, 7), DisplayName = "Northlight front desk", Emails = ["reception@northlight.example"], BusinessPhone = "+1 212 555 0100" },
+    ]
+    : [
         new() { Source = account.Id, ServerId = Id(account, 1), GivenName = "Luca", Surname = "Bianchi", DisplayName = "Luca Bianchi",
                 Emails = ["luca.bianchi@cucine-bianchi.example", "cucine.bianchi@pec-esempio.example"], Mobile = "+39 333 000 0101", BusinessPhone = "+39 051 000 0101",
                 Company = "Cucine Bianchi S.r.l.", JobTitle = "Titolare", Address = "Via del Lavoro 14, 40127 Bologna", Website = "www.cucine-bianchi.example",

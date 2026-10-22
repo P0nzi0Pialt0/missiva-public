@@ -8,7 +8,7 @@ namespace Missiva;
 /// Un contatto di Google cambiato mentre lo si modificava (etag scaduto anche dopo una rilettura): Fresh è la persona com'è ora
 /// su Google, per riaprire la finestra con i dati nuovi.
 /// </summary>
-public sealed class ContactChangedException(Contact fresh) : Exception("Il contatto è stato cambiato altrove: riaperto con i dati nuovi.")
+public sealed class ContactChangedException(Contact fresh) : Exception(T("Il contatto è stato cambiato altrove: riaperto con i dati nuovi."))
 {
     public Contact Fresh { get; } = fresh;
 }
@@ -24,13 +24,15 @@ public sealed class ContactChangedException(Contact fresh) : Exception("Il conta
 /// </summary>
 public static partial class GoogleContacts
 {
-    static readonly GoogleService WriteService = new("Google People API", "people", "la modifica dei contatti", "Consenti la modifica dei contatti", "in Persone");
+    static readonly GoogleService WriteService = new("Google People API", "people",
+        N("Missiva non ha il permesso di usare la modifica dei contatti di questo account: premi \"Consenti la modifica dei contatti\" in Persone."),
+        N("Google ha limitato le richieste (la modifica dei contatti): riprova fra poco."));
     static readonly Regex ResourceNameRule = new(@"^people/[A-Za-z0-9_-]{1,64}$", RegexOptions.Compiled);
     static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new();
 
 
     static string Resource(string? resourceName) =>
-        resourceName != null && ResourceNameRule.IsMatch(resourceName) ? resourceName : throw new MailException("Il contatto non ha un identificativo di Google valido: rileggi i contatti.");
+        resourceName != null && ResourceNameRule.IsMatch(resourceName) ? resourceName : throw new MailException(T("Il contatto non ha un identificativo di Google valido: rileggi i contatti."));
 
     /// <summary>Una sola scrittura alla volta per account (la People API lo chiede: altrimenti errori di concorrenza).</summary>
     static async Task<IDisposable> GateAsync(MailAccount account, CancellationToken cancel)
@@ -51,11 +53,11 @@ public static partial class GoogleContacts
         try
         {
             return await GoogleApi.SendAsync(WriteService, account, HttpMethod.Get, $"{Base}{resourceName}?personFields={PersonFields}", cancel: cancel)
-                   ?? throw new MailException("Google non ha risposto con il contatto.");
+                   ?? throw new MailException(T("Google non ha risposto con il contatto."));
         }
         catch (MailException ex) when (ex.Status == 404)
         {
-            throw new MailException("Il contatto è stato eliminato su Google (da un altro dispositivo): non c'è più.", ex, 404);
+            throw new MailException(T("Il contatto è stato eliminato su Google (da un altro dispositivo): non c'è più."), ex, 404);
         }
     }
 
@@ -68,7 +70,7 @@ public static partial class GoogleContacts
         var body = Merge(null, null, contact).Person;
         using var _ = await GateAsync(account, cancel);
         var answer = await GoogleApi.SendAsync(WriteService, account, HttpMethod.Post, $"{Base}people:createContact?personFields={PersonFields}", body, cancel)
-                     ?? throw new MailException("Google non ha risposto con il contatto creato.");
+                     ?? throw new MailException(T("Google non ha risposto con il contatto creato."));
         return FromPerson(answer, account.Id);
     }
 
@@ -92,7 +94,7 @@ public static partial class GoogleContacts
             {
                 var answer = await GoogleApi.SendAsync(WriteService, account, HttpMethod.Patch,
                     $"{Base}{resource}:updateContact?updatePersonFields={string.Join(",", merged.Fields)}&personFields={PersonFields}", merged.Person, cancel);
-                return FromPerson(answer ?? throw new MailException("Google non ha risposto con il contatto aggiornato."), account.Id);
+                return FromPerson(answer ?? throw new MailException(T("Google non ha risposto con il contatto aggiornato.")), account.Id);
             }
             catch (MailException ex) when (IsStale(ex))
             {

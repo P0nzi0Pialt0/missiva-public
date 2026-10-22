@@ -16,7 +16,6 @@ namespace Missiva.UI;
 /// </summary>
 public sealed class PersonCard : Window
 {
-    static readonly CultureInfo Italian = new("it-IT");
     static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets");
 
     readonly IMailProvider provider;
@@ -28,7 +27,7 @@ public sealed class PersonCard : Window
     readonly StackPanel details = new();
     readonly StackPanel messages = new();
     readonly StackPanel files = new();
-    readonly TextBlock status = Secondary("Ricerca dei messaggi…");
+    readonly TextBlock status = Secondary(T("Ricerca dei messaggi…"));
 
     /// <param name="query">La ricerca dei messaggi da e per la persona, nella sintassi dell'account.</param>
     /// <param name="open">Apre un messaggio trovato nella finestra del messaggio.</param>
@@ -65,19 +64,22 @@ public sealed class PersonCard : Window
         var title = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         title.Children.Add(new TextBlock { Text = person.Display, FontSize = 22, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         var address = new TextBox { Text = person.Email, IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Padding = new Thickness(0) };
-        AutomationProperties.SetName(address, "Indirizzo");
+        AutomationProperties.SetName(address, T("Indirizzo"));
         title.Children.Add(address);
         head.Children.Add(title);
         panel.Children.Add(head);
         panel.Children.Add(details);
-        panel.Children.Add(Heading("Ultimi messaggi"));
+        panel.Children.Add(Heading(T("Ultimi messaggi")));
         panel.Children.Add(status);
         panel.Children.Add(messages);
-        panel.Children.Add(Heading("File"));
+        panel.Children.Add(Heading(T("File")));
         panel.Children.Add(files);
         Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         ShowDetails();
         Loaded += async (_, _) => await LoadAsync();
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto, anche in inglese): fuori dallo schermo, senza il fuoco
+#endif
     }
 
     static TextBlock Secondary(string text)
@@ -96,7 +98,7 @@ public sealed class PersonCard : Window
         {
             Content = row, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(6, 4, 6, 4),
             Margin = new Thickness(-6, 0, -6, 0), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            ToolTip = "Apri il messaggio",
+            ToolTip = T("Apri il messaggio"),
         };
         AutomationProperties.SetName(button, name);
         button.Click += (_, _) => open(message);
@@ -110,13 +112,15 @@ public sealed class PersonCard : Window
     {
         details.Children.Clear();
         var actions = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-        var writeButton = new Button { Content = "Scrivi", MinWidth = 88, Margin = new Thickness(0, 0, 6, 6) };
+        var writeButton = new Button { Content = T("Scrivi"), MinWidth = 88, Margin = new Thickness(0, 0, 6, 6) };
         writeButton.SetResourceReference(StyleProperty, "AccentButtonStyle");
-        AutomationProperties.SetName(writeButton, "Scrivi a " + person.Email);
+        AutomationProperties.SetName(writeButton, T("Scrivi a {0}", person.Email));
         writeButton.Click += (_, _) => write(person.FieldText());
         actions.Children.Add(writeButton);
-        var all = new Button { Content = "Tutti i messaggi", MinWidth = 88, Margin = new Thickness(0, 0, 6, 6) };
-        AutomationProperties.SetName(all, "Tutti i messaggi con " + person.Display);
+        // "Tutti i messaggi" è anche il nome della cartella di Gmail, che in inglese è "All Mail" (una chiave ha una traduzione
+        // sola): qui sono i messaggi con la persona, e in inglese si scrive a parte.
+        var all = new Button { Content = Lingua.English ? "All messages" : "Tutti i messaggi", MinWidth = 88, Margin = new Thickness(0, 0, 6, 6) };
+        AutomationProperties.SetName(all, T("Tutti i messaggi con {0}", person.Display));
         all.Click += (_, _) =>
         {
             searchAll(query);
@@ -126,19 +130,19 @@ public sealed class PersonCard : Window
         var contact = Known();
         if (contact == null)
         {
-            var add = new Button { Content = "Aggiungi ai contatti", MinWidth = 88, Margin = new Thickness(0, 0, 6, 6) };
-            AutomationProperties.SetName(add, "Aggiungi ai contatti");
+            var add = new Button { Content = T("Aggiungi ai contatti"), MinWidth = 88, Margin = new Thickness(0, 0, 6, 6) };
+            AutomationProperties.SetName(add, T("Aggiungi ai contatti"));
             add.Click += (_, _) => AddContact();
             actions.Children.Add(add);
         }
         details.Children.Add(actions);
         if (contact == null)
         {
-            details.Children.Add(Secondary("Non è fra i tuoi contatti."));
+            details.Children.Add(Secondary(T("Non è fra i tuoi contatti.")));
             return;
         }
-        var from = contact.Source == Contact.Local ? "In Missiva, su questo PC"
-            : Store.Settings.Accounts.FirstOrDefault(a => a.Id == contact.Source) is { } owner ? $"Contatti di {(owner.Kind == AccountKind.Gmail ? "Google" : "Outlook")} di {owner.Email}" : "Contatti di Outlook";
+        var from = contact.Source == Contact.Local ? T("In Missiva, su questo PC")
+            : Store.Settings.Accounts.FirstOrDefault(a => a.Id == contact.Source) is { } owner ? T("Contatti di {0} di {1}", owner.Kind == AccountKind.Gmail ? "Google" : "Outlook", owner.Email) : T("Contatti di Outlook");
         details.Children.Add(Secondary(from));
         void Line(string label, string value)
         {
@@ -150,13 +154,13 @@ public sealed class PersonCard : Window
             line.Children.Add(box);
             details.Children.Add(line);
         }
-        Line("Azienda e ruolo", string.Join(", ", new[] { contact.JobTitle, contact.Company }.Where(t => t.Length > 0)));
-        foreach (var other in contact.Emails.Where(e => !e.Equals(person.Email, StringComparison.OrdinalIgnoreCase))) Line("Altro indirizzo", other);
-        Line("Cellulare", contact.Mobile);
-        Line("Telefono ufficio", contact.BusinessPhone);
-        Line("Telefono casa", contact.HomePhone);
-        Line("Indirizzo", contact.Address);
-        Line("Note", contact.Notes);
+        Line(T("Azienda e ruolo"), string.Join(", ", new[] { contact.JobTitle, contact.Company }.Where(t => t.Length > 0)));
+        foreach (var other in contact.Emails.Where(e => !e.Equals(person.Email, StringComparison.OrdinalIgnoreCase))) Line(T("Altro indirizzo"), other);
+        Line(T("Cellulare"), contact.Mobile);
+        Line(T("Telefono ufficio"), contact.BusinessPhone);
+        Line(T("Telefono casa"), contact.HomePhone);
+        Line(T("Indirizzo"), contact.Address);
+        Line(T("Note"), contact.Notes);
     }
 
     /// <summary>Aggiungi ai contatti: la finestra del contatto con nome e indirizzo, salvato fra i contatti di Missiva.</summary>
@@ -186,37 +190,37 @@ public sealed class PersonCard : Window
             Log.Time($"scheda della persona: {page.Messages.Count} messaggi", clock);
             status.Visibility = Visibility.Collapsed;
             var found = page.Messages.OrderByDescending(m => m.Date).ToList();
-            if (found.Count == 0) messages.Children.Add(Secondary("Nessun messaggio trovato."));
+            if (found.Count == 0) messages.Children.Add(Secondary(T("Nessun messaggio trovato.")));
             foreach (var m in found.Take(8))
             {
                 var row = new DockPanel();
-                var when = Secondary(m.Date.Date == DateTime.Today ? m.Date.ToString("HH:mm", Italian) : m.Date.ToString("d MMM yyyy", Italian));
+                var when = Secondary(m.Date.Date == DateTime.Today ? m.Date.ToString("HH:mm", Lingua.Culture) : m.Date.ToString("d MMM yyyy", Lingua.Culture));
                 when.Margin = new Thickness(8, 0, 0, 0);
                 DockPanel.SetDock(when, Dock.Right);
                 row.Children.Add(when);
                 var text = new StackPanel();
-                text.Children.Add(new TextBlock { Text = m.Subject.Length > 0 ? m.Subject : "(senza oggetto)", TextTrimming = TextTrimming.CharacterEllipsis, FontWeight = m.IsRead ? FontWeights.Normal : FontWeights.SemiBold });
+                text.Children.Add(new TextBlock { Text = m.Subject.Length > 0 ? m.Subject : T("(senza oggetto)"), TextTrimming = TextTrimming.CharacterEllipsis, FontWeight = m.IsRead ? FontWeights.Normal : FontWeights.SemiBold });
                 if (m.FolderName.Length > 0) text.Children.Add(Secondary(m.FolderName));
                 row.Children.Add(text);
-                messages.Children.Add(Opener(row, m, $"{m.Subject}, {m.Date:d MMM yyyy}"));
+                messages.Children.Add(Opener(row, m, $"{m.Subject}, {m.Date.ToString("d MMM yyyy", Lingua.Culture)}"));
             }
             var names = found.SelectMany(m => Pec.ShownAttachments(m.AttachmentNames).Select(n => (Name: n, Message: m))).Take(8).ToList();
-            if (names.Count == 0) files.Children.Add(Secondary("Nessun allegato nei messaggi trovati."));
+            if (names.Count == 0) files.Children.Add(Secondary(T("Nessun allegato nei messaggi trovati.")));
             foreach (var (name, m) in names)
             {
                 var row = new StackPanel { Orientation = Orientation.Horizontal };
                 row.Children.Add(new TextBlock { Text = "", FontFamily = Icons, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
                 row.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
-                var when = Secondary("  " + m.Date.ToString("d MMM", Italian));
+                var when = Secondary("  " + m.Date.ToString("d MMM", Lingua.Culture));
                 when.VerticalAlignment = VerticalAlignment.Center;
                 row.Children.Add(when);
-                files.Children.Add(Opener(row, m, $"{name}, nel messaggio {m.Subject}"));
+                files.Children.Add(Opener(row, m, T("{0}, nel messaggio {1}", name, m.Subject)));
             }
         }
         catch (Exception ex)
         {
             Log.Error("scheda della persona", ex);
-            status.Text = "I messaggi non si trovano: " + ex.Message;
+            status.Text = T("I messaggi non si trovano: {0}", ex.Message);
         }
     }
 }

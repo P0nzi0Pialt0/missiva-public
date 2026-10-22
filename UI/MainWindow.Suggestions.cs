@@ -156,7 +156,7 @@ public partial class MainWindow
         }
         else
         {
-            suggestLocal.Add(new SearchSuggestion { Kind = SuggestionKind.Search, Title = typed, Subtitle = "Cerca in " + SearchScopeText.Text.ToLowerInvariant(),
+            suggestLocal.Add(new SearchSuggestion { Kind = SuggestionKind.Search, Title = typed, Subtitle = T("Cerca in {0}", SearchScopeText.Text.ToLowerInvariant()),
                                                     Query = typed, Glyph = "", GlyphBrush = Secondary }.Highlight(typed));
             suggestLocal.AddRange(Store.Settings.RecentSearches
                 .Where(q => q.Contains(typed, StringComparison.CurrentCultureIgnoreCase) && !q.Equals(typed, StringComparison.CurrentCultureIgnoreCase))
@@ -271,7 +271,7 @@ public partial class MainWindow
     static SearchSuggestion MailSuggestion(MessageSummary m, string typed, IMailProvider provider) => new SearchSuggestion
     {
         Kind = SuggestionKind.Mail,
-        Title = m.Subject.Length > 0 ? m.Subject : "(nessun oggetto)",
+        Title = m.Subject.Length > 0 ? m.Subject : T("(nessun oggetto)"),
         Subtitle = $"{m.From.Display} · {MessageItem.Format(m.Date)}",
         Query = typed,
         Typed = typed,
@@ -294,7 +294,7 @@ public partial class MainWindow
                 {
                     Kind = SuggestionKind.File,
                     Title = name,
-                    Subtitle = $"{MessageItem.Format(m.Date)} · da {m.From.Display}",
+                    Subtitle = T("{0} · da {1}", MessageItem.Format(m.Date), m.From.Display),
                     Query = query,
                     Typed = typed,
                     Message = m,
@@ -320,7 +320,7 @@ public partial class MainWindow
         var items = list.ToList();
         SuggestList.ItemsSource = items;
         bool waiting = suggestPending && suggestTab is not SuggestTab.People;
-        SuggestStatus.Text = waiting ? "Cerco file e messaggi…" : items.Count == 0 ? "Nessun suggerimento" : "";
+        SuggestStatus.Text = waiting ? T("Cerco file e messaggi…") : items.Count == 0 ? T("Nessun suggerimento") : "";
         SuggestStatus.Visibility = SuggestStatus.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         // Senza nulla scritto il pannello serve solo per le ricerche recenti.
         bool empty = SearchBox.Text.Trim().Length == 0;

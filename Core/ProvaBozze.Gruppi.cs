@@ -103,6 +103,12 @@ static partial class ProvaBozze
         new("aggiornamenti", UpdatesTests), // aggiornamenti da GitHub, 15 ottobre: firma, manifesto, rete, zip, sostituzione (ProvaBozze.Aggiornamenti.cs)
         new("foto", () => Wait(PhotoDataTestsAsync)), // le foto della pagina GitHub, 15 ottobre: dati finti, immagini nel testo, posta certificata (ProvaBozze.Foto.cs)
         new("ritocchi", () => Wait(TouchUpsAsync)), // ritocchi del 16 ottobre: rotellina, numero sull'icona, aggiornamento nella barra del titolo, scaricamenti (ProvaBozze.Ritocchi.cs)
+        new("lingua", LanguageTests), // Missiva in inglese, 21 ottobre: Lingua, T, N e {local:T}, i sorgenti e i file delle traduzioni (ProvaBozze.Lingua.cs); sul thread STA per il XAML
+        new("lingua-finestra", LanguageWindowTests), // l'inglese dell'area finestra, di chi la traduce (ProvaBozze.LinguaFinestra.cs)
+        new("lingua-impostazioni", LanguageSettingsTests), // l'inglese dell'area impostazioni (ProvaBozze.LinguaImpostazioni.cs)
+        new("lingua-lettura", LanguageReadingTests), // l'inglese dell'area lettura (ProvaBozze.LinguaLettura.cs)
+        new("lingua-agenda", LanguageCalendarTests), // l'inglese dell'area agenda (ProvaBozze.LinguaAgenda.cs)
+        new("lingua-servizio", LanguageServiceTests), // l'inglese dell'area servizio (ProvaBozze.LinguaServizio.cs)
         new("caduta", RobCrash, Manual: true), // solo a mano: chiude il processo con un errore su un altro thread (C-24)
     ];
 
@@ -150,6 +156,9 @@ static partial class ProvaBozze
             {
                 if (fresh) FreshData();
                 Log.WatchUnhandled(); // come Program.Main: i lavori in sottofondo falliti durante le prove si contano (RobUnobservedMeasure)
+                // In italiano, come Missiva in italiano qualunque sia la lingua di Windows (Lingua.Start), anche per i testi di WPF.
+                Lingua.Force("it");
+                CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.CurrentUICulture = Lingua.Culture;
                 var times = RunGroups(groups);
                 Report.Add("--- Gruppi di questo giro: controlli e secondi (il nome è quello di --prova-audit)");
                 foreach (var (name, count, seconds) in times) Report.Add($"      {name}: {count} controlli, {seconds.ToString("0.0", CultureInfo.InvariantCulture)} s");

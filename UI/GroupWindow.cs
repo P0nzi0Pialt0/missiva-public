@@ -23,7 +23,7 @@ public sealed class GroupWindow : Window
     public GroupWindow(Contact? group)
     {
         original = group;
-        Title = group == null ? "Nuovo gruppo" : "Modifica gruppo";
+        Title = group == null ? T("Nuovo gruppo") : T("Modifica gruppo");
         Width = 520;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
@@ -32,13 +32,13 @@ public sealed class GroupWindow : Window
 
         var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
         panel.Children.Add(new TextBlock { Text = Title, FontSize = 22, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) });
-        panel.Children.Add(new TextBlock { Text = "Nome del gruppo", Margin = new Thickness(0, 0, 0, 4) });
-        AutomationProperties.SetName(name, "Nome del gruppo");
+        panel.Children.Add(new TextBlock { Text = T("Nome del gruppo"), Margin = new Thickness(0, 0, 0, 4) });
+        AutomationProperties.SetName(name, T("Nome del gruppo"));
         panel.Children.Add(name);
-        panel.Children.Add(new TextBlock { Text = "Persone, una per riga (Nome <indirizzo> o solo l'indirizzo)", Margin = new Thickness(0, 14, 0, 4), TextWrapping = TextWrapping.Wrap });
-        AutomationProperties.SetName(members, "Persone del gruppo");
+        panel.Children.Add(new TextBlock { Text = T("Persone, una per riga (Nome <indirizzo> o solo l'indirizzo)"), Margin = new Thickness(0, 14, 0, 4), TextWrapping = TextWrapping.Wrap });
+        AutomationProperties.SetName(members, T("Persone del gruppo"));
         panel.Children.Add(members);
-        var note = new TextBlock { Text = "Il gruppo resta su questo PC, cifrato. Scrivendo il suo nome in A, Cc o Ccn lo trovi fra i suggerimenti: scelto, diventa gli indirizzi delle sue persone.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
+        var note = new TextBlock { Text = T("Il gruppo resta su questo PC, cifrato. Scrivendo il suo nome in A, Cc o Ccn lo trovi fra i suggerimenti: scelto, diventa gli indirizzi delle sue persone."), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
         note.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryTextBrush");
         panel.Children.Add(note);
         panel.Children.Add(error);
@@ -49,8 +49,8 @@ public sealed class GroupWindow : Window
         }
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 20, 0, 0) };
-        var cancel = new Button { Content = "Annulla", MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
-        var save = new Button { Content = "Salva", MinWidth = 100, IsDefault = true };
+        var cancel = new Button { Content = T("Annulla"), MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+        var save = new Button { Content = T("Salva"), MinWidth = 100, IsDefault = true };
         save.SetResourceReference(StyleProperty, "AccentButtonStyle");
         save.Click += (_, _) => Save();
         buttons.Children.Add(cancel);
@@ -58,6 +58,9 @@ public sealed class GroupWindow : Window
         panel.Children.Add(buttons);
         Content = panel;
         Loaded += (_, _) => name.Focus();
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto, anche in inglese): fuori dallo schermo, senza il fuoco
+#endif
     }
 
     void Save()
@@ -68,10 +71,10 @@ public sealed class GroupWindow : Window
             error.Visibility = Visibility.Visible;
         }
         var lines = members.Text.Split(['\n', '\r', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-        if (lines.FirstOrDefault(l => Contact.ParseMember(l) == null) is { } bad) { Fail($"Controlla \"{bad}\": serve un indirizzo di posta."); return; }
+        if (lines.FirstOrDefault(l => Contact.ParseMember(l) == null) is { } bad) { Fail(T("Controlla \"{0}\": serve un indirizzo di posta.", bad)); return; }
         var people = lines.Select(l => Contact.ParseMember(l)!).GroupBy(a => a.Email, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
-        if (name.Text.Trim().Length == 0) { Fail("Scrivi il nome del gruppo."); return; }
-        if (people.Count == 0) { Fail("Aggiungi almeno una persona."); return; }
+        if (name.Text.Trim().Length == 0) { Fail(T("Scrivi il nome del gruppo.")); return; }
+        if (people.Count == 0) { Fail(T("Aggiungi almeno una persona.")); return; }
         var result = original?.Clone() ?? new Contact();
         result.IsGroup = true;
         result.DisplayName = name.Text.Trim();

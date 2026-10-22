@@ -1,5 +1,7 @@
 # Aggiornamenti
 
+[English](aggiornamenti.en.md)
+
 Chi installa Missiva da un rilascio pubblicato su GitHub (la pagina Releases del repository) la tiene aggiornata da
 Missiva stessa: quando esce una versione nuova lo dice, e si aggiorna solo quando glielo chiedi.
 

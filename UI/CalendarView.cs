@@ -20,7 +20,8 @@ public enum CalendarMode { Day, WorkWeek, Week, Month }
 /// </summary>
 public sealed class CalendarView : UserControl
 {
-    static readonly CultureInfo Italian = new("it-IT");
+    /// <summary>Giorni e mesi nella lingua di Missiva (it-IT in italiano, come prima).</summary>
+    static CultureInfo Culture => Lingua.Culture;
     static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets");
     const double HourHeight = 48;
 
@@ -64,7 +65,7 @@ public sealed class CalendarView : UserControl
         var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 8), LastChildFill = true };
         Grid.SetColumnSpan(bar, 3);
         var views = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        foreach (var (m, name) in new[] { (CalendarMode.Day, "Giorno"), (CalendarMode.WorkWeek, "Settimana lavorativa"), (CalendarMode.Week, "Settimana"), (CalendarMode.Month, "Mese") })
+        foreach (var (m, name) in new[] { (CalendarMode.Day, T("Giorno")), (CalendarMode.WorkWeek, T("Settimana lavorativa")), (CalendarMode.Week, T("Settimana")), (CalendarMode.Month, T("Mese")) })
         {
             var button = new RadioButton { Content = name, GroupName = "calendario", Margin = new Thickness(0, 0, 4, 0), IsChecked = m == mode };
             button.SetResourceReference(StyleProperty, "Tab");
@@ -75,18 +76,18 @@ public sealed class CalendarView : UserControl
         }
         DockPanel.SetDock(views, Dock.Right);
         bar.Children.Add(views);
-        var create = new Button { Content = "Nuovo evento", Margin = new Thickness(0, 0, 12, 0), Padding = new Thickness(14, 5, 14, 6) };
+        var create = new Button { Content = T("Nuovo evento"), Margin = new Thickness(0, 0, 12, 0), Padding = new Thickness(14, 5, 14, 6) };
         create.SetResourceReference(StyleProperty, "AccentButtonStyle");
-        AutomationProperties.SetName(create, "Nuovo evento");
-        create.ToolTip = "Nuovo evento (Ctrl+N nel calendario, Ctrl+Maiusc+A da ovunque)";
+        AutomationProperties.SetName(create, T("Nuovo evento"));
+        create.ToolTip = T("Nuovo evento (Ctrl+N nel calendario, Ctrl+Maiusc+A da ovunque)");
         create.Click += (_, _) => NewEvent();
         DockPanel.SetDock(create, Dock.Left);
         bar.Children.Add(create);
-        var today = Command("", "Oggi", "Oggi");
+        var today = Command("", T("Oggi"), T("Oggi"));
         today.Click += (_, _) => { anchor = DateTime.Today; hoursMoved = false; Show(); }; // "Oggi" riporta anche le ore al mattino
-        var back = Command("", null, "Periodo precedente");
+        var back = Command("", null, T("Periodo precedente"));
         back.Click += (_, _) => Step(-1);
-        var forward = Command("", null, "Periodo successivo");
+        var forward = Command("", null, T("Periodo successivo"));
         forward.Click += (_, _) => Step(1);
         foreach (var b in new[] { today, back, forward }) { DockPanel.SetDock(b, Dock.Left); bar.Children.Add(b); }
         DockPanel.SetDock(title, Dock.Left);
@@ -208,7 +209,7 @@ public sealed class CalendarView : UserControl
         var (from, to) = Range();
         var list = providers().Where(p => p.HasCalendar).ToList();
         if (list.Count == 0) return;
-        status.Text = "Aggiornamento…";
+        status.Text = T("Aggiornamento…");
         var clock = Stopwatch.StartNew();
         await Task.WhenAll(list.Select(async p =>
         {
@@ -297,8 +298,8 @@ public sealed class CalendarView : UserControl
         var (from, to) = Range();
         title.Text = mode switch
         {
-            CalendarMode.Day => anchor.ToString("dddd d MMMM yyyy", Italian),
-            CalendarMode.Month => Capital(anchor.ToString("MMMM yyyy", Italian)),
+            CalendarMode.Day => anchor.ToString("dddd d MMMM yyyy", Culture),
+            CalendarMode.Month => Capital(anchor.ToString("MMMM yyyy", Culture)),
             _ => Period(from, to.AddDays(-1)),
         };
         FillAccounts();
@@ -307,12 +308,19 @@ public sealed class CalendarView : UserControl
         if (selected is { } s && !events.Any(x => x.Provider == s.Provider && x.Event.Id == s.Event.Id)) ShowDetails(null);
     }
 
-    static string Capital(string text) => text.Length > 0 ? char.ToUpper(text[0], Italian) + text[1..] : text;
+    static string Capital(string text) => text.Length > 0 ? char.ToUpper(text[0], Culture) + text[1..] : text;
+
+    /// <summary>Il titolo di un evento: "(nessun titolo)" se non ce l'ha, e "Annullato: " davanti se è annullato.</summary>
+    static string Shown(CalendarEvent e)
+    {
+        var subject = e.Subject.Length > 0 ? e.Subject : T("(nessun titolo)");
+        return e.IsCancelled ? T("Annullato: {0}", subject) : subject;
+    }
 
     static string Period(DateTime first, DateTime last) =>
-        first.Month == last.Month ? $"{first.Day} - {last.ToString("d MMMM yyyy", Italian)}"
-        : first.Year == last.Year ? $"{first.ToString("d MMMM", Italian)} - {last.ToString("d MMMM yyyy", Italian)}"
-        : $"{first.ToString("d MMMM yyyy", Italian)} - {last.ToString("d MMMM yyyy", Italian)}";
+        first.Month == last.Month ? $"{first.Day} - {last.ToString("d MMMM yyyy", Culture)}"
+        : first.Year == last.Year ? $"{first.ToString("d MMMM", Culture)} - {last.ToString("d MMMM yyyy", Culture)}"
+        : $"{first.ToString("d MMMM yyyy", Culture)} - {last.ToString("d MMMM yyyy", Culture)}";
 
     /// <summary>A sinistra, per account: i calendari con il loro colore (mostra e nascondi), o il pulsante del consenso.</summary>
     void FillAccounts()
@@ -323,27 +331,27 @@ public sealed class CalendarView : UserControl
             accountsPanel.Children.Add(new TextBlock { Text = p.Account.Email, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(4, 10, 0, 4), ToolTip = p.Account.Email });
             if (!p.HasCalendar)
             {
-                accountsPanel.Children.Add(Note("Per gli altri account il calendario (CalDAV) arriverà più avanti."));
+                accountsPanel.Children.Add(Note(T("Per gli altri account il calendario (CalDAV) arriverà più avanti.")));
                 continue;
             }
             if (errors.TryGetValue(p, out var error))
             {
-                var t = Note("Calendario non disponibile: " + error);
+                var t = Note(T("Calendario non disponibile: {0}", error));
                 Dialog.Critical(t);
                 accountsPanel.Children.Add(t);
                 continue;
             }
             if (!data.TryGetValue(p, out var d))
             {
-                accountsPanel.Children.Add(Note("Caricamento…"));
+                accountsPanel.Children.Add(Note(T("Caricamento…")));
                 continue;
             }
             if (d == null)
             {
-                accountsPanel.Children.Add(Note("Missiva non ha ancora il permesso di leggere il calendario di questo account."));
-                var allow = new Button { Content = new TextBlock { Text = "Consenti l'accesso al calendario", TextWrapping = TextWrapping.Wrap }, Margin = new Thickness(4, 6, 0, 4),
+                accountsPanel.Children.Add(Note(T("Missiva non ha ancora il permesso di leggere il calendario di questo account.")));
+                var allow = new Button { Content = new TextBlock { Text = T("Consenti l'accesso al calendario"), TextWrapping = TextWrapping.Wrap }, Margin = new Thickness(4, 6, 0, 4),
                                          HorizontalAlignment = HorizontalAlignment.Left };
-                AutomationProperties.SetName(allow, "Consenti l'accesso al calendario di " + p.Account.Email);
+                AutomationProperties.SetName(allow, T("Consenti l'accesso al calendario di {0}", p.Account.Email));
                 allow.Click += async (_, _) =>
                 {
                     if (AllowRequested != null && await AllowRequested(p)) _ = LoadAsync();
@@ -385,12 +393,14 @@ public sealed class CalendarView : UserControl
     {
         var more = new Button
         {
-            Content = $"+{count} altri", FontSize = 12, Padding = new Thickness(4, 0, 4, 1), Margin = new Thickness(0, 1, 0, 1), MinWidth = 0, MinHeight = 0,
+            Content = T("+{0} altri", count), FontSize = 12, Padding = new Thickness(4, 0, 4, 1), Margin = new Thickness(0, 1, 0, 1), MinWidth = 0, MinHeight = 0,
             HorizontalAlignment = HorizontalAlignment.Left, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = System.Windows.Input.Cursors.Hand,
-            ToolTip = "Mostra tutti gli eventi di " + day.ToString("dddd d MMMM", Italian),
+            ToolTip = T("Mostra tutti gli eventi di {0}", day.ToString("dddd d MMMM", Culture)),
         };
         more.SetResourceReference(ForegroundProperty, "SecondaryTextBrush");
-        AutomationProperties.SetName(more, $"Altri {count} eventi di {day.ToString("dddd d MMMM", Italian)}: apri il giorno");
+        // In inglese con un evento solo il singolare ("1 more events" non va); l'italiano resta com'era.
+        AutomationProperties.SetName(more, Lingua.English && count == 1 ? string.Format(Culture, "1 more event on {0}: open the day", day.ToString("dddd d MMMM", Culture))
+                                           : T("Altri {0} eventi di {1}: apri il giorno", count, day.ToString("dddd d MMMM", Culture)));
         more.Click += (_, _) => { anchor = day; modeButtons[CalendarMode.Day].IsChecked = true; };
         return more;
     }
@@ -430,7 +440,7 @@ public sealed class CalendarView : UserControl
             var number = new TextBlock { Text = day.Day.ToString(), FontSize = 20, FontWeight = isToday ? FontWeights.SemiBold : FontWeights.Normal };
             if (isToday) number.SetResourceReference(TextBlock.ForegroundProperty, "AccentTextFillColorPrimaryBrush");
             head.Children.Add(number);
-            var name = new TextBlock { Text = Capital(day.ToString("dddd", Italian)), FontSize = 12 };
+            var name = new TextBlock { Text = Capital(day.ToString("dddd", Culture)), FontSize = 12 };
             name.SetResourceReference(TextBlock.ForegroundProperty, isToday ? "AccentTextFillColorPrimaryBrush" : "SecondaryTextBrush");
             head.Children.Add(name);
             Grid.SetColumn(head, i + 1);
@@ -564,7 +574,7 @@ public sealed class CalendarView : UserControl
         var names = new UniformGrid { Columns = 7, Margin = new Thickness(0, 8, 0, 4) };
         for (int i = 0; i < 7; i++)
         {
-            var n = new TextBlock { Text = Capital(from.AddDays(i).ToString("dddd", Italian)), FontSize = 12, Margin = new Thickness(8, 0, 0, 0) };
+            var n = new TextBlock { Text = Capital(from.AddDays(i).ToString("dddd", Culture)), FontSize = 12, Margin = new Thickness(8, 0, 0, 0) };
             n.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryTextBrush");
             names.Children.Add(n);
         }
@@ -578,10 +588,10 @@ public sealed class CalendarView : UserControl
             cell.SetResourceReference(Border.BorderBrushProperty, "CardStrokeColorDefaultBrush");
             cell.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) { e.Handled = true; NewEvent(day, wholeDay: true); } };
             var stack = new StackPanel();
-            var number = new Button { Content = day.Day == 1 ? day.ToString("d MMM", Italian) : day.Day.ToString(), Padding = new Thickness(4, 0, 4, 0), MinWidth = 0,
+            var number = new Button { Content = day.Day == 1 ? day.ToString("d MMM", Culture) : day.Day.ToString(), Padding = new Thickness(4, 0, 4, 0), MinWidth = 0,
                                       HorizontalAlignment = HorizontalAlignment.Left, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
                                       FontWeight = day == DateTime.Today ? FontWeights.SemiBold : FontWeights.Normal };
-            AutomationProperties.SetName(number, day.ToString("dddd d MMMM", Italian));
+            AutomationProperties.SetName(number, day.ToString("dddd d MMMM", Culture));
             if (day == DateTime.Today) number.SetResourceReference(ForegroundProperty, "AccentTextFillColorPrimaryBrush");
             else if (day.Month != anchor.Month) number.SetResourceReference(ForegroundProperty, "SecondaryTextBrush");
             number.Click += (_, _) => { anchor = day; modeButtons[CalendarMode.Day].IsChecked = true; };
@@ -606,7 +616,7 @@ public sealed class CalendarView : UserControl
         bool dark = ReadingView.Dark;
         var tint = Color.FromArgb((byte)(e.Response == "tentativelyAccepted" || e.ShowAs == "free" ? (dark ? 0x30 : 0x22) : (dark ? 0x60 : 0x40)), color.R, color.G, color.B);
         var content = new StackPanel();
-        var subject = new TextBlock { Text = (e.IsCancelled ? "Annullato: " : "") + (e.Subject.Length > 0 ? e.Subject : "(nessun titolo)"), FontSize = 12,
+        var subject = new TextBlock { Text = Shown(e), FontSize = 12,
                                       FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         if (e.IsCancelled || e.Response == "declined") subject.TextDecorations = TextDecorations.Strikethrough;
         if (compact && !e.AllDay) subject.Text = $"{e.Start:HH:mm} {subject.Text}";
@@ -629,7 +639,7 @@ public sealed class CalendarView : UserControl
             HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch,
             ToolTip = $"{e.Subject}\n{Calendars.When(e)}" + (e.Location.Length > 0 ? "\n" + e.Location : ""), Cursor = System.Windows.Input.Cursors.Hand,
         };
-        AutomationProperties.SetName(button, $"{(e.Subject.Length > 0 ? e.Subject : "(nessun titolo)")}, {Calendars.When(e)}");
+        AutomationProperties.SetName(button, $"{(e.Subject.Length > 0 ? e.Subject : T("(nessun titolo)"))}, {Calendars.When(e)}");
         button.Click += (_, _) => ShowDetails((p, e));
         // Doppio clic su un evento proprio: la finestra in modifica, come nel nuovo Outlook.
         button.MouseDoubleClick += (_, ev) =>
@@ -701,8 +711,8 @@ public sealed class CalendarView : UserControl
         var owner = Window.GetWindow(this);
         if (choices.Count == 0)
         {
-            Dialog.Show(owner, "Nessun calendario in cui scrivere",
-                "Per creare un evento serve un account Microsoft o Google con l'accesso al calendario: premi \"Consenti l'accesso al calendario\" a sinistra.");
+            Dialog.Show(owner, T("Nessun calendario in cui scrivere"),
+                T("Per creare un evento serve un account Microsoft o Google con l'accesso al calendario: premi \"Consenti l'accesso al calendario\" a sinistra."));
             return;
         }
         var now = DateTime.Now;
@@ -716,21 +726,29 @@ public sealed class CalendarView : UserControl
         Log.Write($"calendario: nuovo evento dal {start:dd/MM/yyyy HH:mm}{(wholeDay ? ", tutto il giorno" : "")}");
         if (window.ShowDialog() != true) return;
         lastChoice = choices.FirstOrDefault(c => c.Provider == window.CreatedIn && c.Calendar.Id == window.Created?.CalendarId);
-        status.Text = window.Created?.IsMeeting == true ? "Riunione inviata" : "Evento salvato";
+        status.Text = window.Created?.IsMeeting == true ? T("Riunione inviata") : T("Evento salvato");
         _ = LoadAsync();
     }
 
     // ---------------------------------------------------------------- modifica, spostamento, eliminazione
 
+    /// <summary>Che cosa si fa di un evento ricorrente: la domanda di AskSeries ha una frase intera per ognuna.</summary>
+    enum SeriesAction { Edit, Cancel, Delete }
+
     /// <summary>
     /// Per un evento ricorrente, come Outlook: solo questo evento (false) o tutta la serie (true); null se si annulla.
     /// Gli eventi singoli non chiedono nulla.
     /// </summary>
-    bool? AskSeries(CalendarEvent e, string verb)
+    bool? AskSeries(CalendarEvent e, SeriesAction action)
     {
         if (!e.IsRecurring || e.SeriesMasterId.Length == 0) return false;
-        return Dialog.Ask(Window.GetWindow(this), $"{verb} l'evento ricorrente?", $"\"{e.Subject}\" si ripete. {verb} solo questo evento o tutta la serie?",
-                          "Solo questo evento", "Tutta la serie") switch
+        var (heading, question) = action switch
+        {
+            SeriesAction.Edit => (T("Modificare l'evento ricorrente?"), T("\"{0}\" si ripete. Modificare solo questo evento o tutta la serie?", e.Subject)),
+            SeriesAction.Cancel => (T("Annullare l'evento ricorrente?"), T("\"{0}\" si ripete. Annullare solo questo evento o tutta la serie?", e.Subject)),
+            _ => (T("Eliminare l'evento ricorrente?"), T("\"{0}\" si ripete. Eliminare solo questo evento o tutta la serie?", e.Subject)),
+        };
+        return Dialog.Ask(Window.GetWindow(this), heading, question, T("Solo questo evento"), T("Tutta la serie")) switch
         {
             Choice.Primary => false,
             Choice.Secondary => true,
@@ -741,8 +759,8 @@ public sealed class CalendarView : UserControl
     /// <summary>Modifica (doppio clic o dai dettagli): la finestra dell'evento con i suoi campi; poi il calendario si rilegge.</summary>
     public void EditEvent(IMailProvider p, CalendarEvent e)
     {
-        if (!CanEdit(p, e) || AskSeries(e, "Modificare") is not { } series) return;
-        var calendar = data.GetValueOrDefault(p)?.Calendars.FirstOrDefault(c => c.Id == e.CalendarId) ?? new CalendarInfo(e.CalendarId, "Calendario", "#0F6CBD", false);
+        if (!CanEdit(p, e) || AskSeries(e, SeriesAction.Edit) is not { } series) return;
+        var calendar = data.GetValueOrDefault(p)?.Calendars.FirstOrDefault(c => c.Id == e.CalendarId) ?? new CalendarInfo(e.CalendarId, T("Calendario"), "#0F6CBD", false);
         var window = EventWindow.ForEdit(new EventWindow.Choice(p, calendar), e, series);
         window.Owner = Window.GetWindow(this);
 #if DEBUG
@@ -750,7 +768,7 @@ public sealed class CalendarView : UserControl
 #endif
         Log.Write($"calendario: modifica di {e.Id}{(series ? ", tutta la serie" : "")}");
         if (window.ShowDialog() != true) return;
-        status.Text = e.Attendees.Count > 0 || window.Created?.IsMeeting == true ? "Aggiornamento inviato" : "Evento salvato";
+        status.Text = e.Attendees.Count > 0 || window.Created?.IsMeeting == true ? T("Aggiornamento inviato") : T("Evento salvato");
         _ = LoadAsync();
     }
 
@@ -763,19 +781,20 @@ public sealed class CalendarView : UserControl
         if (start == e.Start || !CanEdit(p, e)) return;
         var owner = Window.GetWindow(this);
         var moved = Calendars.Moved(e, start, start + (e.End - e.Start));
-        if (e.Attendees.Count > 0 && Dialog.Ask(owner, "Spostare la riunione?",
-                $"\"{e.Subject}\" va {moved.Start.ToString("dddd d MMMM, HH:mm", Italian)} - {moved.End:HH:mm}. I partecipanti ricevono l'aggiornamento.", "Sposta e invia") != Choice.Primary)
+        if (e.Attendees.Count > 0 && Dialog.Ask(owner, T("Spostare la riunione?"),
+                T("\"{0}\" va {1} - {2}. I partecipanti ricevono l'aggiornamento.", e.Subject, moved.Start.ToString("dddd d MMMM, HH:mm", Culture), moved.End.ToString("HH:mm")),
+                T("Sposta e invia")) != Choice.Primary)
             return;
         try
         {
             await p.UpdateEventAsync(e, moved, series: false);
-            status.Text = "Evento spostato";
+            status.Text = T("Evento spostato");
             _ = LoadAsync();
         }
         catch (Exception ex)
         {
             Log.Error("evento spostato", ex);
-            Dialog.Show(owner, "Evento non spostato", ex.Message);
+            Dialog.Show(owner, T("Evento non spostato"), ex.Message);
         }
     }
 
@@ -791,16 +810,20 @@ public sealed class CalendarView : UserControl
     /// </summary>
     internal static (bool AsksNote, string Text) CancelPrompt(AccountKind kind, string subject, int attendees)
     {
-        var leaves = $"\"{subject}\" esce dai calendari dei {attendees} partecipanti";
+        // In inglese con un partecipante solo una frase al singolare ("its 1 attendees" non va); l'italiano resta com'era.
+        if (Lingua.English && attendees == 1)
+            return kind == AccountKind.Gmail
+                ? (false, string.Format(Lingua.Culture, "\"{0}\" will be removed from the attendee's calendar, and Google will let them know it's canceled. Google Calendar doesn't let you add a note to a cancellation: if you need to, send them a message.", subject))
+                : (true, string.Format(Lingua.Culture, "\"{0}\" will be removed from the attendee's calendar, and they'll get the cancellation with this note.", subject));
         return kind == AccountKind.Gmail
-            ? (false, $"{leaves}, che ricevono da Google l'avviso che è annullata. Google Calendar non permette di aggiungere una nota all'annullamento: se serve, scrivi loro un messaggio.")
-            : (true, $"{leaves}, che ricevono l'annullamento con questa nota.");
+            ? (false, T("\"{0}\" esce dai calendari dei {1} partecipanti, che ricevono da Google l'avviso che è annullata. Google Calendar non permette di aggiungere una nota all'annullamento: se serve, scrivi loro un messaggio.", subject, attendees))
+            : (true, T("\"{0}\" esce dai calendari dei {1} partecipanti, che ricevono l'annullamento con questa nota.", subject, attendees));
     }
 
     async Task RemoveEventAsync(IMailProvider p, CalendarEvent e)
     {
         bool meeting = e.Attendees.Count > 0;
-        if (!CanEdit(p, e) || AskSeries(e, meeting ? "Annullare" : "Eliminare") is not { } series) return;
+        if (!CanEdit(p, e) || AskSeries(e, meeting ? SeriesAction.Cancel : SeriesAction.Delete) is not { } series) return;
         var owner = Window.GetWindow(this);
         string comment = "";
         if (meeting)
@@ -808,26 +831,27 @@ public sealed class CalendarView : UserControl
             var (asksNote, text) = CancelPrompt(p.Account.Kind, e.Subject, e.Attendees.Count);
             if (asksNote)
             {
-                var note = new NameWindow("Annulla riunione", "", "Invia l'annullamento", text, "Nota per i partecipanti (facoltativa)", optional: true) { Owner = owner };
+                var note = new NameWindow(T("Annulla riunione"), "", T("Invia l'annullamento"), text, T("Nota per i partecipanti (facoltativa)"), optional: true) { Owner = owner };
                 if (note.ShowDialog() != true) return;
                 comment = note.Value;
             }
-            else if (Dialog.Ask(owner, "Annullare la riunione?", text, "Invia l'annullamento") != Choice.Primary) return;
+            else if (Dialog.Ask(owner, T("Annullare la riunione?"), text, T("Invia l'annullamento")) != Choice.Primary) return;
         }
-        else if (Dialog.Ask(owner, "Eliminare l'evento?", $"\"{e.Subject}\", {Calendars.When(e)}" + (series ? ", con tutta la serie." : "."), "Elimina") != Choice.Primary)
+        else if (Dialog.Ask(owner, T("Eliminare l'evento?"), series ? T("\"{0}\", {1}, con tutta la serie.", e.Subject, Calendars.When(e)) : $"\"{e.Subject}\", {Calendars.When(e)}.",
+                            T("Elimina")) != Choice.Primary)
             return;
         try
         {
             if (meeting) await p.CancelEventAsync(e, comment, series);
             else await p.DeleteEventAsync(e, series);
-            status.Text = meeting ? "Riunione annullata" : "Evento eliminato";
+            status.Text = meeting ? T("Riunione annullata") : T("Evento eliminato");
             ShowDetails(null);
             _ = LoadAsync();
         }
         catch (Exception ex)
         {
             Log.Error(meeting ? "annullamento della riunione" : "eliminazione dell'evento", ex);
-            Dialog.Show(owner, meeting ? "Riunione non annullata" : "Evento non eliminato", ex.Message);
+            Dialog.Show(owner, meeting ? T("Riunione non annullata") : T("Evento non eliminato"), ex.Message);
         }
     }
 
@@ -857,13 +881,13 @@ public sealed class CalendarView : UserControl
         try
         {
             await p.RespondToEventAsync(e, answer, "", send: true);
-            status.Text = answer switch { InviteAnswer.Accept => "Accettato", InviteAnswer.Decline => "Rifiutato", _ => "Risposta provvisoria inviata" };
+            status.Text = answer switch { InviteAnswer.Accept => T("Accettato"), InviteAnswer.Decline => T("Rifiutato"), _ => T("Risposta provvisoria inviata") };
             _ = LoadAsync();
         }
         catch (Exception ex)
         {
             Log.Error("risposta dal calendario", ex);
-            Dialog.Show(Window.GetWindow(this), "Risposta non inviata", ex.Message);
+            Dialog.Show(Window.GetWindow(this), T("Risposta non inviata"), ex.Message);
         }
     }
 
@@ -883,27 +907,27 @@ public sealed class CalendarView : UserControl
         var panel = new StackPanel { Margin = new Thickness(18, 12, 18, 18) };
         var close = new Button { Content = new TextBlock { Text = "", FontFamily = Icons, FontSize = 12 }, HorizontalAlignment = HorizontalAlignment.Right,
                                  Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(8, 6, 8, 6) };
-        AutomationProperties.SetName(close, "Chiudi i dettagli");
+        AutomationProperties.SetName(close, T("Chiudi i dettagli"));
         close.Click += (_, _) => ShowDetails(null);
         panel.Children.Add(close);
-        panel.Children.Add(new TextBlock { Text = (e.IsCancelled ? "Annullato: " : "") + (e.Subject.Length > 0 ? e.Subject : "(nessun titolo)"), FontSize = 20,
+        panel.Children.Add(new TextBlock { Text = Shown(e), FontSize = 20,
                                            FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
         var where = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
         if (calendar != null)
             where.Children.Add(new Border { Width = 10, Height = 10, CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center,
                                             Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(calendar.Color)) });
-        where.Children.Add(Note($"{calendar?.Name ?? "Calendario"} · {p.Account.Email}"));
+        where.Children.Add(Note($"{calendar?.Name ?? T("Calendario")} · {p.Account.Email}"));
         panel.Children.Add(where);
-        panel.Children.Add(Line("", Calendars.When(e) + (e.IsRecurring ? "\nEvento ricorrente" : "")));
+        panel.Children.Add(Line("", e.IsRecurring ? Calendars.When(e) + "\n" + T("Evento ricorrente") : Calendars.When(e)));
         if (e.Location.Length > 0) panel.Children.Add(Line("", e.Location));
-        if (e.ReminderOn) panel.Children.Add(Line("", e.ReminderMinutes == 0 ? "Promemoria all'inizio" : $"Promemoria {e.ReminderMinutes} minuti prima"));
+        if (e.ReminderOn) panel.Children.Add(Line("", e.ReminderMinutes == 0 ? T("Promemoria all'inizio") : T("Promemoria {0} minuti prima", e.ReminderMinutes)));
         if (e.Response is { Length: > 0 } and not ("organizer" or "none") && Calendars.ResponseText(e.Response) is { Length: > 0 } answer)
-            panel.Children.Add(Line("", "La tua risposta: " + answer));
+            panel.Children.Add(Line("", T("La tua risposta: {0}", answer)));
         // Invitati: Accetta, Provvisorio e Rifiuta anche da qui, come nel nuovo Outlook (con la risposta all'organizzatore).
         if (!e.IsCancelled && e.Organizer != null && e.Response is "notResponded" or "tentativelyAccepted" or "accepted" or "declined")
         {
             var answers = new WrapPanel { Margin = new Thickness(0, 6, 0, 6) };
-            foreach (var (value, text) in new[] { (InviteAnswer.Accept, "Accetta"), (InviteAnswer.Tentative, "Provvisorio"), (InviteAnswer.Decline, "Rifiuta") })
+            foreach (var (value, text) in new[] { (InviteAnswer.Accept, T("Accetta")), (InviteAnswer.Tentative, T("Provvisorio")), (InviteAnswer.Decline, T("Rifiuta")) })
             {
                 var button = new Button { Content = text, Margin = new Thickness(0, 0, 6, 6), MinWidth = 88 };
                 AutomationProperties.SetName(button, text);
@@ -916,43 +940,43 @@ public sealed class CalendarView : UserControl
         if (CanEdit(p, e))
         {
             var own = new WrapPanel { Margin = new Thickness(0, 6, 0, 6) };
-            var edit = new Button { Content = "Modifica", Margin = new Thickness(0, 0, 6, 6), MinWidth = 88 };
-            AutomationProperties.SetName(edit, "Modifica l'evento");
+            var edit = new Button { Content = T("Modifica"), Margin = new Thickness(0, 0, 6, 6), MinWidth = 88 };
+            AutomationProperties.SetName(edit, T("Modifica l'evento"));
             edit.Click += (_, _) => EditEvent(p, e);
             own.Children.Add(edit);
-            var remove = new Button { Content = e.Attendees.Count > 0 ? "Annulla riunione" : "Elimina", Margin = new Thickness(0, 0, 6, 6), MinWidth = 88 };
-            AutomationProperties.SetName(remove, e.Attendees.Count > 0 ? "Annulla la riunione" : "Elimina l'evento");
+            var remove = new Button { Content = e.Attendees.Count > 0 ? T("Annulla riunione") : T("Elimina"), Margin = new Thickness(0, 0, 6, 6), MinWidth = 88 };
+            AutomationProperties.SetName(remove, e.Attendees.Count > 0 ? T("Annulla la riunione") : T("Elimina l'evento"));
             remove.Click += async (_, _) => await RemoveEventAsync(p, e);
             own.Children.Add(remove);
             panel.Children.Add(own);
         }
         if (e.JoinUrl != null)
         {
-            var join = new Button { Content = "Partecipa", Margin = new Thickness(0, 8, 0, 8), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 120, ToolTip = e.JoinUrl };
+            var join = new Button { Content = T("Partecipa"), Margin = new Thickness(0, 8, 0, 8), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 120, ToolTip = e.JoinUrl };
             join.SetResourceReference(StyleProperty, "AccentButtonStyle");
-            AutomationProperties.SetName(join, "Partecipa alla riunione");
+            AutomationProperties.SetName(join, T("Partecipa alla riunione"));
             join.Click += (_, _) => Join(e.JoinUrl);
             panel.Children.Add(join);
         }
         if (e.Organizer is { } organizer && e.Response != "organizer")
-            panel.Children.Add(Line("", "Organizzatore: " + organizer));
+            panel.Children.Add(Line("", T("Organizzatore: {0}", organizer)));
         if (e.Attendees.Count > 0)
         {
-            panel.Children.Add(new TextBlock { Text = $"Partecipanti ({e.Attendees.Count})", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });
+            panel.Children.Add(new TextBlock { Text = T("Partecipanti ({0})", e.Attendees.Count), FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });
             foreach (var a in e.Attendees.Take(30))
             {
                 var row = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
-                var state = Note(Calendars.ResponseText(a.Response) is { Length: > 0 } r ? r : "In attesa");
+                var state = Note(Calendars.ResponseText(a.Response) is { Length: > 0 } r ? r : T("In attesa"));
                 DockPanel.SetDock(state, Dock.Right);
                 row.Children.Add(state);
-                row.Children.Add(new TextBlock { Text = a.Person.Display + (a.Optional ? " (facoltativo)" : ""), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = a.Person.Email });
+                row.Children.Add(new TextBlock { Text = a.Optional ? T("{0} (facoltativo)", a.Person.Display) : a.Person.Display, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = a.Person.Email });
                 panel.Children.Add(row);
             }
-            if (e.Attendees.Count > 30) panel.Children.Add(Note($"e altri {e.Attendees.Count - 30}"));
+            if (e.Attendees.Count > 30) panel.Children.Add(Note(T("e altri {0}", e.Attendees.Count - 30)));
         }
         if (e.Preview.Length > 0)
         {
-            panel.Children.Add(new TextBlock { Text = "Note", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });
+            panel.Children.Add(new TextBlock { Text = T("Note"), FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });
             panel.Children.Add(new TextBlock { Text = e.Preview.Length > 600 ? e.Preview[..600] + "…" : e.Preview, TextWrapping = TextWrapping.Wrap });
         }
         details.Child = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -985,8 +1009,8 @@ public sealed class CalendarView : UserControl
         bool known = MeetingHosts.Any(h => host == h || host.EndsWith("." + h, StringComparison.Ordinal));
         var warning = Safety.LinkWarning("", uri);
         if ((!known || warning != null) &&
-            Dialog.Ask(Window.GetWindow(this), "Aprire il link della riunione?", (warning ?? "Il link non porta a Teams, Zoom, Meet o Webex.") + "\n\nIndirizzo:\n" + uri.AbsoluteUri,
-                       "Apri") != Choice.Primary)
+            Dialog.Ask(Window.GetWindow(this), T("Aprire il link della riunione?"),
+                       T("{0}\n\nIndirizzo:\n{1}", warning ?? T("Il link non porta a Teams, Zoom, Meet o Webex."), uri.AbsoluteUri), T("Apri")) != Choice.Primary)
             return;
         Log.Write($"calendario: apro la riunione su {uri.Host}");
         try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); }

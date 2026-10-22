@@ -50,8 +50,6 @@ public sealed class ReadingPage
     /// </summary>
     public string Token { get; } = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
 
-    static readonly CultureInfo Italian = new("it-IT");
-
     public string Html { get; private set; } = "";
     /// <summary>Immagini incorporate (cid:), per percorso.</summary>
     public Dictionary<string, (byte[] Data, string Type)> Resources { get; } = new();
@@ -99,7 +97,7 @@ public sealed class ReadingPage
         string Px(double v) => (v / look.Zoom).ToString("0.###", CultureInfo.InvariantCulture) + "px";
         var body = $"<div class=\"empty\" style=\"font-family:{CssFonts(look.Fonts)};font-size:{Px(look.FontSize)};padding-top:{Px(2 * look.Down)}\">" +
                    $"<span class=\"glyph\" style=\"font-size:{Px(48)};color:{Hex(look.Glyph)}\"></span>" +
-                   $"<span style=\"margin-top:{Px(12)};color:{Hex(look.Text)}\">Seleziona un elemento da leggere</span></div>";
+                   $"<span style=\"margin-top:{Px(12)};color:{Hex(look.Text)}\">{E(T("Seleziona un elemento da leggere"))}</span></div>";
         return new ReadingPage { Html = Document(body, light, false, hold: false) };
     }
 
@@ -124,26 +122,27 @@ public sealed class ReadingPage
     {
         h.Append("<header class=\"subject\">");
         h.Append($"<h1>{E(header.Subject)}</h1>");
-        if (header.Sun) h.Append(Action("sun/0", "\uE706", light ? "Mostra il messaggio su fondo scuro" : "Mostra il messaggio su fondo chiaro"));
+        if (header.Sun) h.Append(Action("sun/0", "\uE706", light ? T("Mostra il messaggio su fondo scuro") : T("Mostra il messaggio su fondo chiaro")));
         h.Append("</header>");
         if (header.Account is var (email, color))
-            h.Append($"<div class=\"account\" title=\"Il messaggio \u00E8 nell'account {E(email)}\"><span class=\"dot\" style=\"background:{Hex(color)}\"></span>{E(email)}</div>");
+            h.Append($"<div class=\"account\" title=\"{E(T("Il messaggio è nell'account {0}", email))}\"><span class=\"dot\" style=\"background:{Hex(color)}\"></span>{E(email)}</div>");
 
         // Una riga sottile, come nel nuovo Outlook (prima tre righe a 1320 DIP e sei a 900): la spiegazione nel suggerimento.
         int blocked = Blocked.Sum();
         if (blocked == 0) return;
         // Dalla Posta indesiderata il mittente non si ricorda: lì le immagini si mostrano solo per quella volta (audit, F-12).
         // Lo stesso quando chi scrive non è verificato (audit dell'11 ottobre, T-02): il motivo lo dice ImagesOnce.
-        static string? Once(PageEntry e) => e.ImagesOnce ?? (e.Junk ? "Questo messaggio è nella Posta indesiderata" : null);
+        static string? Once(PageEntry e) => e.ImagesOnce ?? (e.Junk ? T("Questo messaggio è nella Posta indesiderata") : null);
         var keys = entries.Where((e, k) => Blocked[k] > 0 && Once(e) == null).Select(e => Settings.ImageKey(ReadingView.ImageSender(e.Summary, e.Body))).Where(k => k.Length > 0).Distinct();
         var reasons = entries.Where((e, k) => Blocked[k] > 0).Select(Once).Distinct().ToList();
-        var why = (blocked == 1 ? "Un'immagine esterna è stata bloccata" : $"{blocked} immagini esterne sono state bloccate") +
-                  ": scaricandole, il mittente può sapere che hai letto il messaggio. " +
-                  (reasons.All(r => r != null) ? (reasons.Count == 1 ? reasons[0] + ": se" : "Se") + " le mostri, vale solo per questa volta."
-                                               : "Se le mostri, Missiva lo ricorderà per " + string.Join(", ", keys) + ", in tutti gli account.");
+        // Due frasi intere (Lingua): quante immagini e perché, poi che cosa vale se le mostri.
+        var why = (blocked == 1 ? T("Un'immagine esterna è stata bloccata: scaricandole, il mittente può sapere che hai letto il messaggio.")
+                                : T("{0} immagini esterne sono state bloccate: scaricandole, il mittente può sapere che hai letto il messaggio.", blocked)) + " " +
+                  (reasons.All(r => r != null) ? (reasons.Count == 1 ? T("{0}: se le mostri, vale solo per questa volta.", reasons[0]) : T("Se le mostri, vale solo per questa volta."))
+                                               : T("Se le mostri, Missiva lo ricorderà per {0}, in tutti gli account.", string.Join(", ", keys)));
         h.Append($"<div class=\"banner\" title=\"{E(why)}\"><span class=\"glyph\"></span>");
-        h.Append("<span class=\"text\">Immagini esterne bloccate per la tua privacy.</span>");
-        h.Append($"<form action=\"{ActionUrl("images/0")}\"><button class=\"show\" title=\"{E(why)}\">Mostra immagini</button></form></div>");
+        h.Append($"<span class=\"text\">{E(T("Immagini esterne bloccate per la tua privacy."))}</span>");
+        h.Append($"<form action=\"{ActionUrl("images/0")}\"><button class=\"show\" title=\"{E(why)}\">{E(T("Mostra immagini"))}</button></form></div>");
     }
 
     void Message(StringBuilder h, PageEntry entry, int i, bool single, bool light)
@@ -172,7 +171,7 @@ public sealed class ReadingPage
             pic = E(Avatars.Initials(s.From));
             picStyle = $" style=\"background:{Hex(Avatars.ColorOf(s.From))}\"";
         }
-        var cardTitle = $"Scheda di {E(s.From.Display)}";
+        var cardTitle = E(T("Scheda di {0}", s.From.Display));
         who.Append(personLink
             ? $"<form action=\"{ActionUrl($"person/{i}")}\"><button class=\"{picClass} pic\"{picStyle} title=\"{cardTitle}\" aria-label=\"{cardTitle}\">{pic}</button></form><span class=\"info\">"
             : $"<span class=\"{picClass}\"{picStyle}>{pic}</span><span class=\"info\">");
@@ -189,11 +188,11 @@ public sealed class ReadingPage
             who.Append($" <span class=\"addr\">&lt;{E(s.From.Email)}&gt;</span>");
         // Account di lavoro: il mittente fuori dall'organizzazione, come "Esterno" in Outlook.
         if (entry.Expanded && entry.Notes?.External == true)
-            who.Append($"<{tip} class=\"ext\" title=\"Il mittente non fa parte della tua organizzazione\">Esterno</{tipEnd}>");
+            who.Append($"<{tip} class=\"ext\" title=\"{E(T("Il mittente non fa parte della tua organizzazione"))}\">{E(T("Esterno"))}</{tipEnd}>");
         who.Append("</span>");
         if (entry.Expanded && entry.Body != null)
         {
-            if (entry.Body.To.Count > 0) who.Append(Recipients("A", entry.Body.To, tip: tip));
+            if (entry.Body.To.Count > 0) who.Append(Recipients(T("A"), entry.Body.To, tip: tip));
             if (entry.Body.Cc.Count > 0) who.Append(Recipients("Cc", entry.Body.Cc, tip: tip));
         }
         else if (entry.Expanded && entry.Error == null)
@@ -203,7 +202,7 @@ public sealed class ReadingPage
             who.Append("<span class=\"line recipients\"><span class=\"bar\"></span></span>");
         }
         // Reply-To diverso dal mittente: Rispondi va lì, e qui si vede (moduli dei siti, ticket, ma anche le frodi).
-        if (entry.Expanded && s.ReplyTo.Count > 0) who.Append(Recipients("Le risposte vanno a", s.ReplyTo, "replyto", tip));
+        if (entry.Expanded && s.ReplyTo.Count > 0) who.Append(Recipients(T("Le risposte vanno a"), s.ReplyTo, "replyto", tip));
         var categories = s.Categories.Where(c => !c.Equals(s.FolderId, StringComparison.OrdinalIgnoreCase)).ToList();
         if (entry.Expanded && categories.Count > 0)
         {
@@ -224,8 +223,9 @@ public sealed class ReadingPage
         // Il pulsante di apertura sta dopo il mittente nell'ordine di tabulazione (foto, nome, apri, azioni); è fuori dal flusso.
         if (toggles)
         {
-            var what = entry.Expanded ? "Comprimi" : "Espandi";
-            h.Append($"<form action=\"{ActionUrl($"toggle/{i}")}\"><button id=\"t{i}\" class=\"tog\" title=\"{what}\" aria-label=\"{what} il messaggio di {E(s.From.Display)}\"></button></form>");
+            var what = entry.Expanded ? T("Comprimi") : T("Espandi");
+            var whose = entry.Expanded ? T("Comprimi il messaggio di {0}", s.From.Display) : T("Espandi il messaggio di {0}", s.From.Display);
+            h.Append($"<form action=\"{ActionUrl($"toggle/{i}")}\"><button id=\"t{i}\" class=\"tog\" title=\"{E(what)}\" aria-label=\"{E(whose)}\"></button></form>");
         }
 
         h.Append("<div class=\"side\">");
@@ -233,24 +233,24 @@ public sealed class ReadingPage
         {
             // Una bozza non si risponde: si continua, come nel nuovo Outlook.
             h.Append("<div class=\"actions\">");
-            h.Append($"<form action=\"{ActionUrl($"edit/{i}")}\"><button class=\"edit\" title=\"Continua a scrivere la bozza\" aria-label=\"Modifica\">" +
-                     "<span class=\"glyph\"></span>Modifica</button></form>");
-            h.Append(Action($"more/{i}", "", "Altre azioni"));
+            h.Append($"<form action=\"{ActionUrl($"edit/{i}")}\"><button class=\"edit\" title=\"{E(T("Continua a scrivere la bozza"))}\" aria-label=\"{E(T("Modifica"))}\">" +
+                     $"<span class=\"glyph\"></span>{E(T("Modifica"))}</button></form>");
+            h.Append(Action($"more/{i}", "", T("Altre azioni")));
             h.Append("</div>");
         }
         else if (entry.Expanded)
         {
             h.Append("<div class=\"actions\">");
-            h.Append(Action($"reply/{i}", "", "Rispondi"));
-            h.Append(Action($"replyall/{i}", "<span class=\"back\"></span>", "Rispondi a tutti", "act all"));
-            h.Append(Action($"forward/{i}", "<span class=\"mirror\"></span>", "Inoltra"));
+            h.Append(Action($"reply/{i}", "", T("Rispondi")));
+            h.Append(Action($"replyall/{i}", "<span class=\"back\"></span>", T("Rispondi a tutti"), "act all"));
+            h.Append(Action($"forward/{i}", "<span class=\"mirror\"></span>", T("Inoltra")));
             // La scheda del mittente non ha più un'azione qui: la aprono la foto e il nome (ogni intestazione ha la stessa azione "person"),
             // quindi le azioni sono le stesse da solo e nella conversazione (così alla sua venuta l'indirizzo non si accorcia).
             // Altre azioni, come nel nuovo Outlook: il menu del messaggio (MainWindow.BuildMessageMenu) per questo messaggio.
-            h.Append(Action($"more/{i}", "", "Altre azioni"));
+            h.Append(Action($"more/{i}", "", T("Altre azioni")));
             h.Append("</div>");
         }
-        h.Append($"<div class=\"date\">{E(s.Date.ToString("ddd dd/MM/yyyy HH:mm", Italian))}</div></div></div>");
+        h.Append($"<div class=\"date\">{E(DateText(s.Date))}</div></div></div>");
 
         if (entry.Expanded)
         {
@@ -264,7 +264,7 @@ public sealed class ReadingPage
             Files(h, entry, i, light);
             h.Append("<div class=\"content\">");
             if (entry.Error != null) h.Append($"<div class=\"status\">{E(entry.Error)}</div>");
-            else if (entry.Body == null) h.Append("<div class=\"placeholder\" title=\"Caricamento…\"><span></span><span></span><span class=\"short\"></span></div>");
+            else if (entry.Body == null) h.Append($"<div class=\"placeholder\" title=\"{E(T("Caricamento…"))}\"><span></span><span></span><span class=\"short\"></span></div>");
             else h.Append(Body(entry, i, light));
             h.Append("</div>");
         }
@@ -278,8 +278,8 @@ public sealed class ReadingPage
     /// </summary>
     internal string UnsubscribeRow(int i, string unsubscribe) => unsubscribe.Length > 0
         ? $"<div class=\"unsub\"><span>{E(unsubscribe)}</span></div>"
-        : $"<div class=\"unsub\"><span>Ricevi troppi messaggi da questo mittente?</span><form action=\"{ActionUrl($"unsubscribe/{i}")}\">" +
-          "<button title=\"Chiede al mittente di non mandarti più questi messaggi. Prima Missiva ti dice che cosa farà.\">Annulla iscrizione</button></form></div>";
+        : $"<div class=\"unsub\"><span>{E(T("Ricevi troppi messaggi da questo mittente?"))}</span><form action=\"{ActionUrl($"unsubscribe/{i}")}\">" +
+          $"<button title=\"{E(T("Chiede al mittente di non mandarti più questi messaggi. Prima Missiva ti dice che cosa farà."))}\">{E(T("Annulla iscrizione"))}</button></form></div>";
 
     /// <summary>
     /// Lo script che mette quella riga al suo posto nella pagina già mostrata: sotto l'intestazione e le fasce, prima
@@ -299,42 +299,40 @@ public sealed class ReadingPage
         // Oltre i tetti dell'analisi dell'HTML (MailHtml.ParseGuard: migliaia di elementi annidati o riaperti, testo spezzato
         // all'infinito) il messaggio si apre lo stesso, come solo testo. La pulizia è quella che Body riusa subito dopo.
         if (PlainOnly(entry, light))
-            h.Append("<div class=\"warn\" title=\"Il contenuto ha troppi elementi annidati o ripetuti per mostrarlo com'è: qui c'è il suo testo, senza formato né immagini.\">" +
-                     "<span class=\"glyph\"></span><span>Messaggio troppo complesso: mostrato come solo testo.</span></div>");
+            h.Append($"<div class=\"warn\" title=\"{E(T("Il contenuto ha troppi elementi annidati o ripetuti per mostrarlo com'è: qui c'è il suo testo, senza formato né immagini."))}\">" +
+                     $"<span class=\"glyph\"></span><span>{E(T("Messaggio troppo complesso: mostrato come solo testo."))}</span></div>");
         // Senza rete, dalla copia su disco (BodyCache).
         if (entry.Body?.OfflineCopy is { } saved)
-            h.Append($"<div class=\"warn\" title=\"Missiva tiene una copia cifrata dei messaggi aperti: quando torna la rete si apre quello del server.\">" +
-                     $"<span class=\"glyph\"></span><span>Non in linea: copia del {E(saved.ToString("dd/MM/yyyy"))} alle {E(saved.ToString("HH:mm"))}.</span></div>");
+            h.Append($"<div class=\"warn\" title=\"{E(T("Missiva tiene una copia cifrata dei messaggi aperti: quando torna la rete si apre quello del server."))}\">" +
+                     $"<span class=\"glyph\"></span><span>{E(T("Non in linea: copia del {0} alle {1}.", Missiva.Pec.Day(saved), Missiva.Pec.Time(saved)))}</span></div>");
         // Dalla copia, una busta PEC o un messaggio firmato: la firma la controlla Pec con la busta del server, che senza rete
         // non c'è. Senza questa fascia una busta finta sembrerebbe vera, senza la rossa che avrebbe avuto in linea.
         if (entry.Body is { OfflineCopy: not null, Pec: null } copy && Missiva.Pec.Wants(copy))
-            h.Append("<div class=\"warn pec\" title=\"La firma si verifica con il messaggio com'è sul server.\"><span class=\"glyph\"></span>" +
-                     "<span>Posta certificata o messaggio firmato: la firma si controlla solo in linea. Fino ad allora non fidarti di mittente e contenuto.</span></div>");
+            h.Append($"<div class=\"warn pec\" title=\"{E(T("La firma si verifica con il messaggio com'è sul server."))}\"><span class=\"glyph\"></span>" +
+                     $"<span>{E(T("Posta certificata o messaggio firmato: la firma si controlla solo in linea. Fino ad allora non fidarti di mittente e contenuto."))}</span></div>");
         // Posta certificata e messaggi firmati (Pec): verde se la firma è verificata, gialla se il certificato non è
         // riconosciuto, rossa se la busta è stata alterata o il messaggio non è stato consegnato.
         if (entry.Body?.Pec is { } pec)
         {
             var (text, tone) = Missiva.Pec.Band(pec);
             var glyph = tone switch { "ok" => "", "danger" => "", _ => "" };
-            var tip = pec.Signer.Length > 0 ? $"Firma di {pec.Signer}" : "Nessuna firma";
+            var tip = pec.Signer.Length > 0 ? T("Firma di {0}", pec.Signer) : T("Nessuna firma");
             h.Append($"<div class=\"warn pec {(tone == "warn" ? "" : tone)}\" title=\"{E(tip)}\"><span class=\"glyph\">{glyph}</span><span>{E(text)}</span></div>");
         }
         if (entry.Notes is not { } notes) return;
         if (notes.Unverified is { } domain)
             h.Append($"<div class=\"warn danger\" title=\"{E(notes.Why)}\"><span class=\"glyph\">\uE7BA</span>" +
-                     $"<span>Non è stato possibile verificare che questo messaggio venga da {E(domain)}. Attenzione a link, allegati e richieste di pagamento.</span></div>");
+                     $"<span>{E(T("Non è stato possibile verificare che questo messaggio venga da {0}. Attenzione a link, allegati e richieste di pagamento.", domain))}</span></div>");
         if (notes.LookAlike is { } known)
-            h.Append($"<div class=\"warn\" title=\"Chi scrive usa il nome di una persona a cui hai già scritto, ma da un indirizzo a cui non hai mai scritto.\">" +
-                     $"<span class=\"glyph\">\uE77B</span><span>{E(entry.Summary.From.Name)} è il nome di un tuo contatto, che conosci come {E(known)}: " +
-                     $"questo messaggio arriva da un altro indirizzo, {E(entry.Summary.From.Email)}.</span></div>");
+            h.Append($"<div class=\"warn\" title=\"{E(T("Chi scrive usa il nome di una persona a cui hai già scritto, ma da un indirizzo a cui non hai mai scritto."))}\">" +
+                     $"<span class=\"glyph\">\uE77B</span><span>{E(T("{0} è il nome di un tuo contatto, che conosci come {1}: questo messaggio arriva da un altro indirizzo, {2}.", entry.Summary.From.Name, known, entry.Summary.From.Email))}</span></div>");
         // Un nome che è l'indirizzo (o il sito) di un altro: l'intestazione, l'elenco e le notifiche mostrano quello vero
         // (Address.Display), e qui si dice che cosa c'era scritto.
         if (notes.NameAddress != null)
         {
             var written = entry.Summary.From.Name;
-            h.Append("<div class=\"warn\" title=\"Chi scrive ha messo nel suo nome un indirizzo o un sito che non è quello da cui il messaggio arriva. Missiva mostra l'indirizzo vero.\">" +
-                     $"<span class=\"glyph\"></span><span>Il mittente si presenta come «{E(written.Length > 120 ? written[..120] + "…" : written)}», " +
-                     $"ma questo messaggio arriva da un altro indirizzo: {E(entry.Summary.From.Email)}.</span></div>");
+            h.Append($"<div class=\"warn\" title=\"{E(T("Chi scrive ha messo nel suo nome un indirizzo o un sito che non è quello da cui il messaggio arriva. Missiva mostra l'indirizzo vero."))}\">" +
+                     $"<span class=\"glyph\"></span><span>{E(T("Il mittente si presenta come «{0}», ma questo messaggio arriva da un altro indirizzo: {1}.", written.Length > 120 ? written[..120] + "…" : written, entry.Summary.From.Email))}</span></div>");
         }
     }
 
@@ -346,38 +344,41 @@ public sealed class ReadingPage
     /// </summary>
     void Invite(StringBuilder h, Invitation invite, int i)
     {
-        var who = invite.Responder is { } r ? r.Display : "Un partecipante";
-        var (prefix, label) = invite.Method switch
+        var who = invite.Responder is { } r ? r.Display : T("Un partecipante");
+        var name = invite.Summary.Length > 0 ? invite.Summary : T("(senza titolo)");
+        // Il titolo della scheda è una frase intera per caso (Lingua): in italiano lo stesso testo di prima, prefisso e oggetto.
+        var (title, label) = invite.Method switch
         {
-            "CANCEL" => ("Riunione annullata: ", "Invito"),
-            "REPLY" => (who + " " + invite.ResponseStatus switch
+            "CANCEL" => (T("Riunione annullata: {0}", name), T("Invito")),
+            "REPLY" => (invite.ResponseStatus switch
             {
-                "ACCEPTED" => "ha accettato",
-                "DECLINED" => "ha rifiutato",
-                "TENTATIVE" => "ha accettato in modo provvisorio",
-                "DELEGATED" => "ha delegato",
-                _ => "ha risposto a",
-            } + ": ", "Risposta a un invito"),
-            "COUNTER" => (who + " propone un nuovo orario: ", "Proposta di un nuovo orario"),
-            "DECLINECOUNTER" => ("Nuovo orario non accettato: ", "Risposta a una proposta"),
-            "REQUEST" => ("", "Invito"),
-            _ => ("", "Evento"),
+                "ACCEPTED" => T("{0} ha accettato: {1}", who, name),
+                "DECLINED" => T("{0} ha rifiutato: {1}", who, name),
+                "TENTATIVE" => T("{0} ha accettato in modo provvisorio: {1}", who, name),
+                "DELEGATED" => T("{0} ha delegato: {1}", who, name),
+                _ => T("{0} ha risposto a: {1}", who, name),
+            }, T("Risposta a un invito")),
+            "COUNTER" => (T("{0} propone un nuovo orario: {1}", who, name), T("Proposta di un nuovo orario")),
+            "DECLINECOUNTER" => (T("Nuovo orario non accettato: {0}", name), T("Risposta a una proposta")),
+            "REQUEST" => (name, T("Invito")),
+            _ => (name, T("Evento")),
         };
-        h.Append($"<section class=\"invite{(invite.Cancelled ? " cancelled" : "")}\" aria-label=\"{label}\">");
-        h.Append($"<div class=\"title\"><span class=\"glyph\"></span>{E(prefix)}{E(invite.Summary.Length > 0 ? invite.Summary : "(senza titolo)")}</div>");
-        void Row(string label, string html) => h.Append($"<div class=\"row\"><span class=\"k\">{label}</span><span class=\"v\">{html}</span></div>");
-        Row(invite.Method == "COUNTER" ? "Nuovo orario" : "Quando", E(invite.When));
-        if (invite.Recurrence != null) Row("Ricorrenza", E(invite.Recurrence));
-        if (invite.Location != null) Row("Dove", E(invite.Location));
-        if (invite.Organizer is { } organizer) Row("Organizzatore", E(organizer.ToString()));
+        h.Append($"<section class=\"invite{(invite.Cancelled ? " cancelled" : "")}\" aria-label=\"{E(label)}\">");
+        h.Append($"<div class=\"title\"><span class=\"glyph\"></span>{E(title)}</div>");
+        void Row(string label, string html) => h.Append($"<div class=\"row\"><span class=\"k\">{E(label)}</span><span class=\"v\">{html}</span></div>");
+        Row(invite.Method == "COUNTER" ? T("Nuovo orario") : T("Quando"), E(invite.When));
+        if (invite.Recurrence != null) Row(T("Ricorrenza"), E(invite.Recurrence));
+        if (invite.Location != null) Row(T("Dove"), E(invite.Location));
+        if (invite.Organizer is { } organizer) Row(T("Organizzatore"), E(organizer.ToString()));
         if (invite.Attendees.Count > 0)
         {
             var names = invite.Attendees.Select(a => a.Display).ToList();
-            Row("Partecipanti", $"<span title=\"{E(string.Join("; ", invite.Attendees))}\">{E(string.Join(", ", names.Take(4)) + (names.Count > 4 ? $" e altri {names.Count - 4}" : ""))}</span>");
+            var first = string.Join(", ", names.Take(4));
+            Row(T("Partecipanti"), $"<span title=\"{E(string.Join("; ", invite.Attendees))}\">{E(names.Count > 4 ? T("{0} e altri {1}", first, names.Count - 4) : first)}</span>");
         }
         if (invite.OnlineUrl is { } url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
-            var text = "Partecipa alla riunione online (" + HostKey(uri) + ")";
+            var text = T("Partecipa alla riunione online ({0})", HostKey(uri));
             if (!LinkTexts.TryGetValue(uri.AbsoluteUri, out var texts)) LinkTexts[uri.AbsoluteUri] = texts = new();
             texts.Add(text);
             if (!HostTexts.TryGetValue(HostKey(uri), out var hostTexts)) HostTexts[HostKey(uri)] = hostTexts = new();
@@ -389,15 +390,15 @@ public sealed class ReadingPage
             h.Append("<div class=\"answers\">");
             if (invite.NeedsConsent)
             {
-                h.Append("<span class=\"note\">Per rispondere agli inviti di Outlook, Missiva deve poter usare il tuo calendario.</span>");
-                h.Append($"<form action=\"{ActionUrl($"consent/{i}")}\"><button class=\"answer primary\">Consenti l'accesso al calendario</button></form>");
+                h.Append($"<span class=\"note\">{E(T("Per rispondere agli inviti di Outlook, Missiva deve poter usare il tuo calendario."))}</span>");
+                h.Append($"<form action=\"{ActionUrl($"consent/{i}")}\"><button class=\"answer primary\">{E(T("Consenti l'accesso al calendario"))}</button></form>");
             }
             else
             {
-                h.Append($"<form action=\"{ActionUrl($"accept/{i}")}\"><button class=\"answer primary\"><span class=\"glyph\"></span>Accetta</button></form>");
-                h.Append($"<form action=\"{ActionUrl($"tentative/{i}")}\"><button class=\"answer\"><span class=\"glyph\"></span>Provvisorio</button></form>");
-                h.Append($"<form action=\"{ActionUrl($"decline/{i}")}\"><button class=\"answer\"><span class=\"glyph\"></span>Rifiuta</button></form>");
-                h.Append($"<form action=\"{ActionUrl($"propose/{i}")}\"><button class=\"answer\"><span class=\"glyph\"></span>Proponi un nuovo orario</button></form>");
+                h.Append($"<form action=\"{ActionUrl($"accept/{i}")}\"><button class=\"answer primary\"><span class=\"glyph\"></span>{E(T("Accetta"))}</button></form>");
+                h.Append($"<form action=\"{ActionUrl($"tentative/{i}")}\"><button class=\"answer\"><span class=\"glyph\"></span>{E(T("Provvisorio"))}</button></form>");
+                h.Append($"<form action=\"{ActionUrl($"decline/{i}")}\"><button class=\"answer\"><span class=\"glyph\"></span>{E(T("Rifiuta"))}</button></form>");
+                h.Append($"<form action=\"{ActionUrl($"propose/{i}")}\"><button class=\"answer\"><span class=\"glyph\"></span>{E(T("Proponi un nuovo orario"))}</button></form>");
             }
             h.Append("</div>");
         }
@@ -414,16 +415,16 @@ public sealed class ReadingPage
         {
             bool dangerous = Safety.IsDangerous(a.Name);
             h.Append("<span class=\"file\">");
-            h.Append($"<form action=\"{ActionUrl($"open/{i}/{j}")}\"><button class=\"chip{(dangerous ? " danger" : "")}\" title=\"{(dangerous ? "Attenzione: questo tipo di file può avviare programmi" : "Apri")}\">");
+            h.Append($"<form action=\"{ActionUrl($"open/{i}/{j}")}\"><button class=\"chip{(dangerous ? " danger" : "")}\" title=\"{E(dangerous ? T("Attenzione: questo tipo di file può avviare programmi") : T("Apri"))}\">");
             h.Append(dangerous ? "<span class=\"glyph\"></span>" : FileIcon(a.Name, a.ContentType, light));
             h.Append($"<span class=\"meta\"><span class=\"name\">{E(a.Name)}</span>");
             if (a.Size > 0) h.Append($"<span class=\"size\">{E(SizeText(a.Size))}</span>");
             h.Append("</span></button></form>");
-            h.Append(Action($"save/{i}/{j}", "", "Salva con nome…", "save"));
+            h.Append(Action($"save/{i}/{j}", "", T("Salva con nome…"), "save"));
             h.Append("</span>");
         }
         if (files.Count > 1)
-            h.Append($"<form action=\"{ActionUrl($"saveall/{i}")}\"><button class=\"saveall\" title=\"Salva tutti gli allegati in una cartella\">Salva tutti</button></form>");
+            h.Append($"<form action=\"{ActionUrl($"saveall/{i}")}\"><button class=\"saveall\" title=\"{E(T("Salva tutti gli allegati in una cartella"))}\">{E(T("Salva tutti"))}</button></form>");
         h.Append("</div>");
     }
 
@@ -518,7 +519,7 @@ public sealed class ReadingPage
         catch (Exception ex)
         {
             Log.Error("preparazione messaggio", ex);
-            return "<div class=\"status\">Non riesco a mostrare questo messaggio.</div>";
+            return $"<div class=\"status\">{E(T("Non riesco a mostrare questo messaggio."))}</div>";
         }
         foreach (var (path, image) in done.Images) Resources[path] = image;
         var prepared = done.Result;
@@ -538,7 +539,7 @@ public sealed class ReadingPage
     /// <summary>Destinatari su una riga, accorciati con i puntini se non ci stanno: tutti gli indirizzi nel suggerimento.</summary>
     static string Recipients(string label, List<Address> list, string cls = "", string tip = "span") =>
         $"<{tip} class=\"line recipients{(cls.Length > 0 ? " " + cls : "")}\" title=\"{E(string.Join("; ", list))}\">" +
-        $"{label}: {E(string.Join("; ", list.Select(a => cls.Length > 0 ? a.ToString() : a.Display)))}</{tip.Split(' ')[0]}>";
+        $"{E(label)}: {E(string.Join("; ", list.Select(a => cls.Length > 0 ? a.ToString() : a.Display)))}</{tip.Split(' ')[0]}>";
 
     string ActionUrl(string path) => $"{Origin}/do/{Token}/{path}";
 
@@ -549,12 +550,21 @@ public sealed class ReadingPage
 
     static string Hex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
 
+    /// <summary>La dimensione di un allegato, con i decimali della lingua di Missiva (Lingua.Culture: "1,5 MB" in italiano, "1.5 MB" in inglese).</summary>
     static string SizeText(long bytes) => bytes switch
     {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:0} KB",
-        _ => $"{bytes / 1048576.0:0.#} MB",
+        < 1024 => bytes.ToString(Lingua.Culture) + " B",
+        < 1024 * 1024 => (bytes / 1024.0).ToString("0", Lingua.Culture) + " KB",
+        _ => (bytes / 1048576.0).ToString("0.#", Lingua.Culture) + " MB",
     };
+
+    /// <summary>
+    /// La data nell'intestazione di un messaggio: in italiano "mar 21/10/2026 14:30" come sempre; in inglese il giorno, la
+    /// data e l'ora brevi della cultura di Missiva, come il nuovo Outlook ("Tue 21/10/2026 14:30", "Tue 10/21/2026 2:30 PM").
+    /// </summary>
+    internal static string DateText(DateTime date) =>
+        Lingua.English ? date.ToString("ddd", Lingua.Culture) + " " + date.ToString("d", Lingua.Culture) + " " + date.ToString("t", Lingua.Culture)
+                       : date.ToString("ddd dd/MM/yyyy HH:mm", Lingua.Culture);
 
     /// <summary>Valori predefiniti dentro ogni email: :where() li rende deboli, così vince sempre lo stile dell'email.</summary>
     static string ShadowCss(bool light) =>
@@ -581,7 +591,7 @@ public sealed class ReadingPage
         string thumb = light ? "rgba(0,0,0,.36)" : "rgba(255,255,255,.36)", thumbHover = light ? "rgba(0,0,0,.52)" : "rgba(255,255,255,.52)";
         var images = remote ? " https: http:" : "";
         return $$"""
-            <!doctype html><html lang="it"{{(hold ? " class=\"fitting\" style=\"scrollbar-gutter: stable\"" : "")}}><head><meta charset="utf-8">
+            <!doctype html><html lang="{{E(Lingua.Tag)}}"{{(hold ? " class=\"fitting\" style=\"scrollbar-gutter: stable\"" : "")}}><head><meta charset="utf-8">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src {{Origin}} data:{{images}}; font-src data:; form-action {{Origin}}">
             <meta name="referrer" content="no-referrer">
             <style>

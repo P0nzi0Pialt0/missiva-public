@@ -22,18 +22,21 @@ public partial class ComposeWindow
 
     internal static readonly double[] Sizes = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 36];
 
-    /// <summary>I colori del testo, fissi come nella tavolozza di Outlook; il primo è automatico (quello del tema).</summary>
+    /// <summary>
+    /// I colori del testo, fissi come nella tavolozza di Outlook; il primo è automatico (quello del tema). I nomi sono segnati
+    /// con N (Lingua) e si traducono dove si mostrano, con T(Name).
+    /// </summary>
     internal static readonly (string Name, string Hex)[] TextColors =
     [
-        ("Automatico", ""), ("Nero", "#000000"), ("Grigio scuro", "#595959"), ("Rosso scuro", "#A4262C"), ("Rosso", "#E81123"),
-        ("Arancione", "#CA5010"), ("Oro", "#986F0B"), ("Verde", "#107C10"), ("Verde acqua", "#038387"), ("Blu", "#0F6CBD"),
-        ("Blu scuro", "#003966"), ("Viola", "#8764B8"),
+        (N("Automatico"), ""), (N("Nero"), "#000000"), (N("Grigio scuro"), "#595959"), (N("Rosso scuro"), "#A4262C"), (N("Rosso"), "#E81123"),
+        (N("Arancione"), "#CA5010"), (N("Oro"), "#986F0B"), (N("Verde"), "#107C10"), (N("Verde acqua"), "#038387"), (N("Blu"), "#0F6CBD"),
+        (N("Blu scuro"), "#003966"), (N("Viola"), "#8764B8"),
     ];
 
     internal static readonly (string Name, string Hex)[] HighlightColors =
     [
-        ("Nessuno", ""), ("Giallo", "#FFF100"), ("Verde chiaro", "#A9F5A9"), ("Azzurro", "#9FD8FF"), ("Rosa", "#FFB3D9"),
-        ("Arancione chiaro", "#FFD08A"), ("Grigio chiaro", "#D9D9D9"),
+        (N("Nessuno"), ""), (N("Giallo"), "#FFF100"), (N("Verde chiaro"), "#A9F5A9"), (N("Azzurro"), "#9FD8FF"), (N("Rosa"), "#FFB3D9"),
+        (N("Arancione chiaro"), "#FFD08A"), (N("Grigio chiaro"), "#D9D9D9"),
     ];
 
     bool formatSyncing;
@@ -50,7 +53,7 @@ public partial class ComposeWindow
     {
         var s = Store.Settings;
         FontBox.ItemsSource = Fonts.Contains(s.ComposeFont) ? Fonts : Fonts.Prepend(s.ComposeFont).ToArray();
-        SizeBox.ItemsSource = Sizes.Select(v => v.ToString("0.#", CultureInfo.CurrentCulture)).ToList();
+        SizeBox.ItemsSource = Sizes.Select(v => v.ToString("0.#", Lingua.Culture)).ToList();
         Editor.Document.FontFamily = new FontFamily(s.ComposeFont);
         Editor.Document.FontSize = s.ComposeFontSize * 96 / 72;
         if (s.ComposeColor.Length > 0) Editor.Document.Foreground = Brush(s.ComposeColor);
@@ -67,7 +70,7 @@ public partial class ComposeWindow
             FontBox.SelectedItem = selection.GetPropertyValue(TextElement.FontFamilyProperty) is FontFamily family && FontBox.Items.Contains(family.Source) ? family.Source : null;
             if (FontBox.SelectedItem == null && selection.GetPropertyValue(TextElement.FontFamilyProperty) is FontFamily other) FontBox.Text = other.Source;
             SizeBox.SelectedItem = selection.GetPropertyValue(TextElement.FontSizeProperty) is double size
-                ? (Math.Round(size * 72 / 96 * 2) / 2).ToString("0.#", CultureInfo.CurrentCulture) : null;
+                ? (Math.Round(size * 72 / 96 * 2) / 2).ToString("0.#", Lingua.Culture) : null;
             var align = selection.GetPropertyValue(Block.TextAlignmentProperty) as TextAlignment?;
             AlignLeftButton.IsChecked = align is TextAlignment.Left or TextAlignment.Justify;
             AlignCenterButton.IsChecked = align == TextAlignment.Center;
@@ -95,7 +98,7 @@ public partial class ComposeWindow
 
     void OnSizePick(object sender, SelectionChangedEventArgs e)
     {
-        if (formatSyncing || SizeBox.SelectedItem is not string text || !double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out var points)) return;
+        if (formatSyncing || SizeBox.SelectedItem is not string text || !double.TryParse(text, NumberStyles.Float, Lingua.Culture, out var points)) return;
         Apply(TextElement.FontSizeProperty, points * 96 / 72);
     }
 
@@ -108,8 +111,8 @@ public partial class ComposeWindow
             var swatch = new Border { Width = 16, Height = 16, CornerRadius = new CornerRadius(3), BorderThickness = new Thickness(1) };
             swatch.SetResourceReference(Border.BorderBrushProperty, "CardStrokeColorDefaultBrush");
             if (color.Hex.Length > 0) swatch.Background = Brush(color.Hex);
-            var item = new MenuItem { Header = color.Name, Icon = swatch };
-            AutomationProperties.SetName(item, color.Name);
+            var item = new MenuItem { Header = T(color.Name), Icon = swatch };
+            AutomationProperties.SetName(item, T(color.Name));
             item.Click += (_, _) => pick(color);
             menu.Items.Add(item);
         }
@@ -195,8 +198,8 @@ public partial class ComposeWindow
         var menu = new ContextMenu { PlacementTarget = TableButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
         foreach (var (columns, rows) in new[] { (2, 2), (3, 2), (3, 3), (4, 3), (2, 5), (4, 5) })
         {
-            var item = new MenuItem { Header = $"{columns} colonne e {rows} righe" };
-            AutomationProperties.SetName(item, $"Tabella di {columns} colonne e {rows} righe");
+            var item = new MenuItem { Header = T("{0} colonne e {1} righe", columns, rows) };
+            AutomationProperties.SetName(item, T("Tabella di {0} colonne e {1} righe", columns, rows));
             item.Click += (_, _) => InsertTable(columns, rows);
             menu.Items.Add(item);
         }
@@ -249,11 +252,11 @@ public partial class ComposeWindow
     /// <summary>Inserisci immagine da un file: nel testo, come un'immagine trascinata (EditorImages.Decode com'è).</summary>
     void OnPicture(object sender, RoutedEventArgs e)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Immagini (*.png;*.jpg;*.jpeg;*.gif;*.bmp)|*.png;*.jpg;*.jpeg;*.gif;*.bmp", Title = "Inserisci immagine" };
+        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = T("Immagini (*.png;*.jpg;*.jpeg;*.gif;*.bmp)|*.png;*.jpg;*.jpeg;*.gif;*.bmp"), Title = T("Inserisci immagine") };
         if (dialog.ShowDialog(this) != true) return;
         if (EditorImages.FromFile(dialog.FileName) is not { } image)
         {
-            Dialog.Show(this, "Immagine non inserita", $"{Path.GetFileName(dialog.FileName)} non si riesce a leggere come immagine (PNG, JPEG, GIF o BMP).");
+            Dialog.Show(this, T("Immagine non inserita"), T("{0} non si riesce a leggere come immagine (PNG, JPEG, GIF o BMP).", Path.GetFileName(dialog.FileName)));
             return;
         }
         InsertImage(image, null, screen: true);
@@ -304,12 +307,38 @@ public partial class ComposeWindow
     }
 
     /// <summary>
+    /// Il testo della foto della scrittura (TestPhoto), in una lingua: la casella da cui parte (la fine dell'indirizzo),
+    /// destinatario, oggetto e i pezzi del testo, nell'ordine in cui si scrivono. L'ultimo paragrafo è Before, Bold in
+    /// grassetto, Middle, Highlighted con l'evidenziatore e After.
+    /// </summary>
+    internal sealed record PhotoDraft(string FromDomain, string To, string Subject, string Greeting, string Intro, string[] Items, string Before, string Bold,
+                                      string Middle, string Highlighted, string After, string Closing, string Name, string Firm);
+
+    /// <summary>
+    /// I dati della foto della scrittura: in italiano quelli di sempre (la casella di lavoro di ProvaBozze.Foto.cs risponde
+    /// a Giulia Neri del Comune), in inglese gli stessi con le persone delle foto inglesi (Hannah Wright, City of Easton).
+    /// </summary>
+    internal static PhotoDraft PhotoContent(bool english) => english
+        ? new("@northlight.example", "Hannah Wright <hannah.wright@easton-council.example>", "RE: Library project: committee comments",
+              "Dear Hannah,", "Thank you for the committee's comments: we've already worked them into the updated drawings.",
+              ["the reading room goes from 40 to 56 seats;", "the children's room gets its own entrance, from the courtyard;", "on the north side we're adding two skylights."],
+              "I'll send you the drawings ", "by Friday", ", so we can go over them together at the ", "meeting on Monday at 10", ".",
+              "Best regards,", "Ada Galli", "Northlight Architects")
+        : new("@studio-esempio.example", "Giulia Neri <giulia.neri@comune-esempio.example>", "Re: Progetto della biblioteca: osservazioni",
+              "Gentile Giulia,", "grazie per le osservazioni della commissione: le abbiamo già accolte nelle tavole aggiornate.",
+              ["la sala lettura passa da 40 a 56 posti a sedere;", "la sala ragazzi ha un ingresso separato, dal cortile;", "sul lato nord aggiungiamo due lucernari."],
+              "Le mando le tavole ", "entro venerdì", ", così le vediamo insieme nella ", "riunione di lunedì alle 10", ".",
+              "Cordiali saluti,", "Ada Galli", "Studio Esempio Architetti");
+
+    /// <summary>
     /// Le foto della pagina GitHub (--formato-finto --foto): una risposta scritta e formattata come con la barra (un elenco
-    /// puntato, il grassetto, l'evidenziatore), dalla casella di lavoro delle foto a una cliente (ProvaBozze.Foto.cs).
+    /// puntato, il grassetto, l'evidenziatore), dalla casella di lavoro delle foto a una cliente (ProvaBozze.Foto.cs), nella
+    /// lingua di Missiva (PhotoContent).
     /// </summary>
     internal void TestPhoto()
     {
-        if (FromBox.Items.OfType<Sender>().FirstOrDefault(s => s.Provider.Account.Email.EndsWith("@studio-esempio.example", StringComparison.OrdinalIgnoreCase)) is { } work)
+        var photo = PhotoContent(Lingua.English);
+        if (FromBox.Items.OfType<Sender>().FirstOrDefault(s => s.Provider.Account.Email.EndsWith(photo.FromDomain, StringComparison.OrdinalIgnoreCase)) is { } work)
             FromBox.SelectedItem = work;
         var doc = Editor.Document;
         var at = signatureLine ?? (Block?)signature;
@@ -321,28 +350,28 @@ public partial class ComposeWindow
         }
         Paragraph Line(string text = "") => new(new Run(text));
         quiet = true; // niente suggerimenti
-        ToBox.Text = "Giulia Neri <giulia.neri@comune-esempio.example>";
+        ToBox.Text = photo.To;
         quiet = false;
-        SubjectBox.Text = "Re: Progetto della biblioteca: osservazioni";
-        Add(Line("Gentile Giulia,"));
+        SubjectBox.Text = photo.Subject;
+        Add(Line(photo.Greeting));
         Add(Line());
-        Add(Line("grazie per le osservazioni della commissione: le abbiamo già accolte nelle tavole aggiornate."));
+        Add(Line(photo.Intro));
         var list = new List { MarkerStyle = TextMarkerStyle.Disc };
-        foreach (var item in new[] { "la sala lettura passa da 40 a 56 posti a sedere;", "la sala ragazzi ha un ingresso separato, dal cortile;", "sul lato nord aggiungiamo due lucernari." })
+        foreach (var item in photo.Items)
             list.ListItems.Add(new ListItem(Line(item)));
         Add(list);
-        var last = new Paragraph(new Run("Le mando le tavole "));
-        last.Inlines.Add(new Bold(new Run("entro venerdì")));
-        last.Inlines.Add(new Run(", così le vediamo insieme nella "));
-        var meeting = new Run("riunione di lunedì alle 10");
+        var last = new Paragraph(new Run(photo.Before));
+        last.Inlines.Add(new Bold(new Run(photo.Bold)));
+        last.Inlines.Add(new Run(photo.Middle));
+        var meeting = new Run(photo.Highlighted);
         last.Inlines.Add(meeting);
-        last.Inlines.Add(new Run("."));
+        last.Inlines.Add(new Run(photo.After));
         Add(last);
         new TextRange(meeting.ContentStart, meeting.ContentEnd).ApplyPropertyValue(TextElement.BackgroundProperty, Brush("#FFF100"));
         Add(Line());
-        Add(Line("Cordiali saluti,"));
-        Add(Line("Ada Galli"));
-        Add(Line("Studio Esempio Architetti"));
+        Add(Line(photo.Closing));
+        Add(Line(photo.Name));
+        Add(Line(photo.Firm));
         Editor.CaretPosition = last.ContentEnd;
         Log.Write("prova: testo delle foto inserito (--formato-finto --foto)");
     }
@@ -359,15 +388,15 @@ public partial class ComposeWindow
         foreach (var signature in all?.All().Where(s => s.Rtf.Length > 0) ?? [])
         {
             var item = new MenuItem { Header = signature.Name };
-            AutomationProperties.SetName(item, "Firma " + signature.Name);
+            AutomationProperties.SetName(item, T("Firma {0}", signature.Name));
             var rtf = signature.Rtf;
             item.Click += (_, _) => ReplaceSignature(rtf);
             menu.Items.Add(item);
         }
-        if (menu.Items.Count == 0) menu.Items.Add(new MenuItem { Header = "Nessuna firma per questo indirizzo (Impostazioni, Account, Firme)", IsEnabled = false });
+        if (menu.Items.Count == 0) menu.Items.Add(new MenuItem { Header = T("Nessuna firma per questo indirizzo (Impostazioni, Account, Firme)"), IsEnabled = false });
         menu.Items.Add(new Separator());
-        var none = new MenuItem { Header = "Nessuna firma" };
-        AutomationProperties.SetName(none, "Nessuna firma");
+        var none = new MenuItem { Header = T("Nessuna firma") };
+        AutomationProperties.SetName(none, T("Nessuna firma"));
         none.Click += (_, _) => ReplaceSignature("");
         menu.Items.Add(none);
         menu.IsOpen = true;

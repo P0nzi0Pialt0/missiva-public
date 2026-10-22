@@ -121,11 +121,23 @@ public static partial class Updates
     /// <param name="Text">Il testo della versione, come in Informazioni: "0.3.530 del 15/10/2026 (1a2b3c4)".</param>
     /// <param name="FileName">Il nome dello zip fra i file del rilascio: sempre "Missiva-numero.zip".</param>
     /// <param name="Sha256">L'impronta SHA-256 dello zip, in esadecimale minuscolo.</param>
-    /// <param name="News">Le novità, una riga per punto.</param>
-    public sealed record Manifest(Version Number, string Text, DateOnly Date, string Commit, string FileName, long Size, string Sha256, IReadOnlyList<string> News)
+    /// <param name="NewsItalian">Le novità in italiano, una riga per punto (il campo "novita" del manifesto).</param>
+    /// <param name="NewsEnglish">
+    /// Le novità in inglese (il campo "news", facoltativo, dal 21 ottobre 2026: rilascio.ps1 -News), o null. Le Missiva di
+    /// prima leggono il manifesto con JsonDocument e TryGetProperty dei soli campi che conoscono: il campo in più non lo
+    /// vedono, e il manifesto vale per loro come senza (provato nel gruppo lingua-servizio).
+    /// </param>
+    public sealed record Manifest(Version Number, string Text, DateOnly Date, string Commit, string FileName, long Size, string Sha256, IReadOnlyList<string> NewsItalian,
+                                  IReadOnlyList<string>? NewsEnglish = null)
     {
-        /// <summary>"Missiva 0.3.530 del 15/10/2026", per la barra.</summary>
-        public string Title => $"Missiva {Number} del {Date:dd'/'MM'/'yyyy}";
+        /// <summary>"Missiva 0.3.530 del 15/10/2026", per la barra; in inglese "Missiva 0.3.530 (15/10/2026)" con la data della cultura.</summary>
+        public string Title => T("Missiva {0} del {1}", Number, Lingua.English ? Date.ToString("d", Lingua.Culture) : Date.ToString("dd'/'MM'/'yyyy", Lingua.Culture));
+
+        /// <summary>
+        /// Le novità da mostrare, nella lingua di Missiva (le legge il pannellino dell'aggiornamento, MainWindow.UpdateNews):
+        /// in inglese quelle inglesi se il rilascio le ha, altrimenti quelle italiane; in italiano sempre quelle italiane.
+        /// </summary>
+        public IReadOnlyList<string> News => Lingua.English && NewsEnglish is { Count: > 0 } english ? english : NewsItalian;
     }
 
     /// <summary>Un aggiornamento rifiutato, con il motivo: va nel registro, e nella barra se l'ha chiesto chi usa Missiva.</summary>
@@ -143,47 +155,51 @@ public static partial class Updates
     {
         JsonDocument document;
         try { document = JsonDocument.Parse(bytes); }
-        catch (JsonException) { throw new Refused("il manifesto non è JSON"); }
+        catch (JsonException) { throw new Refused(T("il manifesto non è JSON")); }
         using (document)
         {
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) throw new Refused("il manifesto non è un oggetto JSON");
+            if (root.ValueKind != JsonValueKind.Object) throw new Refused(T("il manifesto non è un oggetto JSON"));
             string Text(string name, int max)
             {
-                if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String) throw new Refused($"nel manifesto manca \"{name}\"");
+                if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String) throw new Refused(Lingua.T("nel manifesto manca \"{0}\"", name));
                 var found = value.GetString()!;
-                if (found.Length == 0 || found.Length > max || found.Any(char.IsControl)) throw new Refused($"nel manifesto \"{name}\" non è come deve essere");
+                if (found.Length == 0 || found.Length > max || found.Any(char.IsControl)) throw new Refused(Lingua.T("nel manifesto \"{0}\" non è come deve essere", name));
                 return found;
             }
             var product = Text("prodotto", 40);
-            if (product != "Missiva") throw new Refused($"il manifesto è di un altro prodotto ({product})");
+            if (product != "Missiva") throw new Refused(T("il manifesto è di un altro prodotto ({0})", product));
             var numberText = Text("numero", 40);
-            if (!NumberPattern().IsMatch(numberText) || !Version.TryParse(numberText, out var number)) throw new Refused($"nel manifesto il numero non si legge ({numberText})");
-            if (number <= current) throw new Refused($"la versione {number} non è più nuova di questa ({current})");
+            if (!NumberPattern().IsMatch(numberText) || !Version.TryParse(numberText, out var number)) throw new Refused(T("nel manifesto il numero non si legge ({0})", numberText));
+            if (number <= current) throw new Refused(T("la versione {0} non è più nuova di questa ({1})", number, current));
             var text = Text("versione", 200);
-            if (text != numberText && !text.StartsWith(numberText + " ", StringComparison.Ordinal)) throw new Refused("nel manifesto il testo della versione non comincia con il numero");
+            if (text != numberText && !text.StartsWith(numberText + " ", StringComparison.Ordinal)) throw new Refused(T("nel manifesto il testo della versione non comincia con il numero"));
             var dateText = Text("data", 10);
             if (!DateOnly.TryParseExact(dateText, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date))
-                throw new Refused($"nel manifesto la data non si legge ({dateText})");
+                throw new Refused(T("nel manifesto la data non si legge ({0})", dateText));
             var commit = Text("commit", 40);
-            if (!CommitPattern().IsMatch(commit)) throw new Refused("nel manifesto il commit non è come deve essere");
+            if (!CommitPattern().IsMatch(commit)) throw new Refused(T("nel manifesto il commit non è come deve essere"));
             var file = Text("file", 80);
-            if (file != $"Missiva-{number}.zip") throw new Refused($"nel manifesto il nome dello zip non è quello atteso ({file})");
+            if (file != $"Missiva-{number}.zip") throw new Refused(T("nel manifesto il nome dello zip non è quello atteso ({0})", file));
             if (!root.TryGetProperty("dimensione", out var sizeValue) || sizeValue.ValueKind != JsonValueKind.Number || !sizeValue.TryGetInt64(out var size) || size <= 0 || size > MaxZipBytes)
-                throw new Refused("nel manifesto la dimensione dello zip manca o è fuori misura");
+                throw new Refused(T("nel manifesto la dimensione dello zip manca o è fuori misura"));
             var sha256 = Text("sha256", 64);
-            if (!Sha256Pattern().IsMatch(sha256)) throw new Refused("nel manifesto l'impronta SHA-256 non è come deve essere");
-            var news = new List<string>();
-            if (root.TryGetProperty("novita", out var newsValue))
+            if (!Sha256Pattern().IsMatch(sha256)) throw new Refused(T("nel manifesto l'impronta SHA-256 non è come deve essere"));
+            // Le novità, in italiano ("novita") e, dal 21 ottobre 2026, in inglese ("news", facoltative): con le stesse regole.
+            List<string>? Lines(string name)
             {
-                if (newsValue.ValueKind != JsonValueKind.Array || newsValue.GetArrayLength() > 40) throw new Refused("nel manifesto le novità non sono un elenco");
+                if (!root.TryGetProperty(name, out var newsValue)) return null;
+                if (newsValue.ValueKind != JsonValueKind.Array || newsValue.GetArrayLength() > 40) throw new Refused(Lingua.T("nel manifesto le novità non sono un elenco"));
+                var lines = new List<string>();
                 foreach (var line in newsValue.EnumerateArray())
                 {
-                    if (line.ValueKind != JsonValueKind.String || line.GetString() is not { Length: > 0 and <= 600 } item || item.Any(char.IsControl)) throw new Refused("nel manifesto una riga delle novità non è come deve essere");
-                    news.Add(item);
+                    if (line.ValueKind != JsonValueKind.String || line.GetString() is not { Length: > 0 and <= 600 } item || item.Any(char.IsControl))
+                        throw new Refused(Lingua.T("nel manifesto una riga delle novità non è come deve essere"));
+                    lines.Add(item);
                 }
+                return lines;
             }
-            return new Manifest(number, text, date, commit, file, size, sha256, news);
+            return new Manifest(number, text, date, commit, file, size, sha256, Lines("novita") ?? [], Lines("news"));
         }
     }
 
@@ -247,7 +263,7 @@ public static partial class Updates
     {
         for (int hop = 0; ; hop++)
         {
-            if (!Allowed(url)) throw new Refused($"indirizzo non ammesso: {Shown(url)} (solo https verso GitHub)");
+            if (!Allowed(url)) throw new Refused(T("indirizzo non ammesso: {0} (solo https verso GitHub)", Shown(url)));
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Accept.ParseAdd(accept);
             if (url.IdnHost == "api.github.com") request.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
@@ -255,8 +271,8 @@ public static partial class Updates
             if ((int)response.StatusCode is not (301 or 302 or 303 or 307 or 308)) return response;
             var location = response.Headers.Location;
             response.Dispose();
-            if (location == null) throw new HttpRequestException($"{Shown(url)} rimanda altrove senza dire dove");
-            if (hop >= MaxRedirects) throw new Refused($"troppi reindirizzamenti da {Shown(url)}");
+            if (location == null) throw new HttpRequestException(T("{0} rimanda altrove senza dire dove", Shown(url)));
+            if (hop >= MaxRedirects) throw new Refused(T("troppi reindirizzamenti da {0}", Shown(url)));
             url = location.IsAbsoluteUri ? location : new Uri(url, location);
         }
     }
@@ -265,29 +281,31 @@ public static partial class Updates
     internal static string Shown(Uri url) => url.IsAbsoluteUri ? $"{url.Scheme}://{url.Host}{url.AbsolutePath}" : url.OriginalString;
 
     /// <summary>Una risposta piccola, letta tutta, fino a limit byte: oltre si ferma lì e la rifiuta.</summary>
+    /// <param name="what">Che cosa si legge, per i motivi ("rilascio", "manifesto", "firma"): segnato con N da chi chiama, tradotto qui.</param>
     static async Task<byte[]> ReadSmallAsync(HttpClient client, Uri url, string accept, int limit, string what, CancellationToken cancel)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         timeout.CancelAfter(SmallTimeout);
+        what = T(what);
         try
         {
             using var response = await GetAsync(client, url, accept, timeout.Token);
-            if (!response.IsSuccessStatusCode) throw new HttpRequestException($"{what}: risposta {(int)response.StatusCode} da {Shown(url)}");
-            if (response.Content.Headers.ContentLength > limit) throw new Refused($"{what}: {response.Content.Headers.ContentLength} byte, più del tetto di {limit}");
+            if (!response.IsSuccessStatusCode) throw new HttpRequestException(T("{0}: risposta {1} da {2}", what, (int)response.StatusCode, Shown(url)));
+            if (response.Content.Headers.ContentLength > limit) throw new Refused(T("{0}: {1} byte, più del tetto di {2}", what, response.Content.Headers.ContentLength, limit));
             await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
             using var buffer = new MemoryStream();
             var chunk = new byte[16 * 1024];
             int read;
             while ((read = await stream.ReadAsync(chunk, timeout.Token)) > 0)
             {
-                if (buffer.Length + read > limit) throw new Refused($"{what}: più del tetto di {limit} byte, lettura fermata lì");
+                if (buffer.Length + read > limit) throw new Refused(T("{0}: più del tetto di {1} byte, lettura fermata lì", what, limit));
                 buffer.Write(chunk, 0, read);
             }
             return buffer.ToArray();
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {
-            throw new HttpRequestException($"{what}: nessuna risposta da {Shown(url)} entro {SmallTimeout.TotalSeconds:0} secondi");
+            throw new HttpRequestException(T("{0}: nessuna risposta da {1} entro {2:0} secondi", what, Shown(url), SmallTimeout.TotalSeconds));
         }
     }
 
@@ -307,7 +325,7 @@ public static partial class Updates
     /// </summary>
     internal static Task<CheckOutcome> AutomaticAsync(bool enabled, string? repository, string publicKey, Version current, HttpClient client, CancellationToken cancel = default) =>
         enabled ? CheckAsync(repository, publicKey, current, client, cancel)
-                : Task.FromResult(new CheckOutcome(CheckKind.Off, null, "Il controllo automatico è spento."));
+                : Task.FromResult(new CheckOutcome(CheckKind.Off, null, T("Il controllo automatico è spento.")));
 
     /// <summary>
     /// Il controllo: l'ultimo rilascio del repository (api.github.com, releases/latest), poi, se la sua etichetta non dice
@@ -319,36 +337,36 @@ public static partial class Updates
     {
         switch (StateOf(repository, publicKey))
         {
-            case Mode.FromSources: return new(CheckKind.Off, null, "Compilata dai sorgenti: non controlla gli aggiornamenti.");
-            case Mode.NoKey: return new(CheckKind.Off, null, "Senza la chiave degli aggiornamenti: non li controlla.");
+            case Mode.FromSources: return new(CheckKind.Off, null, T("Compilata dai sorgenti: non controlla gli aggiornamenti."));
+            case Mode.NoKey: return new(CheckKind.Off, null, T("Senza la chiave degli aggiornamenti: non li controlla."));
         }
         string? tag = null;
         try
         {
-            var release = await ReadSmallAsync(client, new Uri($"https://api.github.com/repos/{repository}/releases/latest"), "application/vnd.github+json", MaxReleaseBytes, "rilascio", cancel);
+            var release = await ReadSmallAsync(client, new Uri($"https://api.github.com/repos/{repository}/releases/latest"), "application/vnd.github+json", MaxReleaseBytes, N("rilascio"), cancel);
             var (releaseTag, files) = ReadRelease(release);
             tag = releaseTag;
             // L'etichetta non è firmata: serve solo a non scaricare manifesto e firma quando dice già che non c'è nulla di nuovo.
             if (tag is ['v', .. var tagText] && NumberPattern().IsMatch(tagText) && Version.Parse(tagText) <= current)
-                return new(CheckKind.UpToDate, null, $"Missiva è aggiornata: l'ultimo rilascio è {tagText}.");
-            Uri Asset(string name) => files.TryGetValue(name, out var url) ? url : throw new Refused($"nel rilascio {tag} manca {name}");
-            var manifest = await ReadSmallAsync(client, Asset(ManifestName), "application/octet-stream", MaxManifestBytes, "manifesto", cancel);
-            var signature = await ReadSmallAsync(client, Asset(SignatureName), "application/octet-stream", MaxSignatureBytes, "firma", cancel);
-            if (!SignatureValid(manifest, Encoding.ASCII.GetString(signature), publicKey)) throw new Refused("la firma del manifesto non è valida per la chiave di Missiva");
+                return new(CheckKind.UpToDate, null, T("Missiva è aggiornata: l'ultimo rilascio è {0}.", tagText));
+            Uri Asset(string name) => files.TryGetValue(name, out var url) ? url : throw new Refused(T("nel rilascio {0} manca {1}", tag, name));
+            var manifest = await ReadSmallAsync(client, Asset(ManifestName), "application/octet-stream", MaxManifestBytes, N("manifesto"), cancel);
+            var signature = await ReadSmallAsync(client, Asset(SignatureName), "application/octet-stream", MaxSignatureBytes, N("firma"), cancel);
+            if (!SignatureValid(manifest, Encoding.ASCII.GetString(signature), publicKey)) throw new Refused(T("la firma del manifesto non è valida per la chiave di Missiva"));
             var read = ReadManifest(manifest, current);
             var offer = new Offer(read, Asset(read.FileName));
             Log.Write($"aggiornamenti: disponibile {read.Text} (rilascio {tag}, {read.Size} byte)");
-            return new(CheckKind.Offer, offer, $"È disponibile {read.Title}.");
+            return new(CheckKind.Offer, offer, T("È disponibile {0}.", read.Title));
         }
         catch (Refused ex)
         {
             Log.Write($"aggiornamenti: rilascio {tag ?? "(nessuno)"} rifiutato: {ex.Message}");
-            return new(CheckKind.Refused, null, $"L'ultimo rilascio non è stato accettato: {ex.Message}.");
+            return new(CheckKind.Refused, null, T("L'ultimo rilascio non è stato accettato: {0}.", ex.Message));
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException && !cancel.IsCancellationRequested)
         {
             Log.Write($"aggiornamenti: controllo non riuscito ({ex.GetType().Name}: {ex.Message})");
-            return new(CheckKind.Failed, null, $"Non è stato possibile controllare: {ex.Message}");
+            return new(CheckKind.Failed, null, T("Non è stato possibile controllare: {0}", ex.Message));
         }
     }
 
@@ -374,7 +392,7 @@ public static partial class Updates
         }
         catch (JsonException)
         {
-            throw new Refused("la risposta di GitHub sul rilascio non è JSON");
+            throw new Refused(T("la risposta di GitHub sul rilascio non è JSON"));
         }
     }
 
@@ -407,7 +425,7 @@ public static partial class Updates
         var folder = Path.Combine(root, manifest.Number.ToString());
         try
         {
-            if (manifest.Number <= current) throw new Refused($"la versione {manifest.Number} non è più nuova di questa ({current})");
+            if (manifest.Number <= current) throw new Refused(T("la versione {0} non è più nuova di questa ({1})", manifest.Number, current));
             if (Directory.Exists(folder)) Directory.Delete(folder, true);
             Directory.CreateDirectory(folder);
             var zip = Path.Combine(folder, manifest.FileName);
@@ -418,7 +436,7 @@ public static partial class Updates
             var info = FileVersionInfo.GetVersionInfo(exe);
             var inFile = new Version(info.FileMajorPart, info.FileMinorPart, info.FileBuildPart);
             if (inFile != manifest.Number || info.ProductName != "Missiva")
-                throw new Refused($"l'eseguibile nello zip dice {info.ProductName} {inFile}, il manifesto Missiva {manifest.Number}");
+                throw new Refused(T("l'eseguibile nello zip dice {0} {1}, il manifesto Missiva {2}", info.ProductName, inFile, manifest.Number));
             Log.Write($"aggiornamenti: scaricato e controllato {manifest.Text} ({manifest.Size} byte, impronta e firma giuste)");
             return new Prepared(manifest, folder, exe);
         }
@@ -441,9 +459,9 @@ public static partial class Updates
     {
         var manifest = offer.Manifest;
         using var response = await GetAsync(client, offer.ZipUrl, "application/octet-stream", cancel);
-        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"zip: risposta {(int)response.StatusCode} da {Shown(offer.ZipUrl)}");
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException(T("zip: risposta {0} da {1}", (int)response.StatusCode, Shown(offer.ZipUrl)));
         if (response.Content.Headers.ContentLength is { } announced && announced != manifest.Size)
-            throw new Refused($"lo zip è di {announced} byte, il manifesto ne dice {manifest.Size}");
+            throw new Refused(T("lo zip è di {0} byte, il manifesto ne dice {1}", announced, manifest.Size));
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         long total = 0;
         await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16, FileOptions.Asynchronous))
@@ -458,19 +476,19 @@ public static partial class Updates
                 try { read = await input.ReadAsync(chunk, silence.Token); }
                 catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
                 {
-                    throw new HttpRequestException($"zip: nessun dato da {SilenceTimeout.TotalSeconds:0} secondi");
+                    throw new HttpRequestException(T("zip: nessun dato da {0:0} secondi", SilenceTimeout.TotalSeconds));
                 }
                 if (read == 0) break;
                 total += read;
-                if (total > manifest.Size) throw new Refused($"lo zip è più grande dei {manifest.Size} byte del manifesto, scaricamento fermato");
+                if (total > manifest.Size) throw new Refused(T("lo zip è più grande dei {0} byte del manifesto, scaricamento fermato", manifest.Size));
                 hash.AppendData(chunk, 0, read);
                 await output.WriteAsync(chunk.AsMemory(0, read), cancel);
                 progress?.Report(total);
             }
         }
-        if (total != manifest.Size) throw new Refused($"lo zip è di {total} byte, il manifesto ne dice {manifest.Size}");
+        if (total != manifest.Size) throw new Refused(T("lo zip è di {0} byte, il manifesto ne dice {1}", total, manifest.Size));
         var sha256 = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
-        if (sha256 != manifest.Sha256) throw new Refused("l'impronta SHA-256 dello zip non è quella del manifesto");
+        if (sha256 != manifest.Sha256) throw new Refused(T("l'impronta SHA-256 dello zip non è quella del manifesto"));
     }
 
     /// <summary>
@@ -481,18 +499,22 @@ public static partial class Updates
     {
         ZipArchive archive;
         try { archive = ZipFile.OpenRead(zip); }
-        catch (InvalidDataException) { throw new Refused("lo zip non si legge"); }
+        catch (InvalidDataException) { throw new Refused(T("lo zip non si legge")); }
         using var opened = archive;
         var names = archive.Entries.Select(e => e.FullName).ToList();
         var odd = names.Where(n => !PackageFiles.Contains(n, StringComparer.Ordinal)).ToList();
         var missing = PackageFiles.Where(n => names.Count(x => x == n) != 1).ToList();
         if (odd.Count > 0 || missing.Count > 0)
-            throw new Refused("nello zip non ci sono solo i file attesi" + (odd.Count > 0 ? $" (in più: {string.Join(", ", odd.Take(5).Select(n => n.Length > 80 ? n[..80] : n))})" : "") +
-                              (missing.Count > 0 ? $" (mancano o sono doppi: {string.Join(", ", missing)})" : ""));
+            throw new Refused(string.Join(" ", new[]
+            {
+                T("nello zip non ci sono solo i file attesi"),
+                odd.Count > 0 ? T("(in più: {0})", string.Join(", ", odd.Take(5).Select(n => n.Length > 80 ? n[..80] : n))) : "",
+                missing.Count > 0 ? T("(mancano o sono doppi: {0})", string.Join(", ", missing)) : "",
+            }.Where(t => t.Length > 0)));
         foreach (var entry in archive.Entries)
         {
             long limit = entry.FullName == "Missiva.exe" ? MaxExeBytes : MaxTextBytes;
-            if (entry.Length > limit) throw new Refused($"nello zip {entry.FullName} è di {entry.Length} byte, oltre il tetto");
+            if (entry.Length > limit) throw new Refused(T("nello zip {0} è di {1} byte, oltre il tetto", entry.FullName, entry.Length));
             using var input = entry.Open();
             using var output = new FileStream(Path.Combine(folder, entry.FullName), FileMode.CreateNew, FileAccess.Write);
             var chunk = new byte[1 << 16];
@@ -501,7 +523,7 @@ public static partial class Updates
             while ((read = input.Read(chunk, 0, chunk.Length)) > 0)
             {
                 total += read;
-                if (total > limit) throw new Refused($"nello zip {entry.FullName} è più grande del tetto");
+                if (total > limit) throw new Refused(T("nello zip {0} è più grande del tetto", entry.FullName));
                 output.Write(chunk, 0, read);
             }
         }
@@ -540,7 +562,8 @@ public static partial class Updates
         catch (Exception ex)
         {
             Log.Error("avvio del nuovo eseguibile", ex);
-            try { File.WriteAllText(Path.Combine(prepared.Folder, OutcomeName), $"il nuovo eseguibile non è partito ({ex.Message})"); }
+            // In italiano nel file, come quelli del nuovo eseguibile (Replace): lo legge l'avvio dopo, che lo mostra tradotto (Outcome).
+            try { File.WriteAllText(Path.Combine(prepared.Folder, OutcomeName), string.Format(System.Globalization.CultureInfo.InvariantCulture, N("il nuovo eseguibile non è partito ({0})"), ex.Message)); }
             catch (Exception) { }
         }
     }
@@ -556,15 +579,15 @@ public static partial class Updates
             var start = new ProcessStartInfo(prepared.Exe) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = prepared.Folder };
             start.ArgumentList.Add("--versione");
             using var probe = Process.Start(start);
-            if (probe == null) return "Windows non l'ha avviato";
+            if (probe == null) return T("Windows non l'ha avviato");
             using var limit = new CancellationTokenSource(TimeSpan.FromMinutes(2));
             try { await probe.WaitForExitAsync(limit.Token); }
             catch (OperationCanceledException)
             {
                 try { probe.Kill(); } catch (Exception) { }
-                return "non risponde";
+                return T("non risponde");
             }
-            return probe.ExitCode == 0 ? null : $"si chiude con il codice 0x{probe.ExitCode:X8}";
+            return probe.ExitCode == 0 ? null : T("si chiude con il codice 0x{0:X8}", probe.ExitCode);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
@@ -600,7 +623,8 @@ public static partial class Updates
                 if (attempt >= attempts)
                 {
                     try { File.Delete(copy); } catch (Exception) { }
-                    return new(false, attempt, $"il file installato era ancora in uso dopo {attempt} tentativi ({ex.Message})");
+                    // In italiano (il nuovo eseguibile non sceglie la lingua): l'avvio dopo lo mostra tradotto (Outcome).
+                    return new(false, attempt, string.Format(System.Globalization.CultureInfo.InvariantCulture, N("il file installato era ancora in uso dopo {0} tentativi ({1})"), attempt, ex.Message));
                 }
                 Thread.Sleep(pause);
             }
@@ -699,9 +723,9 @@ public static partial class Updates
                 }
                 else
                 {
-                    var why = outcome is { Length: > 0 } ? outcome : "il nuovo eseguibile non è partito";
+                    var why = outcome is { Length: > 0 } ? outcome : N("il nuovo eseguibile non è partito");
                     Log.Write($"aggiornamenti: l'aggiornamento da {pending.From} a {pending.To} non è riuscito ({why}); questa è {current}");
-                    notice = $"Missiva non si è aggiornata a {pending.To}: {why}. È rimasta la {current}.";
+                    notice = T("Missiva non si è aggiornata a {0}: {1}. È rimasta la {2}.", pending.To, Outcome(why), current);
                 }
             }
         }
@@ -712,6 +736,25 @@ public static partial class Updates
         Remove(root);
         return notice;
     }
+
+    /// <summary>
+    /// L'esito scritto in esito.txt, nella lingua di Missiva. Il nuovo eseguibile (--installa-aggiornamento) e HandOver lo
+    /// scrivono in italiano, con i testi segnati con N in Replace e HandOver: qui si riconoscono e si traducono; un altro
+    /// testo (il nome e il messaggio di un'eccezione) resta com'è.
+    /// </summary>
+    internal static string Outcome(string written)
+    {
+        if (written == "il nuovo eseguibile non è partito") return T("il nuovo eseguibile non è partito");
+        if (OutcomeNotStarted().Match(written) is { Success: true } started) return T("il nuovo eseguibile non è partito ({0})", started.Groups[1].Value);
+        if (OutcomeInUse().Match(written) is { Success: true } inUse) return T("il file installato era ancora in uso dopo {0} tentativi ({1})", inUse.Groups[1].Value, inUse.Groups[2].Value);
+        return written;
+    }
+
+    [GeneratedRegex(@"^il nuovo eseguibile non è partito \((.*)\)$", RegexOptions.Singleline)]
+    private static partial Regex OutcomeNotStarted();
+
+    [GeneratedRegex(@"^il file installato era ancora in uso dopo (\d+) tentativi \((.*)\)$", RegexOptions.Singleline)]
+    private static partial Regex OutcomeInUse();
 
     /// <summary>La voce di App installate scritta da installa.ps1.</summary>
     internal const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Missiva";

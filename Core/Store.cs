@@ -28,6 +28,11 @@ public sealed class Settings
 
     // Generali
     public AppTheme Theme { get; set; } = AppTheme.System;
+    /// <summary>
+    /// La lingua di Missiva (Impostazioni, Generali, Aspetto; 21 ottobre 2026): "" come Windows (di base: italiano se la
+    /// lingua di visualizzazione di Windows è l'italiano, inglese altrimenti), "it" o "en". Vale dal prossimo avvio (Lingua.Start).
+    /// </summary>
+    public string Language { get; set; } = "";
     /// <summary>Account senza notifiche dei nuovi messaggi (identificativi).</summary>
     public List<string> NotificationsOff { get; set; } = new();
     public bool NotificationSound { get; set; } = true;
@@ -387,7 +392,7 @@ public sealed class Signature
     }
 
     /// <summary>Tutte le firme con il loro nome, la principale per prima.</summary>
-    public IEnumerable<NamedSignature> All() => More.Prepend(new NamedSignature { Id = "", Name = "Firma principale", Rtf = Rtf });
+    public IEnumerable<NamedSignature> All() => More.Prepend(new NamedSignature { Id = "", Name = T("Firma principale"), Rtf = Rtf });
 
     /// <summary>Fuori i testi che su questo PC non si decifrano (per la copia di sicurezza: il segnaposto non deve entrarci); quanti.</summary>
     internal int DropUnreadable()
@@ -719,25 +724,37 @@ public static class SafeFile
 /// impostazioni.json non si leggeva all'avvio: perché, dove è finito il file rotto, da che copia si è ripartiti (null: da
 /// zero, senza account) e se i salvataggi sono fermi (il file non si è potuto spostare). Heading e Body sono l'avviso.
 /// </summary>
+/// <remarks>
+/// Store.Load gira prima che la lingua sia scelta (App.LoadSettings, prima di Lingua.Start): Heading e Body si calcolano
+/// quando si leggono, e il motivo (Why), scritto in italiano, si mostra tradotto quando è uno dei motivi di Store (Missing,
+/// NoSettings, Invalid). Why resta com'è, per il registro e per le prove.
+/// </remarks>
 public sealed record StoreRecovery(string Why, string? BrokenFile, DateTime? BackupDate, string? BrokenBackup, bool Blocked, string Location)
 {
-    public string Heading => BrokenFile == null && !Blocked ? "Le impostazioni di Missiva non c'erano più" : "Le impostazioni di Missiva non si leggevano";
+    /// <summary>I motivi che Store scrive in Why: si traducono dove si mostrano (WhyShown).</summary>
+    internal static readonly string Missing = N("il file non c'era più"), NoSettings = N("il file non contiene impostazioni"), Invalid = N("il contenuto non è valido");
+
+    /// <summary>Il motivo nella lingua di Missiva: tradotto se è uno di quelli di Store, altrimenti com'è (il testo di un'eccezione).</summary>
+    string WhyShown => Why == Missing || Why == NoSettings || Why == Invalid ? T(Why) : Why;
+
+    public string Heading => BrokenFile == null && !Blocked ? T("Le impostazioni di Missiva non c'erano più") : T("Le impostazioni di Missiva non si leggevano");
 
     public string Body
     {
         get
         {
-            var what = Blocked ? $"Il file delle impostazioni non si riesce a leggere né a spostare, forse perché è in uso da un altro programma ({Why})."
-                : BrokenFile == null ? "Il file delle impostazioni non c'era più."
-                : $"Il file delle impostazioni era rovinato ({Why}).";
+            var what = Blocked ? T("Il file delle impostazioni non si riesce a leggere né a spostare, forse perché è in uso da un altro programma ({0}).", WhyShown)
+                : BrokenFile == null ? T("Il file delle impostazioni non c'era più.")
+                : T("Il file delle impostazioni era rovinato ({0}).", WhyShown);
             var restart = BackupDate is { } date
-                ? $"Missiva è ripartita dalla copia di riserva del {date.ToString("d MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("it-IT"))} alle {date:HH:mm}: account e accessi ci sono, le modifiche fatte dopo possono mancare."
-                : "Non c'è una copia di riserva che si legga: Missiva è ripartita senza account. Aggiungili di nuovo da Impostazioni, Account.";
+                ? T("Missiva è ripartita dalla copia di riserva del {0} alle {1}: account e accessi ci sono, le modifiche fatte dopo possono mancare.",
+                    date.ToString("d MMMM yyyy", Lingua.Culture), date.ToString("HH:mm"))
+                : T("Non c'è una copia di riserva che si legga: Missiva è ripartita senza account. Aggiungili di nuovo da Impostazioni, Account.");
             var where = Blocked
-                ? $"Per non sovrascriverlo, in questa sessione Missiva non salva le impostazioni. Chiudi Missiva e riaprila; se succede ancora, il file è:\n{Location}"
-                : BrokenFile != null ? $"Il file rovinato non è stato cancellato: è stato messo da parte e Missiva non lo tocca più.\n{BrokenFile}"
+                ? T("Per non sovrascriverlo, in questa sessione Missiva non salva le impostazioni. Chiudi Missiva e riaprila; se succede ancora, il file è:\n{0}", Location)
+                : BrokenFile != null ? T("Il file rovinato non è stato cancellato: è stato messo da parte e Missiva non lo tocca più.\n{0}", BrokenFile)
                 : "";
-            if (BrokenBackup != null) where += $"\nAnche la copia di riserva non si leggeva, ed è da parte:\n{BrokenBackup}";
+            if (BrokenBackup != null) where += "\n" + T("Anche la copia di riserva non si leggeva, ed è da parte:\n{0}", BrokenBackup);
             return $"{what} {restart}{(where.Length > 0 ? "\n\n" + where : "")}";
         }
     }
@@ -834,7 +851,7 @@ public static class Store
         string file = Path.Combine(dir, FileName), backup = Path.Combine(dir, BackupName);
         bool hasFile = File.Exists(file), hasBackup = File.Exists(backup);
         if (!hasFile && !hasBackup) return new(); // primo avvio
-        var why = "il file non c'era più";
+        var why = StoreRecovery.Missing;
         if (hasFile)
         {
             if (TryParse(file, out var settings, out why))
@@ -867,7 +884,7 @@ public static class Store
             {
                 if (JsonSerializer.Deserialize(File.ReadAllText(path), SettingsJson.Default.Settings) is not { } parsed)
                 {
-                    why = "il file non contiene impostazioni";
+                    why = StoreRecovery.NoSettings;
                     return false;
                 }
                 // Un file cambiato a mano: un identificativo di account che non è di Missiva ("..\..\cartella", un percorso)
@@ -887,7 +904,7 @@ public static class Store
             }
             catch (Exception ex)
             {
-                why = ex is JsonException ? "il contenuto non è valido" : ex.GetType().Name + ": " + ex.Message;
+                why = ex is JsonException ? StoreRecovery.Invalid : ex.GetType().Name + ": " + ex.Message;
                 return false;
             }
         }

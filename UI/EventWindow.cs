@@ -20,8 +20,6 @@ namespace Missiva.UI;
 /// </summary>
 public sealed class EventWindow : Window
 {
-    static readonly CultureInfo Italian = new("it-IT");
-
     /// <summary>Un calendario in cui si può scrivere, con il suo account.</summary>
     public sealed record Choice(IMailProvider Provider, CalendarInfo Calendar)
     {
@@ -30,7 +28,7 @@ public sealed class EventWindow : Window
 
     readonly TextBox subject = new() { FontSize = 16 };
     readonly ComboBox calendar = new() { Width = 340, HorizontalAlignment = HorizontalAlignment.Left };
-    readonly CheckBox allDay = new() { Content = "Giornata intera", Margin = new Thickness(0, 12, 0, 0) };
+    readonly CheckBox allDay = new() { Content = T("Giornata intera"), Margin = new Thickness(0, 12, 0, 0) };
     readonly DatePicker startDate = new() { Width = 150 }, endDate = new() { Width = 150 };
     readonly ComboBox startTime = AutoRepliesWindow.Times(), endTime = AutoRepliesWindow.Times();
     readonly ComboBox repeat = new() { Width = 180, HorizontalAlignment = HorizontalAlignment.Left };
@@ -41,11 +39,11 @@ public sealed class EventWindow : Window
     readonly ComboBox reminder = new() { Width = 170 };
     readonly ComboBox showAs = new() { Width = 170, Margin = new Thickness(12, 0, 0, 0) };
     readonly TextBox required = new(), optional = new();
-    readonly CheckBox teams = new() { Content = "Riunione di Teams", Margin = new Thickness(0, 10, 0, 0) };
+    readonly CheckBox teams = new() { Content = T("Riunione di Teams"), Margin = new Thickness(0, 10, 0, 0) };
     readonly RichEditor description = new() { Height = 110 };
     readonly TextBlock error = Dialog.ErrorText(12);
-    readonly Button save = new() { Content = "Salva", MinWidth = 100, IsDefault = true };
-    readonly TextBlock heading = new() { Text = "Nuovo evento", FontSize = 22, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 14) };
+    readonly Button save = new() { Content = T("Salva"), MinWidth = 100, IsDefault = true };
+    readonly TextBlock heading = new() { Text = T("Nuovo evento"), FontSize = 22, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 14) };
     readonly TextBlock editNote = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, -6, 0, 6), Visibility = Visibility.Collapsed };
     /// <summary>Le righe che la modifica non mostra: la ripetizione, la descrizione e Teams restano com'erano.</summary>
     readonly List<UIElement> newOnly = new();
@@ -70,15 +68,16 @@ public sealed class EventWindow : Window
     public NewEvent? Created { get; private set; }
     public IMailProvider? CreatedIn { get; private set; }
 
+    /// <summary>I giorni della ripetizione settimanale, dal lunedì: il nome si traduce dove si mostra (T).</summary>
     static readonly (DayOfWeek Day, string Name)[] Week =
     [
-        (DayOfWeek.Monday, "Lun"), (DayOfWeek.Tuesday, "Mar"), (DayOfWeek.Wednesday, "Mer"), (DayOfWeek.Thursday, "Gio"),
-        (DayOfWeek.Friday, "Ven"), (DayOfWeek.Saturday, "Sab"), (DayOfWeek.Sunday, "Dom"),
+        (DayOfWeek.Monday, N("Lun")), (DayOfWeek.Tuesday, N("Mar")), (DayOfWeek.Wednesday, N("Mer")), (DayOfWeek.Thursday, N("Gio")),
+        (DayOfWeek.Friday, N("Ven")), (DayOfWeek.Saturday, N("Sab")), (DayOfWeek.Sunday, N("Dom")),
     ];
 
     public EventWindow(IReadOnlyList<Choice> choices, Choice? preferred, DateTime start, DateTime end, bool wholeDay)
     {
-        Title = "Nuovo evento";
+        Title = T("Nuovo evento");
         Width = 640;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
@@ -106,46 +105,46 @@ public sealed class EventWindow : Window
             return text;
         }
         panel.Children.Add(form);
-        AutomationProperties.SetName(subject, "Titolo");
-        Field("Titolo", subject);
+        AutomationProperties.SetName(subject, T("Titolo"));
+        Field(T("Titolo"), subject);
 
-        AutomationProperties.SetName(required, "Partecipanti");
-        AutomationProperties.SetName(optional, "Partecipanti facoltativi");
-        required.ToolTip = "Con dei partecipanti l'evento diventa una riunione e partono gli inviti";
-        Field("Partecipanti", required);
-        Field("Facoltativi", optional);
+        AutomationProperties.SetName(required, T("Partecipanti"));
+        AutomationProperties.SetName(optional, T("Partecipanti facoltativi"));
+        required.ToolTip = T("Con dei partecipanti l'evento diventa una riunione e partono gli inviti");
+        Field(T("Partecipanti"), required);
+        Field(T("Facoltativi"), optional);
 
         foreach (var c in choices) calendar.Items.Add(c);
         calendar.SelectedItem = preferred ?? choices.FirstOrDefault(c => c.Calendar.IsDefault) ?? choices.FirstOrDefault();
-        AutomationProperties.SetName(calendar, "Calendario");
-        Field("Calendario", calendar);
+        AutomationProperties.SetName(calendar, T("Calendario"));
+        Field(T("Calendario"), calendar);
 
         startDate.SelectedDate = start.Date;
         endDate.SelectedDate = (wholeDay ? end.AddDays(-1) : end).Date;
         startTime.Text = $"{start.Hour}:{start.Minute:00}";
         endTime.Text = $"{end.Hour}:{end.Minute:00}";
         allDay.IsChecked = wholeDay;
-        AutomationProperties.SetName(startDate, "Data di inizio");
-        AutomationProperties.SetName(startTime, "Ora di inizio");
-        AutomationProperties.SetName(endDate, "Data di fine");
-        AutomationProperties.SetName(endTime, "Ora di fine");
+        AutomationProperties.SetName(startDate, T("Data di inizio"));
+        AutomationProperties.SetName(startTime, T("Ora di inizio"));
+        AutomationProperties.SetName(endDate, T("Data di fine"));
+        AutomationProperties.SetName(endTime, T("Ora di fine"));
         var startRow = Row(startDate, startTime);
         allDay.Margin = new Thickness(16, 0, 0, 0);
         allDay.VerticalAlignment = VerticalAlignment.Center;
         startRow.Children.Add(allDay);
-        Field("Inizio", startRow);
-        Field("Fine", Row(endDate, endTime));
+        Field(T("Inizio"), startRow);
+        Field(T("Fine"), Row(endDate, endTime));
 
         // Disponibilità dei partecipanti, come l'Assistente Pianificazione di Outlook: solo al clic, dalle 8 alle 20 del giorno.
-        var check = new Button { Content = "Controlla la disponibilità", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(10, 3, 10, 4) };
-        AutomationProperties.SetName(check, "Controlla la disponibilità dei partecipanti");
+        var check = new Button { Content = T("Controlla la disponibilità"), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(10, 3, 10, 4) };
+        AutomationProperties.SetName(check, T("Controlla la disponibilità dei partecipanti"));
         check.Click += async (_, _) => await ShowAvailabilityAsync();
         availabilityNote.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryTextBrush");
         var availabilityRow = new StackPanel();
         availabilityRow.Children.Add(check);
         availabilityRow.Children.Add(availabilityNote);
         availabilityRow.Children.Add(availability);
-        Field("Disponibilità", availabilityRow);
+        Field(T("Disponibilità"), availabilityRow);
         allDay.Checked += (_, _) => startTime.IsEnabled = endTime.IsEnabled = false;
         allDay.Unchecked += (_, _) => startTime.IsEnabled = endTime.IsEnabled = true;
         startTime.IsEnabled = endTime.IsEnabled = !wholeDay;
@@ -157,21 +156,21 @@ public sealed class EventWindow : Window
             FitRepeatDays();
         };
 
-        foreach (var (value, text) in new[] { (EventRepeat.None, "Non si ripete"), (EventRepeat.Daily, "Ogni giorno"), (EventRepeat.Weekly, "Ogni settimana"), (EventRepeat.Monthly, "Ogni mese") })
+        foreach (var (value, text) in new[] { (EventRepeat.None, T("Non si ripete")), (EventRepeat.Daily, T("Ogni giorno")), (EventRepeat.Weekly, T("Ogni settimana")), (EventRepeat.Monthly, T("Ogni mese")) })
             repeat.Items.Add(new ComboBoxItem { Content = text, Tag = value });
         repeat.SelectedIndex = 0;
-        AutomationProperties.SetName(repeat, "Ripeti");
+        AutomationProperties.SetName(repeat, T("Ripeti"));
         foreach (var (day, name) in Week)
         {
-            var toggle = new ToggleButton { Content = name, Tag = day, MinWidth = 48, Margin = new Thickness(0, 0, 4, 0), IsChecked = day == start.DayOfWeek };
-            AutomationProperties.SetName(toggle, Italian.DateTimeFormat.GetDayName(day));
+            var toggle = new ToggleButton { Content = T(name), Tag = day, MinWidth = 48, Margin = new Thickness(0, 0, 4, 0), IsChecked = day == start.DayOfWeek };
+            AutomationProperties.SetName(toggle, Lingua.Culture.DateTimeFormat.GetDayName(day));
             repeatDays.Children.Add(toggle);
         }
         repeatEnd.Margin = new Thickness(16, 0, 0, 0);
-        repeatEnd.Children.Add(new TextBlock { Text = "fino al", VerticalAlignment = VerticalAlignment.Center });
+        repeatEnd.Children.Add(new TextBlock { Text = T("fino al"), VerticalAlignment = VerticalAlignment.Center });
         repeatUntil.Width = 180;
-        repeatUntil.ToolTip = "Vuoto: senza fine";
-        AutomationProperties.SetName(repeatUntil, "Si ripete fino al");
+        repeatUntil.ToolTip = T("Vuoto: senza fine");
+        AutomationProperties.SetName(repeatUntil, T("Si ripete fino al"));
         repeatEnd.Children.Add(repeatUntil);
         var repeatRow = new StackPanel();
         var repeatLine = new StackPanel { Orientation = Orientation.Horizontal };
@@ -179,7 +178,7 @@ public sealed class EventWindow : Window
         repeatLine.Children.Add(repeatEnd);
         repeatRow.Children.Add(repeatLine);
         repeatRow.Children.Add(repeatDays);
-        newOnly.Add(Field("Ripeti", repeatRow));
+        newOnly.Add(Field(T("Ripeti"), repeatRow));
         newOnly.Add(repeatRow);
         repeat.SelectionChanged += (_, _) =>
         {
@@ -188,23 +187,23 @@ public sealed class EventWindow : Window
             repeatEnd.Visibility = chosen == EventRepeat.None ? Visibility.Collapsed : Visibility.Visible;
         };
 
-        AutomationProperties.SetName(location, "Luogo");
-        Field("Luogo", location);
+        AutomationProperties.SetName(location, T("Luogo"));
+        Field(T("Luogo"), location);
 
-        foreach (var (minutes, text) in new (int?, string)[] { (null, "Nessun promemoria"), (0, "All'inizio"), (5, "5 minuti prima"), (15, "15 minuti prima"), (30, "30 minuti prima"),
-                                                                  (60, "1 ora prima"), (24 * 60, "1 giorno prima") })
+        foreach (var (minutes, text) in new (int?, string)[] { (null, T("Nessun promemoria")), (0, T("All'inizio")), (5, T("5 minuti prima")), (15, T("15 minuti prima")), (30, T("30 minuti prima")),
+                                                                  (60, T("1 ora prima")), (24 * 60, T("1 giorno prima")) })
             reminder.Items.Add(new ComboBoxItem { Content = text, Tag = minutes });
         reminder.SelectedIndex = wholeDay ? 0 : 3;
-        foreach (var (value, text) in new[] { ("free", "Libero"), ("tentative", "Provvisorio"), ("busy", "Occupato"), ("oof", "Fuori sede"), ("workingElsewhere", "Lavoro altrove") })
+        foreach (var (value, text) in new[] { ("free", T("Libero")), ("tentative", T("Provvisorio")), ("busy", T("Occupato")), ("oof", T("Fuori sede")), ("workingElsewhere", T("Lavoro altrove")) })
             showAs.Items.Add(new ComboBoxItem { Content = text, Tag = value });
         showAs.SelectedIndex = wholeDay ? 0 : 2;
-        AutomationProperties.SetName(reminder, "Promemoria");
-        AutomationProperties.SetName(showAs, "Mostra come");
+        AutomationProperties.SetName(reminder, T("Promemoria"));
+        AutomationProperties.SetName(showAs, T("Mostra come"));
         var options = new StackPanel { Orientation = Orientation.Horizontal };
         options.Children.Add(reminder);
-        options.Children.Add(new TextBlock { Text = "Mostra come", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) });
+        options.Children.Add(new TextBlock { Text = T("Mostra come"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) });
         options.Children.Add(showAs);
-        Field("Promemoria", options);
+        Field(T("Promemoria"), options);
         foreach (var box in new[] { required, optional })
         {
             box.TextChanged += (_, _) => { Suggest(box); FitSaveButton(); };
@@ -225,15 +224,15 @@ public sealed class EventWindow : Window
         calendar.SelectionChanged += (_, _) => FitTeams();
         FitTeams();
 
-        AutomationProperties.SetName(description, "Descrizione");
+        AutomationProperties.SetName(description, T("Descrizione"));
         description.Document.FontFamily = SystemFonts.MessageFontFamily; // come il resto della finestra, non il carattere dei documenti
         description.Document.FontSize = 14;
-        newOnly.Add(Field("Descrizione", description));
+        newOnly.Add(Field(T("Descrizione"), description));
         newOnly.Add(description);
         panel.Children.Add(error);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 20, 0, 0) };
-        var cancel = new Button { Content = "Annulla", MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+        var cancel = new Button { Content = T("Annulla"), MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
         save.SetResourceReference(StyleProperty, "AccentButtonStyle");
         save.Click += async (_, _) => await SaveAsync();
         buttons.Children.Add(cancel);
@@ -242,6 +241,9 @@ public sealed class EventWindow : Window
         Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = SystemParameters.WorkArea.Height - 80 };
         Loaded += (_, _) => subject.Focus();
         Closing += (_, e) => e.Cancel = saving; // mentre si scrive sul server
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto, anche in inglese): fuori dallo schermo, senza il fuoco
+#endif
     }
 
     EventRepeat RepeatChoice => repeat.SelectedItem is ComboBoxItem { Tag: EventRepeat r } ? r : EventRepeat.None;
@@ -274,7 +276,7 @@ public sealed class EventWindow : Window
     /// Con dei partecipanti il pulsante è Invia, come nel nuovo Outlook: partono gli inviti; nella modifica "Invia
     /// aggiornamento", perché Exchange lo manda a tutti.
     /// </summary>
-    void FitSaveButton() => save.Content = required.Text.Trim().Length + optional.Text.Trim().Length > 0 ? (editing != null ? "Invia aggiornamento" : "Invia") : "Salva";
+    void FitSaveButton() => save.Content = required.Text.Trim().Length + optional.Text.Trim().Length > 0 ? (editing != null ? T("Invia aggiornamento") : T("Invia")) : T("Salva");
 
     /// <summary>
     /// Modifica di un evento proprio, come nel nuovo Outlook: la finestra con i campi dell'evento, nel suo calendario.
@@ -292,7 +294,7 @@ public sealed class EventWindow : Window
     {
         editing = e;
         editSeries = series && e.SeriesMasterId.Length > 0;
-        Title = heading.Text = "Modifica evento";
+        Title = heading.Text = T("Modifica evento");
         subject.Text = e.Subject;
         location.Text = e.Location;
         required.Text = string.Concat(e.Attendees.Where(a => !a.Optional).Select(a => a.Person.FieldText() + "; "));
@@ -302,15 +304,18 @@ public sealed class EventWindow : Window
         var match = reminder.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (int?)i.Tag == minutes);
         if (match == null)
         {
-            match = new ComboBoxItem { Content = $"{minutes} minuti prima", Tag = minutes };
+            match = new ComboBoxItem { Content = T("{0} minuti prima", minutes), Tag = minutes };
             reminder.Items.Add(match);
         }
         reminder.SelectedItem = match;
         showAs.SelectedItem = showAs.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == e.ShowAs) ?? showAs.SelectedItem;
         calendar.IsEnabled = false;
         foreach (var part in newOnly) part.Visibility = Visibility.Collapsed;
-        editNote.Text = (e.IsRecurring ? editSeries ? "Modifichi tutta la serie: i giorni della ripetizione restano quelli. " : "Modifichi solo questo evento della serie. " : "") +
-                        "Ripetizione e descrizione restano com'erano." + (e.Attendees.Count > 0 ? " I partecipanti ricevono l'aggiornamento." : "");
+        var note = new List<string>();
+        if (e.IsRecurring) note.Add(editSeries ? T("Modifichi tutta la serie: i giorni della ripetizione restano quelli.") : T("Modifichi solo questo evento della serie."));
+        note.Add(T("Ripetizione e descrizione restano com'erano."));
+        if (e.Attendees.Count > 0) note.Add(T("I partecipanti ricevono l'aggiornamento."));
+        editNote.Text = string.Join(" ", note);
         editNote.Visibility = Visibility.Visible;
         FitSaveButton();
     }
@@ -331,12 +336,12 @@ public sealed class EventWindow : Window
         var people = must.Concat(may).GroupBy(a => a.Email.ToLowerInvariant()).Select(g => g.First()).ToList();
         if (people.Count == 0)
         {
-            availabilityNote.Text = "Scrivi prima i partecipanti.";
+            availabilityNote.Text = T("Scrivi prima i partecipanti.");
             return;
         }
         var from = day.Date.AddHours(8);
         var to = day.Date.AddHours(20);
-        availabilityNote.Text = "Controllo…";
+        availabilityNote.Text = T("Controllo…");
         List<Availability>? found;
         try { found = await ScheduleSource(choice.Provider, people.Select(p => p.Email).ToList(), from, to); }
         catch (Exception ex)
@@ -346,10 +351,10 @@ public sealed class EventWindow : Window
         }
         if (found == null)
         {
-            availabilityNote.Text = "Per vedere la disponibilità Missiva deve poter usare il calendario: premi \"Consenti l'accesso al calendario\" nel calendario.";
+            availabilityNote.Text = T("Per vedere la disponibilità Missiva deve poter usare il calendario: premi \"Consenti l'accesso al calendario\" nel calendario.");
             return;
         }
-        availabilityNote.Text = $"{day.ToString("dddd d MMMM", Italian)}, dalle 8 alle 20: pieno occupato, tenue provvisorio, viola fuori sede. In alto l'evento.";
+        availabilityNote.Text = T("{0}, dalle 8 alle 20: pieno occupato, tenue provvisorio, viola fuori sede. In alto l'evento.", day.ToString("dddd d MMMM", Lingua.Culture));
         DateTime? start = AutoRepliesWindow.ParseTime(startTime.Text) is { } st && allDay.IsChecked != true ? day.Date + st : null;
         DateTime? end = AutoRepliesWindow.ParseTime(endTime.Text) is { } et && allDay.IsChecked != true ? (endDate.SelectedDate ?? day).Date + et : null;
         UIElement Strip(Func<int, Brush?> fill, string name, string tip)
@@ -371,7 +376,7 @@ public sealed class EventWindow : Window
         var accent = (Brush)FindResource("AccentFillColorDefaultBrush");
         Brush Soft(Brush b) => b is SolidColorBrush s ? new SolidColorBrush(Color.FromArgb(0x70, s.Color.R, s.Color.G, s.Color.B)) : b;
         var away = new SolidColorBrush(Color.FromRgb(0x87, 0x64, 0xB8));
-        availability.Children.Add(Strip(i => start is { } s && end is { } e && from.AddMinutes(30 * i) < e && from.AddMinutes(30 * (i + 1)) > s ? Soft(accent) : null, "Evento", "L'orario dell'evento"));
+        availability.Children.Add(Strip(i => start is { } s && end is { } e && from.AddMinutes(30 * i) < e && from.AddMinutes(30 * (i + 1)) > s ? Soft(accent) : null, T("Evento"), T("L'orario dell'evento")));
         foreach (var person in people)
         {
             var a = found.FirstOrDefault(f => f.Email.Equals(person.Email, StringComparison.OrdinalIgnoreCase));
@@ -460,8 +465,8 @@ public sealed class EventWindow : Window
             error.Visibility = Visibility.Visible;
         }
         error.Visibility = Visibility.Collapsed;
-        if (calendar.SelectedItem is not Choice choice) { Fail("Scegli il calendario."); return null; }
-        if (startDate.SelectedDate is not { } sd || endDate.SelectedDate is not { } ed) { Fail("Scegli il giorno di inizio e quello di fine."); return null; }
+        if (calendar.SelectedItem is not Choice choice) { Fail(T("Scegli il calendario.")); return null; }
+        if (startDate.SelectedDate is not { } sd || endDate.SelectedDate is not { } ed) { Fail(T("Scegli il giorno di inizio e quello di fine.")); return null; }
         bool whole = allDay.IsChecked == true;
         DateTime start, end;
         if (whole)
@@ -471,18 +476,18 @@ public sealed class EventWindow : Window
         }
         else
         {
-            if (AutoRepliesWindow.ParseTime(startTime.Text) is not { } st || AutoRepliesWindow.ParseTime(endTime.Text) is not { } et) { Fail("Scrivi le ore come 9:30."); return null; }
+            if (AutoRepliesWindow.ParseTime(startTime.Text) is not { } st || AutoRepliesWindow.ParseTime(endTime.Text) is not { } et) { Fail(T("Scrivi le ore come 9:30.")); return null; }
             start = sd.Date + st;
             end = ed.Date + et;
         }
-        if (end <= start) { Fail("La fine deve venire dopo l'inizio."); return null; }
+        if (end <= start) { Fail(T("La fine deve venire dopo l'inizio.")); return null; }
         var must = ComposeWindow.Parse(required.Text, out var bad1);
         var may = ComposeWindow.Parse(optional.Text, out var bad2);
-        if (must == null || may == null) { Fail($"Controlla l'indirizzo \"{bad1 ?? bad2}\"."); return null; }
+        if (must == null || may == null) { Fail(T("Controlla l'indirizzo \"{0}\".", bad1 ?? bad2)); return null; }
         var repeatKind = RepeatChoice;
         var days = repeatDays.Children.OfType<ToggleButton>().Where(t => t.IsChecked == true).Select(t => (DayOfWeek)t.Tag).ToList();
         if (repeatKind == EventRepeat.Weekly && days.Count == 0) days.Add(start.DayOfWeek);
-        if (repeatKind != EventRepeat.None && repeatUntil.SelectedDate is { } until && until.Date < start.Date) { Fail("La ripetizione deve finire dopo il primo giorno."); return null; }
+        if (repeatKind != EventRepeat.None && repeatUntil.SelectedDate is { } until && until.Date < start.Date) { Fail(T("La ripetizione deve finire dopo il primo giorno.")); return null; }
         return new NewEvent
         {
             CalendarId = choice.Calendar.Id,
@@ -529,7 +534,7 @@ public sealed class EventWindow : Window
         catch (Exception ex)
         {
             Log.Error("nuovo evento", ex);
-            error.Text = (editing != null ? "Modifica non salvata: " : e.IsMeeting ? "Riunione non inviata: " : "Evento non salvato: ") + ex.Message;
+            error.Text = editing != null ? T("Modifica non salvata: {0}", ex.Message) : e.IsMeeting ? T("Riunione non inviata: {0}", ex.Message) : T("Evento non salvato: {0}", ex.Message);
             error.Visibility = Visibility.Visible;
             save.IsEnabled = true;
         }

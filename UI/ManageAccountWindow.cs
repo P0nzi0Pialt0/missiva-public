@@ -20,11 +20,11 @@ public sealed class ManageAccountWindow : Window
     readonly PasswordBox passwordBox = new();
     readonly TextBox imapHost = new(), imapPort = new(), smtpHost = new(), smtpPort = new(), userBox = new();
     readonly ComboBox imapSecurity = Security(), smtpSecurity = Security();
-    readonly Expander serverExpander = new() { Header = "Server", Margin = new Thickness(0, 12, 0, 0) };
+    readonly Expander serverExpander = new() { Header = T("Server"), Margin = new Thickness(0, 12, 0, 0) };
     readonly TextBlock error = Dialog.ErrorText(14);
     readonly TextBlock status = Secondary("");
-    readonly Button save = new() { Content = "Salva", MinWidth = 100, IsDefault = true };
-    readonly Button signIn = new() { Content = "Accedi di nuovo", Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+    readonly Button save = new() { Content = T("Salva"), MinWidth = 100, IsDefault = true };
+    readonly Button signIn = new() { Content = T("Accedi di nuovo"), Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
     readonly StackPanel form = new();
     CancellationTokenSource? googleWait;
     /// <summary>La prova dei server nuovi in corso (fino a 45 s): Annulla e la X la interrompono, e nulla si salva.</summary>
@@ -39,25 +39,28 @@ public sealed class ManageAccountWindow : Window
     {
         this.account = account;
         status.Margin = new Thickness(0, 10, 0, 0);
-        Title = "Gestisci account";
+        Title = T("Gestisci account");
         Width = 540;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto): nasce fuori dallo schermo e non prende il fuoco
+#endif
 
         var panel = new StackPanel { Margin = new Thickness(28, 22, 28, 24) };
-        panel.Children.Add(new TextBlock { Text = "Gestisci account", FontSize = 22, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) });
+        panel.Children.Add(new TextBlock { Text = T("Gestisci account"), FontSize = 22, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) });
         panel.Children.Add(new TextBlock { Text = account.Email, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
         panel.Children.Add(Secondary(AccountTypes.Describe(account)));
 
-        form.Children.Add(Label("Nome mostrato", 16));
+        form.Children.Add(Label(T("Nome mostrato"), 16));
         nameBox.Text = account.DisplayName;
-        AutomationProperties.SetName(nameBox, "Nome mostrato");
+        AutomationProperties.SetName(nameBox, T("Nome mostrato"));
         form.Children.Add(nameBox);
         form.Children.Add(Note(account.Kind == AccountKind.Microsoft
-            ? "Nei messaggi inviati il nome lo mette Microsoft, dal tuo account (lo cambi nel profilo Microsoft); Missiva usa questo nelle risposte agli inviti e nelle conferme di lettura."
-            : "Il nome che i destinatari vedono accanto al tuo indirizzo nel campo Da."));
+            ? T("Nei messaggi inviati il nome lo mette Microsoft, dal tuo account (lo cambi nel profilo Microsoft); Missiva usa questo nelle risposte agli inviti e nelle conferme di lettura.")
+            : T("Il nome che i destinatari vedono accanto al tuo indirizzo nel campo Da.")));
 
         if (account.Kind == AccountKind.Imap && account.Imap is { } server) AddImap(server);
         else AddSignIn();
@@ -70,7 +73,7 @@ public sealed class ManageAccountWindow : Window
         var buttons = new DockPanel { Margin = new Thickness(0, 20, 0, 0), LastChildFill = false };
         save.SetResourceReference(StyleProperty, "AccentButtonStyle");
         save.Click += async (_, _) => await SaveAsync();
-        var cancel = new Button { Content = "Annulla", MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+        var cancel = new Button { Content = T("Annulla"), MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
         DockPanel.SetDock(save, Dock.Right);
         DockPanel.SetDock(cancel, Dock.Right);
         buttons.Children.Add(save);
@@ -86,7 +89,7 @@ public sealed class ManageAccountWindow : Window
             if (trying == null) return;
             e.Cancel = true;
             closeWhenStopped = true;
-            status.Text = "Interrompo la prova del collegamento…";
+            status.Text = T("Interrompo la prova del collegamento…");
             trying.Cancel();
         };
         Loaded += (_, _) =>
@@ -128,10 +131,9 @@ public sealed class ManageAccountWindow : Window
     void AddImap(ImapServer server)
     {
         form.Children.Add(Section("Password"));
-        form.Children.Add(Secondary("Se hai cambiato la password sul sito del provider, scrivi qui quella nuova: Missiva la prova con il server prima di " +
-                                    "salvarla. Resta cifrata su questo PC, solo per il tuo utente di Windows. Lasciala vuota per tenere quella di adesso."));
-        form.Children.Add(Label("Nuova password"));
-        AutomationProperties.SetName(passwordBox, "Nuova password");
+        form.Children.Add(Secondary(T("Se hai cambiato la password sul sito del provider, scrivi qui quella nuova: Missiva la prova con il server prima di salvarla. Resta cifrata su questo PC, solo per il tuo utente di Windows. Lasciala vuota per tenere quella di adesso.")));
+        form.Children.Add(Label(T("Nuova password")));
+        AutomationProperties.SetName(passwordBox, T("Nuova password"));
         form.Children.Add(passwordBox);
 
         var grid = new Grid { Margin = new Thickness(0, 8, 0, 0) };
@@ -146,20 +148,20 @@ public sealed class ManageAccountWindow : Window
             if (name != null) AutomationProperties.SetName(element, name);
             grid.Children.Add(element);
         }
-        Put(new TextBlock { Text = "Server IMAP (posta in arrivo)", Margin = new Thickness(0, 0, 0, 4) }, 0, 0);
-        Put(new TextBlock { Text = "Porta", Margin = new Thickness(0, 0, 0, 4) }, 0, 2);
-        Put(new TextBlock { Text = "Sicurezza", Margin = new Thickness(0, 0, 0, 4) }, 0, 4);
-        Put(imapHost, 1, 0, "Server IMAP");
-        Put(imapPort, 1, 2, "Porta IMAP");
-        Put(imapSecurity, 1, 4, "Sicurezza IMAP");
-        Put(new TextBlock { Text = "Server SMTP (posta in uscita)", Margin = new Thickness(0, 10, 0, 4) }, 2, 0);
-        Put(new TextBlock { Text = "Porta", Margin = new Thickness(0, 10, 0, 4) }, 2, 2);
-        Put(new TextBlock { Text = "Sicurezza", Margin = new Thickness(0, 10, 0, 4) }, 2, 4);
-        Put(smtpHost, 3, 0, "Server SMTP");
-        Put(smtpPort, 3, 2, "Porta SMTP");
-        Put(smtpSecurity, 3, 4, "Sicurezza SMTP");
-        Put(new TextBlock { Text = "Nome utente", Margin = new Thickness(0, 10, 0, 4) }, 4, 0);
-        Put(userBox, 5, 0, "Nome utente", span: 5);
+        Put(new TextBlock { Text = T("Server IMAP (posta in arrivo)"), Margin = new Thickness(0, 0, 0, 4) }, 0, 0);
+        Put(new TextBlock { Text = T("Porta"), Margin = new Thickness(0, 0, 0, 4) }, 0, 2);
+        Put(new TextBlock { Text = T("Sicurezza"), Margin = new Thickness(0, 0, 0, 4) }, 0, 4);
+        Put(imapHost, 1, 0, T("Server IMAP"));
+        Put(imapPort, 1, 2, T("Porta IMAP"));
+        Put(imapSecurity, 1, 4, T("Sicurezza IMAP"));
+        Put(new TextBlock { Text = T("Server SMTP (posta in uscita)"), Margin = new Thickness(0, 10, 0, 4) }, 2, 0);
+        Put(new TextBlock { Text = T("Porta"), Margin = new Thickness(0, 10, 0, 4) }, 2, 2);
+        Put(new TextBlock { Text = T("Sicurezza"), Margin = new Thickness(0, 10, 0, 4) }, 2, 4);
+        Put(smtpHost, 3, 0, T("Server SMTP"));
+        Put(smtpPort, 3, 2, T("Porta SMTP"));
+        Put(smtpSecurity, 3, 4, T("Sicurezza SMTP"));
+        Put(new TextBlock { Text = T("Nome utente"), Margin = new Thickness(0, 10, 0, 4) }, 4, 0);
+        Put(userBox, 5, 0, T("Nome utente"), span: 5);
 
         imapHost.Text = server.ImapHost;
         imapPort.Text = server.ImapPort.ToString();
@@ -169,7 +171,7 @@ public sealed class ManageAccountWindow : Window
         smtpSecurity.SelectedIndex = server.SmtpSecurity == MailSecurity.Ssl ? 0 : 1;
         userBox.Text = server.UserName;
         var inside = new StackPanel();
-        inside.Children.Add(Secondary("Sempre cifrati, con SSL/TLS o STARTTLS: la password non viaggia mai in chiaro. Cambiali solo se il provider ti ha dato server nuovi."));
+        inside.Children.Add(Secondary(T("Sempre cifrati, con SSL/TLS o STARTTLS: la password non viaggia mai in chiaro. Cambiali solo se il provider ti ha dato server nuovi.")));
         inside.Children.Add(grid);
         serverExpander.Content = inside;
         form.Children.Add(serverExpander);
@@ -178,20 +180,20 @@ public sealed class ManageAccountWindow : Window
     /// <summary>Microsoft e Google: il nuovo accesso, solo quando si preme il pulsante.</summary>
     void AddSignIn()
     {
-        form.Children.Add(Section("Accesso"));
+        form.Children.Add(Section(T("Accesso")));
         var google = account.Kind == AccountKind.Gmail;
-        form.Children.Add(Secondary((google ? "Si apre il browser" : "Si apre la finestra account di Windows") +
-                                    " per rifare l'accesso con questo account: serve quando Missiva dice che l'account chiede un nuovo accesso, o dopo " +
-                                    "aver cambiato la password dell'account o revocato i permessi. Missiva non vede mai la tua password."));
+        form.Children.Add(Secondary(google
+            ? T("Si apre il browser per rifare l'accesso con questo account: serve quando Missiva dice che l'account chiede un nuovo accesso, o dopo aver cambiato la password dell'account o revocato i permessi. Missiva non vede mai la tua password.")
+            : T("Si apre la finestra account di Windows per rifare l'accesso con questo account: serve quando Missiva dice che l'account chiede un nuovo accesso, o dopo aver cambiato la password dell'account o revocato i permessi. Missiva non vede mai la tua password.")));
         if (account.Kind == AccountKind.Microsoft && account.Tenant != null)
         {
             var (clientId, tenant) = MicrosoftAuth.AppOf(account);
-            var directory = tenant == MicrosoftAuth.Organizations ? "per qualsiasi organizzazione" : $"directory {tenant}";
+            bool any = tenant == MicrosoftAuth.Organizations;
             form.Children.Add(Note(clientId == MicrosoftAuth.DefaultClientId
-                ? $"Con l'app di Missiva, {directory}."
-                : $"Con l'app della tua organizzazione ({clientId}), {directory}."));
+                ? any ? T("Con l'app di Missiva, per qualsiasi organizzazione.") : T("Con l'app di Missiva, directory {0}.", tenant!)
+                : any ? T("Con l'app della tua organizzazione ({0}), per qualsiasi organizzazione.", clientId) : T("Con l'app della tua organizzazione ({0}), directory {1}.", clientId, tenant!)));
         }
-        AutomationProperties.SetName(signIn, "Accedi di nuovo");
+        AutomationProperties.SetName(signIn, T("Accedi di nuovo"));
         signIn.Click += async (_, _) => await SignInAgainAsync();
         form.Children.Add(signIn);
     }
@@ -211,16 +213,13 @@ public sealed class ManageAccountWindow : Window
     void AddIdentities()
     {
         identities.AddRange(account.Identities.Select(i => new SendIdentity { Id = i.Id, Name = i.Name, Email = i.Email, ReplyTo = i.ReplyTo }));
-        form.Children.Add(Section("Altri indirizzi (Invia come)"));
+        form.Children.Add(Section(T("Altri indirizzi (Invia come)")));
         form.Children.Add(Secondary(account.Kind switch
         {
-            AccountKind.Gmail => "Per scrivere da un alias o da un altro indirizzo: aggiungilo anche in Gmail sul web (Impostazioni, Account e importazione, " +
-                                 "Invia messaggio come), altrimenti Gmail mette al suo posto l'indirizzo principale.",
-            AccountKind.Microsoft when account.Tenant == null => "Con Outlook.com l'indirizzo deve essere un alias del tuo account Microsoft (account.microsoft.com, " +
-                                                                "Le tue informazioni, Gestisci la modalità di accesso).",
-            AccountKind.Microsoft => "Con Microsoft 365 serve il permesso Invia come su quell'indirizzo (una casella condivisa come info@ o segreteria@): lo dà " +
-                                     "l'amministratore. Senza, Microsoft rifiuta il messaggio e Missiva lo spiega.",
-            _ => "Il server di posta in uscita deve accettare questo mittente: di solito gli alias della stessa casella sì.",
+            AccountKind.Gmail => T("Per scrivere da un alias o da un altro indirizzo: aggiungilo anche in Gmail sul web (Impostazioni, Account e importazione, Invia messaggio come), altrimenti Gmail mette al suo posto l'indirizzo principale."),
+            AccountKind.Microsoft when account.Tenant == null => T("Con Outlook.com l'indirizzo deve essere un alias del tuo account Microsoft (account.microsoft.com, Le tue informazioni, Gestisci la modalità di accesso)."),
+            AccountKind.Microsoft => T("Con Microsoft 365 serve il permesso Invia come su quell'indirizzo (una casella condivisa come info@ o segreteria@): lo dà l'amministratore. Senza, Microsoft rifiuta il messaggio e Missiva lo spiega."),
+            _ => T("Il server di posta in uscita deve accettare questo mittente: di solito gli alias della stessa casella sì."),
         }));
         form.Children.Add(identityList);
         var grid = new Grid { Margin = new Thickness(0, 8, 0, 0) };
@@ -234,14 +233,14 @@ public sealed class ManageAccountWindow : Window
             if (name != null) AutomationProperties.SetName(element, name);
             grid.Children.Add(element);
         }
-        Put(new TextBlock { Text = "Nome", Margin = new Thickness(0, 0, 0, 4) }, 0, 0);
-        Put(new TextBlock { Text = "Indirizzo", Margin = new Thickness(0, 0, 0, 4) }, 0, 2);
-        Put(identityName, 1, 0, "Nome dell'altro indirizzo");
-        Put(identityEmail, 1, 2, "Altro indirizzo");
-        Put(new TextBlock { Text = "Rispondi a (facoltativo)", Margin = new Thickness(0, 10, 0, 4) }, 2, 0);
-        Put(identityReplyTo, 3, 0, "Rispondi a");
-        var add = new Button { Content = "Aggiungi", VerticalAlignment = VerticalAlignment.Bottom, HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(add, "Aggiungi l'indirizzo");
+        Put(new TextBlock { Text = T("Nome"), Margin = new Thickness(0, 0, 0, 4) }, 0, 0);
+        Put(new TextBlock { Text = T("Indirizzo"), Margin = new Thickness(0, 0, 0, 4) }, 0, 2);
+        Put(identityName, 1, 0, T("Nome dell'altro indirizzo"));
+        Put(identityEmail, 1, 2, T("Altro indirizzo"));
+        Put(new TextBlock { Text = T("Rispondi a (facoltativo)"), Margin = new Thickness(0, 10, 0, 4) }, 2, 0);
+        Put(identityReplyTo, 3, 0, T("Rispondi a"));
+        var add = new Button { Content = T("Aggiungi"), VerticalAlignment = VerticalAlignment.Bottom, HorizontalAlignment = HorizontalAlignment.Left };
+        AutomationProperties.SetName(add, T("Aggiungi l'indirizzo"));
         add.Click += (_, _) => AddIdentity();
         Put(add, 3, 2);
         form.Children.Add(grid);
@@ -252,17 +251,17 @@ public sealed class ManageAccountWindow : Window
     void FillIdentities()
     {
         identityList.Children.Clear();
-        if (identities.Count == 0) identityList.Children.Add(Secondary("Nessun altro indirizzo."));
+        if (identities.Count == 0) identityList.Children.Add(Secondary(T("Nessun altro indirizzo.")));
         foreach (var identity in identities)
         {
             var row = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
-            var remove = new Button { Content = "Togli", Padding = new Thickness(10, 2, 10, 3) };
-            AutomationProperties.SetName(remove, "Togli " + identity.Email);
+            var remove = new Button { Content = T("Togli"), Padding = new Thickness(10, 2, 10, 3) };
+            AutomationProperties.SetName(remove, T("Togli {0}", identity.Email));
             remove.Click += (_, _) => { identities.Remove(identity); FillIdentities(); };
             DockPanel.SetDock(remove, Dock.Right);
             row.Children.Add(remove);
             var text = $"{(identity.Name.Length > 0 ? identity.Name + " <" + identity.Email + ">" : identity.Email)}" +
-                       (identity.ReplyTo.Length > 0 ? $" · risposte a {identity.ReplyTo}" : "");
+                       (identity.ReplyTo.Length > 0 ? " · " + T("risposte a {0}", identity.ReplyTo) : "");
             row.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = text });
             identityList.Children.Add(row);
         }
@@ -274,13 +273,13 @@ public sealed class ManageAccountWindow : Window
         var email = identityEmail.Text.Trim();
         var replyTo = identityReplyTo.Text.Trim();
         static bool Valid(string address) => address.Contains('@') && !address.Contains(' ') && address.IndexOf('@') is > 0 and var at && at < address.Length - 3;
-        if (!Valid(email)) { ShowError("Scrivi l'altro indirizzo, per esempio info@studiorossi.it."); return; }
+        if (!Valid(email)) { ShowError(T("Scrivi l'altro indirizzo, per esempio info@studiorossi.it.")); return; }
         if (email.Equals(account.Email, StringComparison.OrdinalIgnoreCase) || identities.Any(i => i.Email.Equals(email, StringComparison.OrdinalIgnoreCase)))
         {
-            ShowError($"{email} c'è già.");
+            ShowError(T("{0} c'è già.", email));
             return;
         }
-        if (replyTo.Length > 0 && !Valid(replyTo)) { ShowError("L'indirizzo di Rispondi a non è valido."); return; }
+        if (replyTo.Length > 0 && !Valid(replyTo)) { ShowError(T("L'indirizzo di Rispondi a non è valido.")); return; }
         identities.Add(new SendIdentity { Name = identityName.Text.Trim(), Email = email, ReplyTo = replyTo });
         identityEmail.Text = identityReplyTo.Text = "";
         FillIdentities();
@@ -302,7 +301,7 @@ public sealed class ManageAccountWindow : Window
         var name = nameBox.Text.Trim();
         if (name.Length == 0)
         {
-            ShowError("Scrivi il nome da mostrare, per esempio Mario Rossi o Studio Rossi.");
+            ShowError(T("Scrivi il nome da mostrare, per esempio Mario Rossi o Studio Rossi."));
             nameBox.Focus();
             return;
         }
@@ -319,7 +318,7 @@ public sealed class ManageAccountWindow : Window
             var password = passwordBox.Password.Length > 0 ? passwordBox.Password : null;
             if (password != null || !SameServer(candidate, old))
             {
-                status.Text = $"Provo il collegamento con {candidate.ImapHost} e {candidate.SmtpHost}…";
+                status.Text = T("Provo il collegamento con {0} e {1}…", candidate.ImapHost, candidate.SmtpHost);
                 SetBusy(true);
                 trying = new CancellationTokenSource(TimeSpan.FromSeconds(MailLimits.ServerTrySeconds));
                 bool stopped = false;
@@ -347,7 +346,7 @@ public sealed class ManageAccountWindow : Window
                 {
                     Log.Error("account IMAP non cambiato", ex);
                     status.Text = "";
-                    ShowError("Collegamento non riuscito: " + ex.Message);
+                    ShowError(T("Collegamento non riuscito: {0}", ex.Message));
                     return;
                 }
                 finally
@@ -383,7 +382,7 @@ public sealed class ManageAccountWindow : Window
         {
             // Nella versione di prova nessuno può rifare l'accesso: niente finestre, solo il registro.
             Log.Write($"prova: aprirei {(google ? "il browser per l'accesso a Google" : "la finestra di accesso di Microsoft")} per {account.Email}");
-            status.Text = "Nella versione di prova la finestra di accesso non si apre.";
+            status.Text = T("Nella versione di prova la finestra di accesso non si apre.");
             return;
         }
         SetBusy(true);
@@ -396,7 +395,7 @@ public sealed class ManageAccountWindow : Window
                 await MicrosoftAuth.SignInAgainAsync(account);
             }
             Reconnect = true;
-            status.Text = "Accesso rifatto.";
+            status.Text = T("Accesso rifatto.");
         }
         catch (Exception ex) when (MicrosoftAuth.Canceled(ex))
         {
@@ -408,17 +407,17 @@ public sealed class ManageAccountWindow : Window
         }
         catch (OperationCanceledException)
         {
-            ShowError("L'accesso nel browser non è stato completato in tempo. Riprova.");
+            ShowError(T("L'accesso nel browser non è stato completato in tempo. Riprova."));
         }
         catch (Microsoft.Identity.Client.MsalException ex)
         {
             Log.Error("nuovo accesso Microsoft", ex);
-            ReadingView.ShowConsentError(this, "Accesso non riuscito", ex, account, "leggere e inviare la posta");
+            ReadingView.ShowConsentError(this, T("Accesso non riuscito"), ex, account, T("leggere e inviare la posta"));
         }
         catch (Exception ex)
         {
             Log.Error("nuovo accesso", ex);
-            ShowError(ex is MailException ? ex.Message : "Accesso non riuscito: " + ex.Message);
+            ShowError(ex is MailException ? ex.Message : T("Accesso non riuscito: {0}", ex.Message));
         }
         finally
         {
@@ -429,14 +428,14 @@ public sealed class ManageAccountWindow : Window
     /// <summary>Google nel browser, con l'indirizzo dell'account già scritto: il token nuovo sostituisce quello di prima.</summary>
     async Task SignInGoogleAsync()
     {
-        status.Text = "Continua nel browser. Quando hai consentito l'accesso, Missiva lo prende da sola.";
+        status.Text = T("Continua nel browser. Quando hai consentito l'accesso, Missiva lo prende da sola.");
         googleWait = new CancellationTokenSource(TimeSpan.FromMinutes(MailLimits.BrowserSignInMinutes));
         try
         {
             var result = await GoogleAuth.SignInAsync(googleWait.Token, account.Email, GoogleAuth.ExtraScopesOf(account)); // calendario e contatti, se c'erano, restano
             Activate(); // dal browser si torna a Missiva
             if (!result.Email.Equals(account.Email, StringComparison.OrdinalIgnoreCase))
-                throw new MailException($"Nel browser hai scelto {result.Email}, non {account.Email}: per un altro account usa Aggiungi account.");
+                throw new MailException(T("Nel browser hai scelto {0}, non {1}: per un altro account usa Aggiungi account.", result.Email, account.Email));
             await GmailProvider.TestAsync(result.Email, result.AccessToken);
             googleWait.Token.ThrowIfCancellationRequested();
             GoogleAuth.Apply(account, result); // una casella tolta nella pagina di Google: lo dice

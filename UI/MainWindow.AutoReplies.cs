@@ -46,7 +46,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("risposte automatiche non spente", ex);
-            Dialog.Show(this, "Risposte automatiche non spente", ex.Message);
+            Dialog.Show(this, T("Risposte automatiche non spente"), ex.Message);
         }
     }
 

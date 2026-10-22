@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
@@ -74,7 +73,10 @@ public sealed class AccountItem : Observable
     public Visibility HeaderUnreadVisibility => HeaderUnreadText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Il nome per UI Automation e l'Assistente vocale: "indirizzo, 3 non letti" solo con il numero in vista.</summary>
-    public string HeaderAutomationName => HeaderUnreadText.Length == 0 ? HeaderTip : $"{HeaderTip}, {InboxUnread} {(InboxUnread == 1 ? "non letto" : "non letti")}";
+    public string HeaderAutomationName => HeaderUnreadText.Length == 0 ? HeaderTip : HeaderTip + ", " + UnreadWords(InboxUnread);
+
+    /// <summary>"1 non letto", "3 non letti": per i nomi delle intestazioni e delle cartelle per UI Automation.</summary>
+    internal static string UnreadWords(int count) => count == 1 ? T("1 non letto") : T("{0} non letti", count);
 
     int shownInboxUnread = -1;
 
@@ -171,7 +173,7 @@ public sealed class AccountItem : Observable
     /// <summary>Categorie dell'account (etichette di Gmail o categorie di Outlook), per il menu Categorizza.</summary>
     public List<Category> Categories { get; set; } = new();
 
-    string status = "Caricamento…";
+    string status = T("Caricamento…");
     public string Status { get => status; set { status = value; Changed(); Changed(nameof(StatusVisibility)); Changed(nameof(StatusLine)); } }
     public Visibility StatusVisibility => (status.Length > 0 || queued > 0) && fix == AccountFix.None ? Visibility.Visible : Visibility.Collapsed;
 
@@ -185,7 +187,7 @@ public sealed class AccountItem : Observable
     /// <summary>Le azioni fatte senza rete che aspettano di ripartire (ActionQueue) e i messaggi nella Posta in uscita di Missiva.</summary>
     public int Queued { get => queued; set { queued = value; Changed(nameof(StatusLine)); Changed(nameof(StatusVisibility)); } }
     /// <summary>La riga sotto l'account: lo stato (Non in linea...) e, se ce ne sono, le azioni in attesa.</summary>
-    public string StatusLine => string.Join(" · ", new[] { status, queued == 0 ? "" : queued == 1 ? "1 azione in attesa" : $"{queued} azioni in attesa" }.Where(t => t.Length > 0));
+    public string StatusLine => string.Join(" · ", new[] { status, queued == 0 ? "" : queued == 1 ? T("1 azione in attesa") : T("{0} azioni in attesa", queued) }.Where(t => t.Length > 0));
 
     AccountFix fix;
     /// <summary>
@@ -208,27 +210,36 @@ public sealed class AccountItem : Observable
     public Visibility FixVisibility => fix != AccountFix.None ? Visibility.Visible : Visibility.Collapsed;
     public string FixText => fix switch
     {
-        AccountFix.Password => "Aggiorna password",
-        AccountFix.Consent => "Consenti l'accesso alle caselle condivise",
-        _ => "Accedi di nuovo",
+        AccountFix.Password => T("Aggiorna password"),
+        AccountFix.Consent => T("Consenti l'accesso alle caselle condivise"),
+        _ => T("Accedi di nuovo"),
     };
     public string FixMessage => fix switch
     {
         // "non si legge più": la password o l'accesso salvati che non si decifrano (ImapProvider.CredentialsOf, GoogleAuth.TokenAsync).
         // "manca": un account arrivato con una copia di sicurezza, che non porta gli accessi (Backup).
-        AccountFix.Password => status.Contains("non si legge più") ? "La password salvata non si legge più su questo PC."
-            : status.Contains("manca la password") ? "Su questo PC manca la password dell'account." : "Password non accettata dal server.",
-        AccountFix.Consent => "Missiva non ha ancora il permesso di aprire le caselle condivise. La finestra di Microsoft si apre solo premendo il pulsante.",
-        _ => status.Contains("non si legge più") ? "L'accesso salvato non si legge più su questo PC."
-            : status.Contains("manca l'accesso") ? "Su questo PC manca l'accesso all'account." : "L'account chiede un nuovo accesso.",
+        AccountFix.Password => Says(N("non si legge più")) ? T("La password salvata non si legge più su questo PC.")
+            : Says(N("manca la password")) ? T("Su questo PC manca la password dell'account.") : T("Password non accettata dal server."),
+        AccountFix.Consent => T("Missiva non ha ancora il permesso di aprire le caselle condivise. La finestra di Microsoft si apre solo premendo il pulsante."),
+        _ => Says(N("non si legge più")) ? T("L'accesso salvato non si legge più su questo PC.")
+            : Says(N("manca l'accesso")) ? T("Su questo PC manca l'accesso all'account.") : T("L'account chiede un nuovo accesso."),
     };
+
+    /// <summary>
+    /// Lo stato (il testo dell'errore) dice il motivo, in italiano o nella lingua di Missiva: in inglese le frasi degli errori
+    /// contengono la traduzione di questi pezzi ("can't be read anymore", "doesn't have the password", e per gli accessi
+    /// "doesn't have the", come "This PC doesn't have the Google sign-in for ..."). Le frasi sono di ImapProvider.CredentialsOf
+    /// (servizio.json), GoogleAuth e MicrosoftAuth (impostazioni.json): chi ne cambia la traduzione tiene questi pezzi. Il
+    /// controllo "non si legge più" viene prima, quindi "doesn't have the" non scambia un accesso illeggibile per uno mancante.
+    /// </summary>
+    bool Says(string italiano) => status.Contains(italiano) || status.Contains(T(italiano));
 
     /// <summary>Una casella condivisa di Microsoft 365 (info@, segreteria@), aperta con un account di lavoro.</summary>
     public bool IsShared => Provider.Account.SharedOf != null;
     public Visibility SharedVisibility => IsShared ? Visibility.Visible : Visibility.Collapsed;
     /// <summary>Il suggerimento dell'intestazione: l'indirizzo e, per una casella condivisa, con quale account si apre.</summary>
     public string HeaderTip => IsShared && Store.Settings.Accounts.FirstOrDefault(a => a.Id == Provider.Account.SharedOf) is { } owner
-        ? $"{Header}: casella condivisa, aperta con {owner.Email}"
+        ? T("{0}: casella condivisa, aperta con {1}", Header, owner.Email)
         : Header;
 
     AutoReplies? autoReplies;
@@ -410,8 +421,8 @@ public sealed class AccountItem : Observable
     public int HiddenCount => Folders.Count(IsHidden);
     public Visibility HiddenToggleVisibility => expanded && HiddenCount > 0 ? Visibility.Visible : Visibility.Collapsed;
     public string HiddenToggleText => showHidden
-        ? "Nascondi di nuovo le cartelle nascoste"
-        : HiddenCount == 1 ? "Mostra 1 cartella nascosta" : $"Mostra {HiddenCount} cartelle nascoste";
+        ? T("Nascondi di nuovo le cartelle nascoste")
+        : HiddenCount == 1 ? T("Mostra 1 cartella nascosta") : T("Mostra {0} cartelle nascoste", HiddenCount);
 
     /// <summary>Una cartella si vede se le madri sono aperte e né lei né una madre è nascosta (salvo "Mostra").</summary>
     void UpdateVisibility()
@@ -441,11 +452,11 @@ public sealed class UnifiedItem(UnifiedView view) : Observable
 
     public string Name => View switch
     {
-        UnifiedView.Inbox => "Posta in arrivo",
-        UnifiedView.Unread => "Non letti",
-        UnifiedView.Flagged => "Contrassegnati",
-        UnifiedView.Drafts => "Bozze",
-        _ => "Posta inviata",
+        UnifiedView.Inbox => T("Posta in arrivo"),
+        UnifiedView.Unread => T("Non letti"),
+        UnifiedView.Flagged => T("Contrassegnati"),
+        UnifiedView.Drafts => T("Bozze"),
+        _ => T("Posta inviata"),
     };
 
     public string Glyph => View switch
@@ -459,14 +470,14 @@ public sealed class UnifiedItem(UnifiedView view) : Observable
 
     public string Tip => View switch
     {
-        UnifiedView.Inbox => "La Posta in arrivo di tutti gli account, insieme",
-        UnifiedView.Unread => "I messaggi da leggere nella Posta in arrivo di tutti gli account",
-        UnifiedView.Flagged => "I messaggi contrassegnati nella Posta in arrivo di tutti gli account",
-        UnifiedView.Drafts => "Le Bozze di tutti gli account",
-        _ => "La Posta inviata di tutti gli account",
+        UnifiedView.Inbox => T("La Posta in arrivo di tutti gli account, insieme"),
+        UnifiedView.Unread => T("I messaggi da leggere nella Posta in arrivo di tutti gli account"),
+        UnifiedView.Flagged => T("I messaggi contrassegnati nella Posta in arrivo di tutti gli account"),
+        UnifiedView.Drafts => T("Le Bozze di tutti gli account"),
+        _ => T("La Posta inviata di tutti gli account"),
     };
 
-    public string AutomationName => Name + " di tutti gli account";
+    public string AutomationName => T("{0} di tutti gli account", Name);
     public override string ToString() => AutomationName;
 
     /// <summary>La cartella di ogni account da cui vengono i messaggi.</summary>
@@ -659,8 +670,8 @@ public sealed class FolderItem : Observable
     /// Il nome per UI Automation e l'Assistente vocale, come Outlook: "Posta in arrivo, 3 non letti" (prima era
     /// "Missiva.UI.FolderItem"). Le voci degli elenchi lo prendono da ToString.
     /// </summary>
-    public string AutomationName => Name + (UnreadText.Length > 0 ? $", {Folder.Unread} {(Folder.Unread == 1 ? "non letto" : "non letti")}" : "")
-                                    + (IsHidden ? ", nascosta" : "");
+    public string AutomationName => string.Join(", ", new[] { Name, UnreadText.Length == 0 ? "" : AccountItem.UnreadWords(Folder.Unread), IsHidden ? T("nascosta") : "" }
+                                                          .Where(t => t.Length > 0));
     public override string ToString() => AutomationName;
 }
 
@@ -670,8 +681,6 @@ public sealed class FolderItem : Observable
 /// </summary>
 public sealed class MessageItem : Observable
 {
-    static readonly CultureInfo Italian = new("it-IT");
-
     public MessageItem(MessageSummary summary, AccountItem account)
     {
         Summary = summary;
@@ -692,7 +701,7 @@ public sealed class MessageItem : Observable
     public bool IsHead => !IsChild && Count > 1;
     public Visibility ChevronVisibility => IsHead ? Visibility.Visible : Visibility.Collapsed;
     public string ChevronGlyph => Conversation?.Expanded == true ? "\uE70D" : "\uE76C";
-    public string ChevronTip => Conversation?.Expanded == true ? "Comprimi la conversazione" : "Espandi la conversazione";
+    public string ChevronTip => Conversation?.Expanded == true ? T("Comprimi la conversazione") : T("Espandi la conversazione");
     public Thickness RowMargin => IsChild ? new Thickness(44, 0, 0, 0) : new Thickness(0);
     public string CountText => IsHead ? $"({Count})" : "";
     public void RefreshConversation()
@@ -714,7 +723,7 @@ public sealed class MessageItem : Observable
 
     public bool IsPinned => Store.Settings.IsPinned(Account.Provider.Account, Summary.Id);
     public Visibility PinVisibility => IsPinned ? Visibility.Visible : Visibility.Collapsed;
-    public string PinTip => IsPinned ? "Rimuovi dai fissati" : "Fissa in alto";
+    public string PinTip => IsPinned ? T("Rimuovi dai fissati") : T("Fissa in alto");
     public void RefreshPin()
     {
         Changed(nameof(IsPinned));
@@ -739,15 +748,15 @@ public sealed class MessageItem : Observable
         var d = date.Date;
         int weekday = ((int)today.DayOfWeek + 6) % 7; // lunedì = 0
         var weekStart = today.AddDays(-weekday);
-        if (d == today) return "Oggi";
-        if (d == today.AddDays(-1)) return "Ieri";
-        if (d >= weekStart) return "Questa settimana";
-        if (d >= weekStart.AddDays(-7)) return "Settimana scorsa";
-        if (d.Year == today.Year && d.Month == today.Month) return "Questo mese";
+        if (d == today) return T("Oggi");
+        if (d == today.AddDays(-1)) return T("Ieri");
+        if (d >= weekStart) return T("Questa settimana");
+        if (d >= weekStart.AddDays(-7)) return T("Settimana scorsa");
+        if (d.Year == today.Year && d.Month == today.Month) return T("Questo mese");
         var previousMonth = today.AddMonths(-1);
-        if (d.Year == previousMonth.Year && d.Month == previousMonth.Month) return "Mese scorso";
-        var name = d.ToString(d.Year == today.Year ? "MMMM" : "MMMM yyyy", Italian);
-        return char.ToUpper(name[0]) + name[1..];
+        if (d.Year == previousMonth.Year && d.Month == previousMonth.Month) return T("Mese scorso");
+        var name = d.ToString(d.Year == today.Year ? "MMMM" : "MMMM yyyy", Lingua.Culture);
+        return char.ToUpper(name[0], Lingua.Culture) + name[1..];
     }
 
     // ---------------------------------------------------------------- contenuto
@@ -769,12 +778,12 @@ public sealed class MessageItem : Observable
 
     /// <summary>Calcolato una volta per riga (Address.Display dice l'indirizzo vero se il nome è l'indirizzo di un altro): il disegno lo legge e basta.</summary>
     public string Sender => sender ??= ShowsRecipients
-        ? Summary.To.Count > 0 ? string.Join("; ", Summary.To.Select(a => a.Display)) : "(nessun destinatario)"
-        : Summary.From.Display.Length > 0 ? Summary.From.Display : "(nessun mittente)";
+        ? Summary.To.Count > 0 ? string.Join("; ", Summary.To.Select(a => a.Display)) : T("(nessun destinatario)")
+        : Summary.From.Display.Length > 0 ? Summary.From.Display : T("(nessun mittente)");
     string? sender;
-    public string Subject => Summary.Subject.Length > 0 ? Summary.Subject : "(nessun oggetto)";
+    public string Subject => Summary.Subject.Length > 0 ? Summary.Subject : T("(nessun oggetto)");
     /// <summary>"[Bozza]" in rosso prima dell'oggetto, come in Outlook.</summary>
-    string DraftTag => IsDraft ? "[Bozza] " : "";
+    string DraftTag => IsDraft ? T("[Bozza]") + " " : "";
     public string Preview => Summary.Preview;
 
     /// <summary>L'anteprima è arrivata dopo l'elenco (Gmail).</summary>
@@ -795,7 +804,7 @@ public sealed class MessageItem : Observable
         Changed(nameof(CategoryVisibility));
     }
     /// <summary>Nei Posposti, al posto della data, quando il messaggio tornerà (come in Outlook).</summary>
-    public string DateText => SnoozedUntil is { } until ? "Torna " + SnoozeWindow.Describe(until) : Format(Summary.Date);
+    public string DateText => SnoozedUntil is { } until ? T("Torna {0}", SnoozeWindow.Describe(until)) : Format(Summary.Date);
 
     DateTime? SnoozedUntil => Store.Settings.Snoozed.FirstOrDefault(s =>
         s.AccountId == Account.Provider.Account.Id && (s.Key == Summary.StableId || s.Key == Summary.Id))?.Until;
@@ -936,7 +945,7 @@ public sealed class MessageItem : Observable
     }
 
     /// <summary>La prima delle azioni rapide, come in Outlook: busta aperta per segnare letto, chiusa per segnare da leggere.</summary>
-    public string ReadTip => IsRead ? "Segna come da leggere (Ctrl+U)" : "Segna come letto (Ctrl+Q)";
+    public string ReadTip => IsRead ? T("Segna come da leggere (Ctrl+U)") : T("Segna come letto (Ctrl+Q)");
     public string ReadGlyph => IsRead ? "" : "";
 
     /// <summary>
@@ -974,7 +983,7 @@ public sealed class MessageItem : Observable
     public FontWeight Line2Weight => S.SenderFirst ? Weight : FontWeights.SemiBold;
     public Visibility UnreadVisibility => IsRead ? Visibility.Hidden : Visibility.Visible;
     public Visibility FlagVisibility => IsFlagged ? Visibility.Visible : Visibility.Collapsed;
-    public string FlagTip => IsFlagged ? "Togli il contrassegno" : "Contrassegna";
+    public string FlagTip => IsFlagged ? T("Togli il contrassegno") : T("Contrassegna");
 
     /// <summary>
     /// Il nome della riga per UI Automation e l'Assistente vocale, come Outlook: "Non letto, Amazon.it, Spedito: ...,
@@ -986,16 +995,16 @@ public sealed class MessageItem : Observable
         get
         {
             var parts = new List<string>();
-            if (!IsRead) parts.Add("Non letto");
-            if (IsDraft) parts.Add("Bozza");
-            parts.Add(ShowsRecipients ? "A " + Sender : Sender);
+            if (!IsRead) parts.Add(T("Non letto"));
+            if (IsDraft) parts.Add(T("Bozza"));
+            parts.Add(ShowsRecipients ? T("A {0}", Sender) : Sender);
             parts.Add(Subject);
-            if (IsHead) parts.Add($"conversazione di {Count} messaggi");
-            parts.Add(SnoozedUntil is { } until ? "torna " + SnoozeWindow.Describe(until) : Spoken(Summary.Date));
-            if (Summary.HasAttachments) parts.Add("con allegato");
-            if (Summary.IsImportant) parts.Add("importanza alta");
-            if (IsFlagged) parts.Add(DueText.Length > 0 ? "contrassegnato, " + DueText.ToLowerInvariant() : "contrassegnato");
-            if (IsPinned) parts.Add("fissato in alto");
+            if (IsHead) parts.Add(T("conversazione di {0} messaggi", Count));
+            parts.Add(SnoozedUntil is { } until ? T("torna {0}", SnoozeWindow.Describe(until)) : Spoken(Summary.Date));
+            if (Summary.HasAttachments) parts.Add(T("con allegato"));
+            if (Summary.IsImportant) parts.Add(T("importanza alta"));
+            if (IsFlagged) parts.Add(DueText.Length > 0 ? T("contrassegnato, {0}", DueText.ToLower(Lingua.Culture)) : T("contrassegnato"));
+            if (IsPinned) parts.Add(T("fissato in alto"));
             if (ShowAccount) parts.Add(Account.Header);
             return string.Join(", ", parts);
         }
@@ -1003,24 +1012,38 @@ public sealed class MessageItem : Observable
 
     public override string ToString() => AutomationName;
 
-    /// <summary>La data da leggere: "oggi 21:54", "sabato 21:54" nell'ultima settimana, poi "12 marzo 2026".</summary>
-    static string Spoken(DateTime date)
+    /// <summary>
+    /// La data da leggere: "oggi 21:54", "sabato 21:54" nell'ultima settimana, poi "12 marzo 2026". In inglese "today
+    /// 9:54 PM" o "today 21:54" (l'ora come la scrive la cultura di Lingua) e "12 March 2026" o "March 12, 2026".
+    /// </summary>
+    internal static string Spoken(DateTime date)
     {
         var today = Today;
-        if (date.Date == today) return "oggi " + date.ToString("HH:mm", Italian);
-        if (date.Date == today.AddDays(-1)) return "ieri " + date.ToString("HH:mm", Italian);
-        if (date.Date > today.AddDays(-7)) return date.ToString("dddd HH:mm", Italian);
-        return date.ToString("d MMMM yyyy", Italian);
+        if (date.Date == today) return T("oggi {0}", Clock(date));
+        if (date.Date == today.AddDays(-1)) return T("ieri {0}", Clock(date));
+        if (date.Date > today.AddDays(-7)) return date.ToString("dddd ", Lingua.Culture) + Clock(date);
+        return date.ToString(DayFirst ? "d MMMM yyyy" : "MMMM d, yyyy", Lingua.Culture);
     }
 
+    /// <summary>
+    /// La data della riga: "21:54", "mer 21:54", "12 mar", "12/03/2025". In italiano sempre così; in inglese l'ora e la data
+    /// in cifre come le scrive la cultura di Lingua (en-GB "21:54" e "12/03/2025", en-US "9:54 PM" e "3/12/2025"), il
+    /// giorno prima o dopo il mese come lei ("12 Mar", "Mar 12").
+    /// </summary>
     public static string Format(DateTime date)
     {
         var today = Today;
-        if (date.Date == today) return date.ToString("HH:mm", Italian);
-        if (date.Date > today.AddDays(-7)) return date.ToString("ddd HH:mm", Italian);
-        if (date.Year == today.Year) return date.ToString("d MMM", Italian);
-        return date.ToString("dd/MM/yyyy", Italian);
+        if (date.Date == today) return Clock(date);
+        if (date.Date > today.AddDays(-7)) return date.ToString("ddd ", Lingua.Culture) + Clock(date);
+        if (date.Year == today.Year) return date.ToString(DayFirst ? "d MMM" : "MMM d", Lingua.Culture);
+        return date.ToString(Lingua.English ? Lingua.Culture.DateTimeFormat.ShortDatePattern : "dd/MM/yyyy", Lingua.Culture);
     }
+
+    /// <summary>L'ora: "21:54" in italiano; in inglese come la cultura di Lingua ("21:54" en-GB, "9:54 PM" en-US).</summary>
+    static string Clock(DateTime date) => date.ToString(Lingua.English ? Lingua.Culture.DateTimeFormat.ShortTimePattern : "HH:mm", Lingua.Culture);
+
+    /// <summary>Il giorno prima del mese nelle date con il mese in lettere: in italiano sì, in inglese come la cultura (en-GB sì, en-US no).</summary>
+    static bool DayFirst => !Lingua.English || Lingua.Culture.DateTimeFormat.ShortDatePattern.TrimStart().StartsWith('d');
 }
 
 /// <summary>

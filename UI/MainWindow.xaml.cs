@@ -37,6 +37,7 @@ public partial class MainWindow : Window
         this.only = only;
         if (only == null) Log.Startup("InitializeComponent");
         InitializeComponent();
+        ApplyContextWords();
         MessageList.Loaded += (_, _) => AttachListScrolling(); // il cursore della barra senza scatti e il mouse fermo fuori dal hit test mentre l'elenco scorre veloce
         if (only == null) Log.Startup("XAML della finestra");
         // La riga dell'elenco disegnata da un solo elemento (MessageRowElement); MISSIVA_RIGA_VECCHIA=1 rimette il modello di prima, per i
@@ -99,6 +100,29 @@ public partial class MainWindow : Window
             await StartAsync();
         };
         UpdateCommands();
+    }
+
+    /// <summary>
+    /// "Annulla" dopo un'azione (la barra dopo Elimina, Archivia e Sposta; Annulla invio, anche nella barra della Posta in
+    /// uscita): in inglese Undo. La chiave "Annulla"
+    /// ha una sola traduzione, Cancel (il pulsante di una domanda), e qui l'italiano è lo stesso: un ramo sulla lingua.
+    /// </summary>
+    internal static string UndoWord => Lingua.English ? "Undo" : T("Annulla");
+
+    /// <summary>
+    /// "Nuovo messaggio" come comando (il pulsante, il menu dell'area di notifica): in inglese New mail, come Outlook. La chiave
+    /// "Nuovo messaggio" è New message, il titolo della finestra di scrittura.
+    /// </summary>
+    internal static string NewMailWord => Lingua.English ? "New mail" : T("Nuovo messaggio");
+
+    /// <summary>I testi del XAML che in inglese dipendono da dove stanno (UndoWord, NewMailWord): in italiano non cambia nulla.</summary>
+    void ApplyContextWords()
+    {
+        if (!Lingua.English) return;
+        UndoButton.Content = UndoSendButton.Content = OutboxUndoButton.Content = UndoWord; // anche la Posta in uscita: annulla l'invio
+        System.Windows.Automation.AutomationProperties.SetName(UndoButton, UndoWord);
+        NewButtonText.Text = NewMailWord;
+        System.Windows.Automation.AutomationProperties.SetName(NewButton, NewMailWord);
     }
 
     /// <summary>L'avvio di account, cartelle, timer e prove è già partito (anche a finestra nascosta, StartAsync).</summary>
@@ -383,14 +407,23 @@ public partial class MainWindow : Window
             await Task.Delay(1500);
             var menuOn = Arg("--folder-menu") is { } menuName && !menuName.StartsWith("--") && FolderNamed(menuName) is { } named ? named : folder;
             BuildFolderMenu(folderMenu, menuOn, fromFavorites: false);
-            folderMenu.PlacementTarget = folderList;
-            folderMenu.IsOpen = true;
+            if (DevTools.Photos) SaveMenuPicture(folderMenu, "menu-cartella"); // le foto: disegnato in un file, non sullo schermo
+            else
+            {
+                folderMenu.PlacementTarget = folderList;
+                folderMenu.IsOpen = true;
+            }
         }
         if (Environment.GetCommandLineArgs().Contains("--menu") && rows.Rows.Count > 0)
         {
             MessageList.SelectedIndex = 0;
             await Task.Delay(1500);
             BuildMessageMenu(MessageList.ContextMenu!, Selected);
+            if (DevTools.Photos)
+            {
+                SaveMenuPicture(MessageList.ContextMenu!, "menu-messaggio"); // le foto: disegnato in un file, non sullo schermo
+                return;
+            }
             MessageList.ContextMenu!.PlacementTarget = MessageList;
             MessageList.ContextMenu.IsOpen = true;
             // --menu Posponi: apre anche quel sottomenu
@@ -502,9 +535,8 @@ public partial class MainWindow : Window
             try
             {
                 App.Show(new Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder()
-                    .AddText("Missiva è ancora aperta nell'area di notifica")
-                    .AddText("Continua a controllare la posta, a mostrarti le notifiche e a mandare i messaggi pianificati. " +
-                             "Per chiuderla del tutto: tasto destro sull'icona vicino all'orologio, Esci. Si cambia in Impostazioni, Generali."));
+                    .AddText(T("Missiva è ancora aperta nell'area di notifica"))
+                    .AddText(T("Continua a controllare la posta, a mostrarti le notifiche e a mandare i messaggi pianificati. Per chiuderla del tutto: tasto destro sull'icona vicino all'orologio, Esci. Si cambia in Impostazioni, Generali.")));
             }
             catch (Exception ex)
             {
@@ -573,6 +605,30 @@ public partial class MainWindow : Window
     }
 
 #if DEBUG
+    /// <summary>
+    /// Le foto (--foto, anche quelle in inglese con --lingua en): un menu del tasto destro disegnato in Store.Dir\menu-foto\nome.png
+    /// invece di aprirlo. Un menu è un Popup, che WPF tiene dentro lo schermo anche con la finestra fuori: aperto comparirebbe
+    /// sullo schermo di chi usa il PC. Il disegno è quello del menu aperto (stile, voci, icone, tema), alla scala dello schermo;
+    /// i sottomenu no.
+    /// </summary>
+    internal static void SaveMenuPicture(ContextMenu menu, string name)
+    {
+        var folder = Path.Combine(Store.Dir, "menu-foto");
+        Directory.CreateDirectory(folder);
+        menu.ApplyTemplate();
+        menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        menu.Arrange(new Rect(menu.DesiredSize));
+        menu.UpdateLayout();
+        var dpi = Application.Current.MainWindow is { } main ? VisualTreeHelper.GetDpi(main) : new DpiScale(1, 1);
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(menu.ActualWidth * dpi.DpiScaleX), (int)Math.Ceiling(menu.ActualHeight * dpi.DpiScaleY),
+            dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+        bitmap.Render(menu);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using (var file = File.Create(Path.Combine(folder, name + ".png"))) encoder.Save(file);
+        Log.Write($"foto: menu {name} ({menu.Items.Count} voci, {bitmap.PixelWidth}x{bitmap.PixelHeight})");
+    }
+
     /// <summary>Prove (MISSIVA_KEYS "notifica 2", --notify 2): la notifica vera del messaggio dell'elenco, anche a finestra chiusa.</summary>
     internal void TestNotify(int index)
     {
@@ -1144,7 +1200,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (account.Folders.Count == 0) account.Status = "Caricamento…";
+            if (account.Folders.Count == 0) account.Status = T("Caricamento…");
             // Le cartelle arrivano con i loro non letti: se intanto qui sono cambiati (una lettura, una scrittura in viaggio)
             // quelli della Posta in arrivo restano i nostri, e si ricontano dal server (UnreadSync).
             var ticket = UnreadSync.Ticket(account.Provider.Account.Id);
@@ -1166,7 +1222,7 @@ public partial class MainWindow : Window
             Log.Error($"cartelle di {account.Header}", ex);
             Network.Note(account.Provider.Account, ex);
             account.FoldersFailed = true;
-            account.Status = Network.Explain(ex) ?? "Non raggiungibile: " + ex.Message; // senza rete, "Non in linea" invece del testo di Windows
+            account.Status = Network.Explain(ex) ?? T("Non raggiungibile: {0}", ex.Message); // senza rete, "Non in linea" invece del testo di Windows
             account.Fix = MailException.FixOf(ex);
         }
     }
@@ -1176,7 +1232,8 @@ public partial class MainWindow : Window
     /// era riuscita per un altro motivo: "Non raggiungibile: ..." (connessione chiusa o rifiutata, tempo scaduto, TLS di una
     /// rete con portale) restava sotto l'account fino al riavvio, con albero e conteggi della copia (audit del 7 ottobre, A-15).
     /// </summary>
-    internal static bool ReloadsFolders(string status, bool foldersFailed) => foldersFailed || status.StartsWith("Non in linea");
+    internal static bool ReloadsFolders(string status, bool foldersFailed) =>
+        foldersFailed || status.StartsWith(N("Non in linea"), StringComparison.Ordinal) || status.StartsWith(T("Non in linea"), StringComparison.Ordinal);
 
     /// <summary>
     /// Il server dell'account ha risposto fuori dal controllo dei nuovi messaggi (la query delta di Graph riuscita, una
@@ -1251,7 +1308,7 @@ public partial class MainWindow : Window
         catch (Exception ex) when (!MicrosoftAuth.Canceled(ex))
         {
             Log.Error($"consenso alle caselle condivise per {item.Header}", ex);
-            ReadingView.ShowConsentError(this, "Consenso non dato", ex, owner ?? item.Provider.Account, "aprire le caselle condivise");
+            ReadingView.ShowConsentError(this, T("Consenso non dato"), ex, owner ?? item.Provider.Account, T("aprire le caselle condivise"));
             return;
         }
         catch (Exception)
@@ -1270,14 +1327,14 @@ public partial class MainWindow : Window
     {
         string? Check(string address)
         {
-            if (!AccountTypes.LooksValid(address)) return "Non sembra un indirizzo email: per esempio info@studio.it.";
+            if (!AccountTypes.LooksValid(address)) return T("Non sembra un indirizzo email: per esempio info@studio.it.");
             if (S.Accounts.Any(a => a.Email.Equals(address, StringComparison.OrdinalIgnoreCase) && (a.SharedOf == work.Id || a.SharedOf == null)))
-                return $"{address} è già in Missiva.";
+                return T("{0} è già in Missiva.", address);
             return null;
         }
-        var window = new NameWindow("Aggiungi casella condivisa", "", "Aggiungi",
-            $"L'indirizzo di una casella condivisa di Microsoft 365 su cui {work.Email} ha il permesso Accesso completo (per esempio info@ o segreteria@). " +
-            "La prima volta Missiva chiede il consenso alle caselle condivise, solo quando premi il pulsante.", "Indirizzo", Check) { Owner = this };
+        var window = new NameWindow(T("Aggiungi casella condivisa"), "", T("Aggiungi"),
+            T("L'indirizzo di una casella condivisa di Microsoft 365 su cui {0} ha il permesso Accesso completo (per esempio info@ o segreteria@). La prima volta Missiva chiede il consenso alle caselle condivise, solo quando premi il pulsante.", work.Email),
+            T("Indirizzo"), Check) { Owner = this };
         if (window.ShowDialog() != true) return;
         var shared = new MailAccount
         {
@@ -1573,8 +1630,8 @@ public partial class MainWindow : Window
         if (items.FirstOrDefault(i => i.Account != target.Account) is { } other)
         {
             Log.Write($"messaggi lasciati su {target.Name} di {target.Account.Header}: rifiutati, sono di {other.Account.Header}");
-            Dialog.Show(this, "Cartella di un altro account",
-                $"I messaggi di {other.Account.Header} si spostano solo nelle sue cartelle, e \"{target.Name}\" è di {target.Account.Header}.");
+            Dialog.Show(this, T("Cartella di un altro account"),
+                T("I messaggi di {0} si spostano solo nelle sue cartelle, e \"{1}\" è di {2}.", other.Account.Header, target.Name, target.Account.Header));
             return;
         }
         if (copy) await CopyAsync(items, target.Folder, simulate);
@@ -1612,37 +1669,37 @@ public partial class MainWindow : Window
                 case "count":
                     var count = new TextBlock
                     {
-                        Text = $"{f.Folder.Total.ToString("N0", Italian)} elementi ({f.Folder.Unread.ToString("N0", Italian)} non letti)",
+                        Text = FolderCountText(f.Folder.Total, f.Folder.Unread),
                         FontWeight = FontWeights.SemiBold,
                     };
                     return new MenuItem { Header = count, IsHitTestVisible = false, Focusable = false };
                 case "newFolder":
-                    return MenuEntry("Crea nuova sottocartella", "", null, async (_, _) => await CreateSubfolderAsync(f));
+                    return MenuEntry(T("Crea nuova sottocartella"), "", null, async (_, _) => await CreateSubfolderAsync(f));
                 case "rename":
-                    return MenuEntry("Rinomina", "", null, async (_, _) => await RenameFolderAsync(f), user);
+                    return MenuEntry(T("Rinomina"), "", null, async (_, _) => await RenameFolderAsync(f), user);
                 case "color":
                     return FolderColorMenu(f);
                 case "move":
                     return FolderMoveMenu(f, user);
                 case "delete":
-                    return MenuEntry("Elimina", "", null, async (_, _) => await DeleteFolderAsync(f), user && !f.HasChildren);
+                    return MenuEntry(T("Elimina"), "", null, async (_, _) => await DeleteFolderAsync(f), user && !f.HasChildren);
                 case "empty":
-                    return MenuEntry("Svuota", "", null, async (_, _) => await EmptyFolderAsync(f), f.Folder.Total > 0 && CanEmpty(f));
+                    return MenuEntry(T("Svuota"), "", null, async (_, _) => await EmptyFolderAsync(f), f.Folder.Total > 0 && CanEmpty(f));
                 case "markRead":
-                    return MenuEntry("Contrassegna tutti come letti", "", null, async (_, _) => await MarkAllReadAsync(f), f.Folder.Unread > 0);
+                    return MenuEntry(T("Contrassegna tutti come letti"), "", null, async (_, _) => await MarkAllReadAsync(f), f.Folder.Unread > 0);
                 case "favorite":
-                    return MenuEntry(favorite ? "Rimuovi da Preferiti" : "Aggiungi a Preferiti", favorite ? "" : "", null, (_, _) => ToggleFavorite(f));
+                    return MenuEntry(favorite ? T("Rimuovi da Preferiti") : T("Aggiungi a Preferiti"), favorite ? "" : "", null, (_, _) => ToggleFavorite(f));
                 case "up":
-                    return MenuEntry("Sposta su", "", null, (_, _) => StepFolder(f, -1, fromFavorites), index > 0);
+                    return MenuEntry(T("Sposta su"), "", null, (_, _) => StepFolder(f, -1, fromFavorites), index > 0);
                 case "down":
-                    return MenuEntry("Sposta giù", "", null, (_, _) => StepFolder(f, 1, fromFavorites), index >= 0 && index < siblings.Count - 1);
+                    return MenuEntry(T("Sposta giù"), "", null, (_, _) => StepFolder(f, 1, fromFavorites), index >= 0 && index < siblings.Count - 1);
                 case "window":
-                    return MenuEntry("Apri in un'altra finestra", "", null, (_, _) => OpenFolderWindow(f));
+                    return MenuEntry(T("Apri in un'altra finestra"), "", null, (_, _) => OpenFolderWindow(f));
                 case "hide":
-                    return MenuEntry(hidden ? "Mostra di nuovo nell'elenco" : "Nascondi dall'elenco", "", null,
+                    return MenuEntry(hidden ? T("Mostra di nuovo nell'elenco") : T("Nascondi dall'elenco"), "", null,
                         (_, _) => { account.SetHidden(f, !hidden); UpdateFavorites(); }, f.Folder.Kind != FolderKind.Inbox);
                 case "resetOrder" when !fromFavorites:
-                    return MenuEntry("Ripristina l'ordine predefinito", "", null, (_, _) => account.ResetOrder(), account.HasCustomOrder);
+                    return MenuEntry(T("Ripristina l'ordine predefinito"), "", null, (_, _) => account.ResetOrder(), account.HasCustomOrder);
                 default:
                     return null;
             }
@@ -1650,6 +1707,13 @@ public partial class MainWindow : Window
 
         FillCustomMenu(menu, ContextMenus.Folders, Build, this);
     }
+
+    /// <summary>
+    /// La prima voce del menu di una cartella, "12 elementi (3 non letti)". In inglese il singolare (1 item); l'italiano resta
+    /// com'era, anche per un elemento solo.
+    /// </summary>
+    internal static string FolderCountText(int total, int unread) =>
+        Lingua.English && total == 1 ? T("{0:N0} elemento ({1:N0} non letti)", total, unread) : T("{0:N0} elementi ({1:N0} non letti)", total, unread);
 
     /// <summary>
     /// Riempie un menu del tasto destro (cartelle o messaggi) con le voci scelte in "Personalizza il menu…", nel loro
@@ -1675,25 +1739,23 @@ public partial class MainWindow : Window
             menu.Items.Add(item);
         }
         if (menu.Items.Count > 0) menu.Items.Add(new Separator());
-        menu.Items.Add(MenuEntry("Personalizza il menu…", "", null, (_, _) => new MenuCustomizeWindow(definition) { Owner = owner }.ShowDialog()));
+        menu.Items.Add(MenuEntry(T("Personalizza il menu…"), "", null, (_, _) => new MenuCustomizeWindow(definition) { Owner = owner }.ShowDialog()));
     }
-
-    static readonly System.Globalization.CultureInfo Italian = new("it-IT");
 
     /// <summary>Cambia colore: l'icona della cartella nei colori di Outlook, o nessun colore.</summary>
     MenuItem FolderColorMenu(FolderItem f)
     {
-        var menu = MenuEntry("Cambia colore", "", null);
+        var menu = MenuEntry(T("Cambia colore"), "", null);
         S.FolderColors.TryGetValue(f.Key, out var current);
         bool colored = S.FolderColors.ContainsKey(f.Key);
-        var none = new MenuItem { Header = "Nessun colore", IsChecked = !colored };
+        var none = new MenuItem { Header = T("Nessun colore"), IsChecked = !colored };
         none.Click += (_, _) => SetFolderColor(f, null);
         menu.Items.Add(none);
         menu.Items.Add(new Separator());
         for (int i = 0; i < 10; i++)
         {
             int preset = i;
-            var entry = new MenuItem { Header = CategoryPalette.Presets[i].Name, Icon = Swatch(i), IsChecked = colored && current == i };
+            var entry = new MenuItem { Header = T(CategoryPalette.Presets[i].Name), Icon = Swatch(i), IsChecked = colored && current == i };
             entry.Click += (_, _) => SetFolderColor(f, preset);
             menu.Items.Add(entry);
         }
@@ -1714,7 +1776,7 @@ public partial class MainWindow : Window
     /// </summary>
     MenuItem FolderMoveMenu(FolderItem f, bool enabled)
     {
-        var menu = MenuEntry("Sposta", "", null, enabled: enabled);
+        var menu = MenuEntry(T("Sposta"), "", null, enabled: enabled);
         if (!enabled) return menu;
         bool gmail = f.Account.Provider.Account.Kind == AccountKind.Gmail;
         bool Inside(FolderItem candidate)
@@ -1722,7 +1784,7 @@ public partial class MainWindow : Window
             for (var p = candidate; p != null; p = p.Parent) if (p == f) return true;
             return false;
         }
-        var top = new MenuItem { Header = "Al primo livello", IsEnabled = f.Parent != null };
+        var top = new MenuItem { Header = T("Al primo livello"), IsEnabled = f.Parent != null };
         top.Click += async (_, _) => await MoveFolderAsync(f, null);
         menu.Items.Add(top);
         menu.Items.Add(new Separator());
@@ -1789,8 +1851,8 @@ public partial class MainWindow : Window
     async Task CreateSubfolderAsync(FolderItem parent)
     {
         bool gmailSystem = parent.Account.Provider.Account.Kind == AccountKind.Gmail && !IsUserFolder(parent);
-        var dialog = new NameWindow("Nuova sottocartella di " + parent.Name, "", "Crea",
-            gmailSystem ? "In Gmail le cartelle di sistema non hanno sottocartelle: la nuova cartella sarà al primo livello." : null) { Owner = this };
+        var dialog = new NameWindow(T("Nuova sottocartella di {0}", parent.Name), "", T("Crea"),
+            gmailSystem ? T("In Gmail le cartelle di sistema non hanno sottocartelle: la nuova cartella sarà al primo livello.") : null) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         await FolderActionAsync(parent.Account, "nuova cartella", async () =>
         {
@@ -1801,7 +1863,7 @@ public partial class MainWindow : Window
 
     async Task RenameFolderAsync(FolderItem f)
     {
-        var dialog = new NameWindow("Rinomina " + f.Name, f.Name, "Rinomina") { Owner = this };
+        var dialog = new NameWindow(T("Rinomina {0}", f.Name), f.Name, T("Rinomina")) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Value == f.Name) return;
         bool wasOpen = folder == f;
         string? newId = null;
@@ -1826,14 +1888,15 @@ public partial class MainWindow : Window
 
     async Task EmptyFolderAsync(FolderItem f)
     {
-        var total = f.Folder.Total.ToString("N0", Italian);
+        var total = f.Folder.Total;
         bool permanent = f.Folder.Kind is FolderKind.Deleted or FolderKind.Junk;
         // Senza Cestino (IMAP) si crea; se non si può, una cartella normale non si svuota (TrashOfAsync lo dice).
         MailFolder? trash = null;
         if (!permanent && (trash = await TrashOfAsync(f.Account)) == null) return;
-        var (question, detail, confirm) = permanent
-            ? ($"Svuotare {f.Name}?", $"I {total} messaggi verranno eliminati per sempre e non si potranno recuperare.", "Elimina per sempre")
-            : ($"Spostare nel Cestino tutti i messaggi di {f.Name}?", $"Sono {total} messaggi. Dal Cestino si possono ancora recuperare.", "Svuota");
+        var (question, confirm) = permanent
+            ? (T("Svuotare {0}?", f.Name), T("Elimina per sempre"))
+            : (T("Spostare nel Cestino tutti i messaggi di {0}?", f.Name), T("Svuota"));
+        var detail = EmptyFolderDetail(permanent, total);
         if (Dialog.Ask(this, question, detail, confirm) != Choice.Primary) return;
         bool open = folder == f;
         await FolderActionAsync(f.Account, "svuota", async () =>
@@ -1860,7 +1923,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log.Error(what, ex);
-            Dialog.Show(this, "Operazione non riuscita", ex.Message);
+            Dialog.Show(this, T("Operazione non riuscita"), ex.Message);
         }
         await LoadFoldersAsync(account);
         if (reopen?.Invoke() is { } again) SelectFolder(again);
@@ -1942,18 +2005,36 @@ public partial class MainWindow : Window
         if (sender is FrameworkElement { Tag: AccountItem account }) account.ToggleShowHidden();
     }
 
+    /// <summary>
+    /// Che cosa succede ai messaggi di una cartella svuotata: per sempre (Posta eliminata, Posta indesiderata) o nel Cestino.
+    /// In inglese con un messaggio solo una frase al singolare ("The 1 messages" non va); l'italiano resta com'era.
+    /// </summary>
+    internal static string EmptyFolderDetail(bool permanent, int total) => permanent
+        ? Lingua.English && total == 1 ? "The message will be deleted permanently and can't be recovered."
+          : T("I {0:N0} messaggi verranno eliminati per sempre e non si potranno recuperare.", total)
+        : Lingua.English && total == 1 ? "That's 1 message. You can still recover it from Deleted Items."
+          : T("Sono {0:N0} messaggi. Dal Cestino si possono ancora recuperare.", total);
+
+    /// <summary>
+    /// Che cosa succede ai messaggi di una cartella eliminata, per tipo di account; in inglese con un messaggio solo una frase
+    /// al singolare. L'italiano resta com'era.
+    /// </summary>
+    internal static string DeleteFolderDetail(AccountKind kind, int total)
+    {
+        if (total == 0) return kind == AccountKind.Gmail ? T("In Gmail le cartelle sono etichette: questa è vuota, non si perde nulla.") : T("È vuota.");
+        if (Lingua.English && total == 1)
+            return kind == AccountKind.Gmail ? "In Gmail, folders are labels: its message isn't deleted, it stays in All Mail. It only loses the label."
+                : kind == AccountKind.Imap ? "The folder is deleted from the server together with its message."
+                : "The folder goes to Deleted Items together with its message.";
+        return kind == AccountKind.Gmail ? T("In Gmail le cartelle sono etichette: i suoi {0} messaggi non si cancellano, restano in Tutti i messaggi. Perdono solo l'etichetta.", total)
+            : kind == AccountKind.Imap ? T("La cartella si elimina dal server insieme ai suoi {0} messaggi.", total)
+            : T("La cartella finisce in Posta eliminata insieme ai suoi {0} messaggi.", total);
+    }
+
     async Task DeleteFolderAsync(FolderItem f)
     {
-        var total = f.Folder.Total;
-        var gmail = f.Account.Provider.Account.Kind == AccountKind.Gmail;
-        var detail = gmail
-            ? "In Gmail le cartelle sono etichette: " + (total == 0
-                ? "questa è vuota, non si perde nulla."
-                : $"i suoi {total} messaggi non si cancellano, restano in Tutti i messaggi. Perdono solo l'etichetta.")
-            : f.Account.Provider.Account.Kind == AccountKind.Imap
-                ? total == 0 ? "È vuota." : $"La cartella si elimina dal server insieme ai suoi {total} messaggi."
-            : total == 0 ? "È vuota." : $"La cartella finisce in Posta eliminata insieme ai suoi {total} messaggi.";
-        if (Dialog.Ask(this, $"Eliminare la cartella \"{f.Name}\"?", detail + " L'eliminazione vale ovunque, anche sul web e sul telefono.", "Elimina") != Choice.Primary)
+        var detail = DeleteFolderDetail(f.Account.Provider.Account.Kind, f.Folder.Total);
+        if (Dialog.Ask(this, T("Eliminare la cartella \"{0}\"?", f.Name), T("{0} L'eliminazione vale ovunque, anche sul web e sul telefono.", detail), T("Elimina")) != Choice.Primary)
             return;
         try
         {
@@ -1962,7 +2043,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log.Error($"eliminazione della cartella {f.Folder.Id}", ex);
-            Dialog.Show(this, "Cartella non eliminata", ex.Message);
+            Dialog.Show(this, T("Cartella non eliminata"), ex.Message);
             return;
         }
         ForgetFolderKeys(f.Account, f.Folder.Id);
@@ -2037,10 +2118,10 @@ public partial class MainWindow : Window
 
     static string FilterName(MessageFilter filter) => filter switch
     {
-        MessageFilter.Unread => "Da leggere",
-        MessageFilter.Flagged => "Contrassegnati",
-        MessageFilter.Attachments => "Con allegati",
-        _ => "Tutti",
+        MessageFilter.Unread => T("Da leggere"),
+        MessageFilter.Flagged => T("Contrassegnati"),
+        MessageFilter.Attachments => T("Con allegati"),
+        _ => T("Tutti"),
     };
 
     /// <summary>Titolo (con filtro e "Vai a" attivi), stella dei Preferiti e pulsanti colorati quando fanno qualcosa.</summary>
@@ -2059,7 +2140,7 @@ public partial class MainWindow : Window
         if (folder == null) return;
         var title = folder.Name;
         if (listOptions.Filter != MessageFilter.All) title += " · " + FilterName(listOptions.Filter);
-        if (listOptions.UpTo is { } upTo) title += " · fino al " + upTo.ToString("d MMM yyyy", Italian);
+        if (listOptions.UpTo is { } upTo) title += " · " + T("fino al {0}", upTo.ToString("d MMM yyyy", Lingua.Culture));
         ListTitle.Text = title;
         ListTitle.ToolTip = title;
         // Con più account "Posta in arrivo" da sola non dice di quale: accanto, più piccolo, l'account.
@@ -2073,7 +2154,7 @@ public partial class MainWindow : Window
 
         bool favorite = S.Favorites.Contains(folder.Key);
         StarGlyph.Text = favorite ? "" : "";
-        StarButton.ToolTip = favorite ? "Rimuovi da Preferiti" : "Aggiungi a Preferiti";
+        StarButton.ToolTip = favorite ? T("Rimuovi da Preferiti") : T("Aggiungi a Preferiti");
         StarButton.Visibility = only == null ? Visibility.Visible : Visibility.Collapsed;
 
         Brush? Active(bool on) => on ? (Brush)FindResource("AccentTextFillColorPrimaryBrush") : null;
@@ -2137,15 +2218,15 @@ public partial class MainWindow : Window
     /// </summary>
     /// <summary>Perché mittente e oggetto sono spenti: prima diceva "Gmail" anche per gli account IMAP (audit, F-19).</summary>
     internal static string SortOnlyByDate(AccountKind kind) => kind == AccountKind.Gmail
-        ? "Gmail permette di ordinare tutta la cartella solo per data."
-        : "Con questo account Missiva ordina tutta la cartella solo per data.";
+        ? T("Gmail permette di ordinare tutta la cartella solo per data.")
+        : T("Con questo account Missiva ordina tutta la cartella solo per data.");
 
     void OnSortMenu(object sender, RoutedEventArgs e)
     {
         if (folder == null) return;
         var provider = folder.Account.Provider;
         var menu = new ContextMenu { PlacementTarget = SortButton, Placement = PlacementMode.Bottom };
-        menu.Items.Add(new MenuItem { Header = new TextBlock { Text = "Ordina per", FontWeight = FontWeights.SemiBold }, IsHitTestVisible = false, Focusable = false });
+        menu.Items.Add(new MenuItem { Header = new TextBlock { Text = T("Ordina per"), FontWeight = FontWeights.SemiBold }, IsHitTestVisible = false, Focusable = false });
         void By(SortBy sort, string name, string glyph)
         {
             bool possible = provider.SortsOnServer(sort);
@@ -2158,9 +2239,9 @@ public partial class MainWindow : Window
             }
             menu.Items.Add(item);
         }
-        By(SortBy.Date, "Data", "");
-        By(SortBy.From, "Mittente", "");
-        By(SortBy.Subject, "Oggetto", "");
+        By(SortBy.Date, T("Data"), "");
+        By(SortBy.From, T("Mittente"), "");
+        By(SortBy.Subject, T("Oggetto"), "");
         menu.Items.Add(new Separator());
         bool date = listOptions.Sort == SortBy.Date;
         void Order(bool ascending, string name, string glyph)
@@ -2169,8 +2250,8 @@ public partial class MainWindow : Window
             item.IsChecked = listOptions.Ascending == ascending;
             menu.Items.Add(item);
         }
-        Order(false, date ? "Dal più recente" : "Dalla Z alla A", "");
-        Order(true, date ? "Dal meno recente" : "Dalla A alla Z", "");
+        Order(false, date ? T("Dal più recente") : T("Dalla Z alla A"), "");
+        Order(true, date ? T("Dal meno recente") : T("Dalla A alla Z"), "");
         menu.IsOpen = true;
     }
 
@@ -2325,7 +2406,7 @@ public partial class MainWindow : Window
             ActionQueue.Apply(account.Id, firstPage); // senza rete: spostati e segni in coda come se fossero fatti
             fromCache = firstPage.Count > 0;
             if (fromCache) rows.Append(firstPage, current.Account);
-            SetListStatus(fromCache ? null : "Caricamento…");
+            SetListStatus(fromCache ? null : T("Caricamento…"));
         }
         try
         {
@@ -2346,14 +2427,14 @@ public partial class MainWindow : Window
                 nothingNew = rows.Rows.Count == before && page.Messages.Count > 0;
             }
             next = page.Next;
-            SetListStatus(rows.Rows.Count == 0 ? "Non ci sono messaggi qui." : null);
+            SetListStatus(rows.Rows.Count == 0 ? T("Non ci sono messaggi qui.") : null);
             if (first) SaveFirstPage(account, current.Folder.Id, focused, firstPage);
             _ = FillPreviewsAsync(current, version, first ? firstPage : page.Messages, prefetch: first);
         }
         catch (Exception ex)
         {
             Log.Error("elenco messaggi", ex);
-            if (version == listVersion && !fromCache) SetListStatus(Network.Explain(ex) ?? "Non riesco a caricare i messaggi: " + ex.Message, () => _ = LoadMoreAsync(first));
+            if (version == listVersion && !fromCache) SetListStatus(Network.Explain(ex) ?? T("Non riesco a caricare i messaggi: {0}", ex.Message), () => _ = LoadMoreAsync(first));
         }
         finally
         {
@@ -2569,7 +2650,7 @@ public partial class MainWindow : Window
         ListStatus.Text = text ?? ""; // toglie anche il link di prima
         if (retry != null && !string.IsNullOrEmpty(text))
         {
-            var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run("Riprova"));
+            var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(T("Riprova")));
             link.Click += (_, _) => retry();
             ListStatus.Inlines.Add(text.EndsWith('.') ? " " : ". ");
             ListStatus.Inlines.Add(link);
@@ -3191,12 +3272,12 @@ public partial class MainWindow : Window
         }
         // Il messaggio con l'account di adesso: dopo un ricarico degli account quello della finestra ha il provider chiuso (CurrentItem).
         MessageItem Now() => item = CurrentItem(item);
-        var delete = Command("", "Elimina", "Elimina");
+        var delete = Command("", T("Elimina"), T("Elimina"));
         delete.Click += async (_, _) => await DeleteFromWindowAsync(Now(), window);
-        var archive = Command("", "Archivia", "Archivia");
+        var archive = Command("", T("Archivia"), T("Archivia"));
         archive.IsEnabled = Special(item.Account, FolderKind.Archive) != null;
         archive.Click += async (_, _) => { if (await ArchiveAsync([Now()])) window.Close(); };
-        var move = Command("", "Sposta in", "Sposta in");
+        var move = Command("", T("Sposta in"), T("Sposta in"));
         move.Click += (_, _) =>
         {
             var menu = new ContextMenu { PlacementTarget = move, Placement = PlacementMode.Bottom };
@@ -3211,19 +3292,19 @@ public partial class MainWindow : Window
         };
         bar.Children.Add(new Border { Width = 1, Margin = new Thickness(6, 6, 6, 6) });
         ((Border)bar.Children[^1]).SetResourceReference(Border.BackgroundProperty, "CardStrokeColorDefaultBrush");
-        var read = Command("", "Già letto/Da leggere", "Già letto/Da leggere", "Segna come già letto o da leggere");
+        var read = Command("", T("Già letto/Da leggere"), T("Già letto/Da leggere"), T("Segna come già letto o da leggere"));
         read.Click += async (_, _) => await SetReadAsync([Now()], !item.IsRead);
-        var flag = Command("", null, "Contrassegna", glyphStyle: "FlagGlyph");
+        var flag = Command("", null, T("Contrassegna"), glyphStyle: "FlagGlyph");
         flag.Click += async (_, _) => await ToggleFlagAsync([Now()]);
-        var print = Command("", "Stampa", "Stampa", "Stampa (anteprima di Edge)");
+        var print = Command("", T("Stampa"), T("Stampa"), T("Stampa (anteprima di Edge)"));
         print.Click += (_, _) => reader.Print();
-        var more = Command("", null, "Altre azioni");
+        var more = Command("", null, T("Altre azioni"));
         more.Click += (_, _) => OpenMessageMenu(Now(), reader, more, null);
         // Dal pop-up (anche quello di una notifica) alla finestra principale: la cartella del messaggio, la sua riga scelta e
         // la mail nel riquadro di lettura. Il pop-up si chiude: il messaggio è ora nel riquadro (richiesta dell'autore, 29 settembre 2026).
         bar.Children.Add(new Border { Width = 1, Margin = new Thickness(6, 6, 6, 6) });
         ((Border)bar.Children[^1]).SetResourceReference(Border.BackgroundProperty, "CardStrokeColorDefaultBrush");
-        var openInMain = Command("\uE8A7", "Apri nel riquadro", "Apri nel riquadro di lettura", "Apri questo messaggio nel riquadro di lettura della finestra principale");
+        var openInMain = Command("\uE8A7", T("Apri nel riquadro"), T("Apri nel riquadro di lettura"), T("Apri questo messaggio nel riquadro di lettura della finestra principale"));
         openInMain.Click += (_, _) =>
         {
             ShowInMainWindow(Now());
@@ -3346,12 +3427,12 @@ public partial class MainWindow : Window
                 await LoadFoldersAsync(account);
                 return Special(account, FolderKind.Deleted) ?? created;
             }
-            Dialog.Show(this, "Nessun Cestino", $"L'account {account.Header} non ha un Cestino: i messaggi non si possono spostare lì.");
+            Dialog.Show(this, T("Nessun Cestino"), T("L'account {0} non ha un Cestino: i messaggi non si possono spostare lì.", account.Header));
         }
         catch (Exception ex)
         {
             Log.Error("creazione del Cestino", ex);
-            Dialog.Show(this, "Cestino non creato", $"L'account {account.Header} non ha un Cestino e Missiva non è riuscita a crearlo: {ex.Message}");
+            Dialog.Show(this, T("Cestino non creato"), T("L'account {0} non ha un Cestino e Missiva non è riuscita a crearlo: {1}", account.Header, ex.Message));
         }
         return null;
     }
@@ -3367,7 +3448,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log.Error(what, ex);
-            Dialog.Show(this, "Operazione non riuscita", ex.Message);
+            Dialog.Show(this, T("Operazione non riuscita"), ex.Message);
             return false;
         }
     }
@@ -3510,15 +3591,15 @@ public partial class MainWindow : Window
         if (permanent > 0)
         {
             var text = toTrash == 0
-                ? permanent == 1 ? "Il messaggio non si potrà recuperare." : $"I {permanent} messaggi non si potranno recuperare."
-                : (permanent == 1 ? "Uno dei messaggi è già nel Cestino: non si potrà recuperare." : $"{permanent} messaggi sono già nel Cestino: non si potranno recuperare.") +
-                  " Gli altri vanno nel Cestino.";
-            if (Dialog.Ask(this, "Eliminare definitivamente?", text, "Elimina") != Choice.Primary) return false;
+                ? permanent == 1 ? T("Il messaggio non si potrà recuperare.") : T("I {0} messaggi non si potranno recuperare.", permanent)
+                : permanent == 1 ? T("Uno dei messaggi è già nel Cestino: non si potrà recuperare. Gli altri vanno nel Cestino.")
+                : T("{0} messaggi sono già nel Cestino: non si potranno recuperare. Gli altri vanno nel Cestino.", permanent);
+            if (Dialog.Ask(this, T("Eliminare definitivamente?"), text, T("Elimina")) != Choice.Primary) return false;
         }
         // L'eliminazione definitiva non va in coda: non si annulla, e senza rete non si vede se il messaggio c'è ancora.
         if (!simulate && groups.Where(g => g.Permanent.Count > 0 && Network.KnownOffline(g.Account.Provider.Account)).Select(g => g.Account).FirstOrDefault() is { } away)
         {
-            Dialog.Show(this, "Non in linea", $"{away.Header} non è in linea: i messaggi già nel Cestino si eliminano per sempre solo con la rete. Riprova quando torna.");
+            Dialog.Show(this, T("Non in linea"), T("{0} non è in linea: i messaggi già nel Cestino si eliminano per sempre solo con la rete. Riprova quando torna.", away.Header));
             return false;
         }
         var version = listVersion; // come in MoveAsync: l'elenco da cui si tolgono le righe
@@ -3606,13 +3687,7 @@ public partial class MainWindow : Window
     {
         lastMove = move;
         int n = move.Count;
-        var done = move.Destination.Kind switch
-        {
-            FolderKind.Deleted => n == 1 ? "eliminato" : "eliminati",
-            FolderKind.Archive => n == 1 ? "archiviato" : "archiviati",
-            _ => (n == 1 ? "spostato in " : "spostati in ") + move.Destination.Name,
-        };
-        UndoText.Text = n == 1 ? $"Elemento {done}" : $"{n} elementi {done}";
+        UndoText.Text = UndoBarText(move.Destination.Kind, n, move.Destination.Name);
         UndoBar.Visibility = Visibility.Visible;
         if (undoTimer == null)
         {
@@ -3622,6 +3697,14 @@ public partial class MainWindow : Window
         undoTimer.Stop();
         undoTimer.Start();
     }
+
+    /// <summary>Il testo della barra di Annulla, una frase intera per caso come in Outlook: "Elemento eliminato", "3 elementi spostati in Clienti".</summary>
+    internal static string UndoBarText(FolderKind kind, int n, string destination) => kind switch
+    {
+        FolderKind.Deleted => n == 1 ? T("Elemento eliminato") : T("{0} elementi eliminati", n),
+        FolderKind.Archive => n == 1 ? T("Elemento archiviato") : T("{0} elementi archiviati", n),
+        _ => n == 1 ? T("Elemento spostato in {0}", destination) : T("{0} elementi spostati in {1}", n, destination),
+    };
 
     void HideUndo()
     {
@@ -3658,7 +3741,7 @@ public partial class MainWindow : Window
         // Annulla solo quando serve: nell'attesa prima dell'invio, e mentre gli allegati grandi si caricano.
         bool uploading = pendingSends.LastOrDefault() is { SendPending: false, CanUndoSend: true };
         UndoSendButton.Visibility = pendingSends.LastOrDefault()?.CanUndoSend == true ? Visibility.Visible : Visibility.Collapsed;
-        UndoSendButton.ToolTip = uploading ? "Ferma il caricamento degli allegati e riapri il messaggio" : "Non inviare il messaggio e riaprilo";
+        UndoSendButton.ToolTip = uploading ? T("Ferma il caricamento degli allegati e riapri il messaggio") : T("Non inviare il messaggio e riaprilo");
         SendBar.Visibility = pendingSends.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -3670,10 +3753,10 @@ public partial class MainWindow : Window
     internal static string SendBarText(IReadOnlyList<(string Subject, string? Progress)> sends)
     {
         if (sends.Count == 0) return "";
-        string many = $"Invio di {sends.Count} messaggi in corso";
+        string many = T("Invio di {0} messaggi in corso", sends.Count);
         if (sends.LastOrDefault(s => s.Progress != null).Progress is { } progress)
-            return $"{(sends.Count == 1 ? "Invio in corso" : many)}: {UploadShort(progress)}";
-        return sends.Count > 1 ? many + "…" : sends[0].Subject is { Length: > 0 } subject ? $"Invio in corso: {subject}" : "Invio in corso…";
+            return (sends.Count == 1 ? T("Invio in corso") : many) + ": " + UploadShort(progress);
+        return sends.Count > 1 ? many + "…" : sends[0].Subject is { Length: > 0 } subject ? T("Invio in corso: {0}", subject) : T("Invio in corso…");
     }
 
     /// <summary>
@@ -3681,12 +3764,19 @@ public partial class MainWindow : Window
     /// degli invii e la riga di stato della scrittura, dove un nome lungo spingeva i MB fuori dalla vista. Un testo fatto in
     /// un altro modo resta com'è.
     /// </summary>
-    internal static string UploadShort(string progress) => UploadProgress().Match(progress) is { Success: true } m
-        ? $"{m.Groups["done"].Value} di {m.Groups["total"].Value} MB caricati ({m.Groups["name"].Value})"
+    /// <remarks>
+    /// In inglese l'avanzamento di GraphProvider (un'altra area) si riconosce anche nella forma "Uploading nome: 3.5 of 12 MB…";
+    /// scritto in un altro modo resta com'è, come sempre.
+    /// </remarks>
+    internal static string UploadShort(string progress) => (UploadProgress().Match(progress) is { Success: true } m ? m : UploadProgressEnglish().Match(progress)) is { Success: true } found
+        ? T("{0} di {1} MB caricati ({2})", found.Groups["done"].Value, found.Groups["total"].Value, found.Groups["name"].Value)
         : progress;
 
     [System.Text.RegularExpressions.GeneratedRegex(@"^Caricamento di (?<name>.+): (?<done>[\d,.]+) di (?<total>[\d,.]+) MB…$")]
     private static partial System.Text.RegularExpressions.Regex UploadProgress();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^Uploading (?<name>.+): (?<done>[\d,.]+) of (?<total>[\d,.]+) MB…$")]
+    private static partial System.Text.RegularExpressions.Regex UploadProgressEnglish();
 
     void OnUndoSend(object sender, RoutedEventArgs e)
     {
@@ -3719,7 +3809,7 @@ public partial class MainWindow : Window
                 if (taken.Count < originals.Count)
                 {
                     Log.Write($"annullamento: {originals.Count - taken.Count} spostamenti di {part.Account.Header} erano già partiti al ritorno della rete");
-                    Dialog.Show(this, "Già fatto", UndoStartedText(originals.Count - taken.Count, originals.Count, part.Destination.Name));
+                    Dialog.Show(this, T("Già fatto"), UndoStartedText(originals.Count - taken.Count, originals.Count, part.Destination.Name));
                     stale = true;
                 }
                 continue;
@@ -3790,9 +3880,9 @@ public partial class MainWindow : Window
 
     /// <summary>L'avviso di Annulla quando la rete è tornata e lo spostamento fatto senza rete è già partito, tutto o in parte.</summary>
     internal static string UndoStartedText(int started, int all, string destination) => started >= all
-        ? "La rete è tornata e lo spostamento è già stato fatto: i messaggi sono in " + destination + "."
-        : (started == 1 ? "La rete è tornata e uno spostamento era già partito: quel messaggio è in " : $"La rete è tornata e {started} spostamenti erano già partiti: quei messaggi sono in ")
-          + destination + ". Gli altri sono tornati al loro posto.";
+        ? T("La rete è tornata e lo spostamento è già stato fatto: i messaggi sono in {0}.", destination)
+        : started == 1 ? T("La rete è tornata e uno spostamento era già partito: quel messaggio è in {0}. Gli altri sono tornati al loro posto.", destination)
+        : T("La rete è tornata e {0} spostamenti erano già partiti: quei messaggi sono in {1}. Gli altri sono tornati al loro posto.", started, destination);
 
     async void OnArchive(object sender, RoutedEventArgs e) => await ArchiveAsync(Selected);
 
@@ -3801,7 +3891,7 @@ public partial class MainWindow : Window
         if (items.Count == 0) return false;
         if (items.Select(i => i.Account).Distinct().FirstOrDefault(a => Special(a, FolderKind.Archive) == null) is { } missing)
         {
-            Dialog.Show(this, "Nessun archivio", $"L'account {missing.Header} non ha una cartella Archivio.");
+            Dialog.Show(this, T("Nessun archivio"), T("L'account {0} non ha una cartella Archivio.", missing.Header));
             return false;
         }
         return await MoveAsync(items, a => Special(a, FolderKind.Archive), "archiviazione");
@@ -3811,7 +3901,7 @@ public partial class MainWindow : Window
     {
         if (!OneAccount(Selected))
         {
-            Dialog.Show(this, "Messaggi di più account", "Sposta in lavora sui messaggi di un account alla volta: ogni account ha le sue cartelle.");
+            Dialog.Show(this, T("Messaggi di più account"), T("Sposta in lavora sui messaggi di un account alla volta: ogni account ha le sue cartelle."));
             return;
         }
         if (BuildMoveMenu() is not { } menu) return;
@@ -4023,33 +4113,33 @@ public partial class MainWindow : Window
             switch (key)
             {
                 case "reply" when single != null:
-                    return MenuEntry("Rispondi", "", Tone(ContextMenus.Tone.Purple), (_, _) => ReplyTo(single!, ComposeMode.Reply, reader));
+                    return MenuEntry(T("Rispondi"), "", Tone(ContextMenus.Tone.Purple), (_, _) => ReplyTo(single!, ComposeMode.Reply, reader));
                 case "replyAll" when single != null:
-                    return MenuEntry("Rispondi a tutti", ContextMenus.ReplyAllGlyph, Tone(ContextMenus.Tone.Purple), (_, _) => ReplyTo(single!, ComposeMode.ReplyAll, reader));
+                    return MenuEntry(T("Rispondi a tutti"), ContextMenus.ReplyAllGlyph, Tone(ContextMenus.Tone.Purple), (_, _) => ReplyTo(single!, ComposeMode.ReplyAll, reader));
                 case "forward" when single != null:
-                    return MenuEntry("Inoltra", ContextMenus.ForwardGlyph, Tone(ContextMenus.Tone.Blue), (_, _) => ReplyTo(single!, ComposeMode.Forward, reader));
+                    return MenuEntry(T("Inoltra"), ContextMenus.ForwardGlyph, Tone(ContextMenus.Tone.Blue), (_, _) => ReplyTo(single!, ComposeMode.Forward, reader));
                 case "replyTemplate" when single != null && Templates.For(single.Account.Provider.Account).Count > 0:
                     // Rispondi con modello, come le Parti rapide di Outlook: la risposta con il modello già al cursore.
-                    var withTemplate = MenuEntry("Rispondi con modello", "\ue8a5", Tone(ContextMenus.Tone.Purple));
+                    var withTemplate = MenuEntry(T("Rispondi con modello"), "\ue8a5", Tone(ContextMenus.Tone.Purple));
                     foreach (var t in Templates.For(single.Account.Provider.Account))
                         withTemplate.Items.Add(MenuEntry(t.Name, "", null, (_, _) => ReplyWithTemplate(single!, t, reader)));
                     return withTemplate;
                 case "meeting" when single != null && single.Account.Provider.HasCalendar:
-                    return MenuEntry("Rispondi con riunione", "\ue787", Tone(ContextMenus.Tone.Purple), async (_, _) => await ReplyWithMeetingAsync(single!, reader));
+                    return MenuEntry(T("Rispondi con riunione"), "\ue787", Tone(ContextMenus.Tone.Purple), async (_, _) => await ReplyWithMeetingAsync(single!, reader));
                 case "delete":
-                    return MenuEntry("Elimina", "", null, async (_, _) => await Leave(DeleteAsync(selected)));
+                    return MenuEntry(T("Elimina"), "", null, async (_, _) => await Leave(DeleteAsync(selected)));
                 case "archive":
-                    return MenuEntry("Archivia", "", Tone(ContextMenus.Tone.Green), async (_, _) => await Leave(ArchiveAsync(selected)),
+                    return MenuEntry(T("Archivia"), "", Tone(ContextMenus.Tone.Green), async (_, _) => await Leave(ArchiveAsync(selected)),
                                      involved.All(a => Special(a, FolderKind.Archive) != null));
                 case "move" when one:
-                    return FolderMenu("Sposta", "", Tone(ContextMenus.Tone.Blue), target => Leave(MoveAsync(selected, _ => target, "spostamento")), account, selected);
+                    return FolderMenu(T("Sposta"), "", Tone(ContextMenus.Tone.Blue), target => Leave(MoveAsync(selected, _ => target, "spostamento")), account, selected);
                 case "copy" when one:
-                    return FolderMenu("Copia", "", Tone(ContextMenus.Tone.Blue), target => CopyAsync(selected, target), account, selected);
+                    return FolderMenu(T("Copia"), "", Tone(ContextMenus.Tone.Blue), target => CopyAsync(selected, target), account, selected);
                 case "read":
                     bool allRead = selected.All(m => m.IsRead);
-                    return MenuEntry(allRead ? "Segna come da leggere" : "Segna come già letto", allRead ? "" : "", null, async (_, _) => await SetReadAsync(selected, !allRead));
+                    return MenuEntry(allRead ? T("Segna come da leggere") : T("Segna come già letto"), allRead ? "" : "", null, async (_, _) => await SetReadAsync(selected, !allRead));
                 case "pin" when single is { IsChild: false } && rows.Rows.Contains(single):
-                    return MenuEntry(single.IsPinned ? "Rimuovi dall'alto" : "Fissa in alto", single.IsPinned ? "" : "", Tone(ContextMenus.Tone.Blue), (_, _) => TogglePin(single));
+                    return MenuEntry(single.IsPinned ? T("Rimuovi dall'alto") : T("Fissa in alto"), single.IsPinned ? "" : "", Tone(ContextMenus.Tone.Blue), (_, _) => TogglePin(single));
                 case "categorize" when one && selected.All(rows.Rows.Contains):
                     return CategoryMenu(selected, account);
                 case "snooze" when one && selected.All(rows.Rows.Contains):
@@ -4057,41 +4147,41 @@ public partial class MainWindow : Window
                 case "flag":
                     return FlagMenu(selected);
                 case "rule" when single != null && HasRules(single.Account.Provider):
-                    return MenuEntry("Crea regola", "", null, (_, _) => CreateRuleFrom(single!));
+                    return MenuEntry(T("Crea regola"), "", null, (_, _) => CreateRuleFrom(single!));
                 case "report":
                     // In Gmail spostare in Spam è la segnalazione, e insegna al filtro. Come per Elimina conta la cartella
                     // dei messaggi, non quella aperta (ricerca in tutte le cartelle).
-                    var report = MenuEntry("Segnala", "", Tone(ContextMenus.Tone.Red));
+                    var report = MenuEntry(T("Segnala"), "", Tone(ContextMenus.Tone.Red));
                     if (one && Special(account, FolderKind.Junk) is { } junk && Targets(selected).All(m => m.FolderId == junk.Id))
-                        report.Items.Add(MenuEntry("Non è posta indesiderata", "", null,
+                        report.Items.Add(MenuEntry(T("Non è posta indesiderata"), "", null,
                             async (_, _) => await Leave(MoveAsync(selected, a => Special(a, FolderKind.Inbox), "segnalazione"))));
                     else
-                        report.Items.Add(MenuEntry("Segnala come posta indesiderata", "", Tone(ContextMenus.Tone.Red),
+                        report.Items.Add(MenuEntry(T("Segnala come posta indesiderata"), "", Tone(ContextMenus.Tone.Red),
                             async (_, _) => await Leave(MoveAsync(selected, a => Special(a, FolderKind.Junk), "segnalazione")),
                             involved.All(a => Special(a, FolderKind.Junk) != null)));
                     return report;
                 case "save" when single != null:
-                    var save = MenuEntry("Salva con nome", "", null);
-                    save.Items.Add(MenuEntry("File .eml (si apre con qualsiasi programma di posta)", "", null, async (_, _) => await SaveEmlAsync(single)));
+                    var save = MenuEntry(T("Salva con nome"), "", null);
+                    save.Items.Add(MenuEntry(T("File .eml (si apre con qualsiasi programma di posta)"), "", null, async (_, _) => await SaveEmlAsync(single)));
                     save.Items.Add(MenuEntry("PDF", "", null, async (_, _) => await SavePdfAsync(single, reader), CanPrint(single, reader)));
                     return save;
                 case "print" when single != null:
-                    return MenuEntry("Stampa", "", null, (_, _) => (reader ?? Reader).Print(), CanPrint(single, reader));
+                    return MenuEntry(T("Stampa"), "", null, (_, _) => (reader ?? Reader).Print(), CanPrint(single, reader));
                 case "related" when single != null:
-                    var related = MenuEntry("Trova elementi correlati", "", null);
+                    var related = MenuEntry(T("Trova elementi correlati"), "", null);
                     var from = single.Summary.From.Email;
-                    related.Items.Add(MenuEntry($"Messaggi da {single.Summary.From.Display}", "", null,
+                    related.Items.Add(MenuEntry(T("Messaggi da {0}", single.Summary.From.Display), "", null,
                         async (_, _) => { SearchBox.Text = "from:" + from; await SearchAsync("from:" + from, null, single.Account); }, from.Length > 0));
                     return related;
                 case "view" when single != null:
-                    var view = MenuEntry("Visualizza", "", null);
-                    if (reader == null) view.Items.Add(MenuEntry("Apri in una nuova finestra", "", null, (_, _) => OpenInWindow(single)));
-                    view.Items.Add(MenuEntry("Origine del messaggio", "", null, async (_, _) => await ShowSourceAsync(single)));
+                    var view = MenuEntry(T("Visualizza"), "", null);
+                    if (reader == null) view.Items.Add(MenuEntry(T("Apri in una nuova finestra"), "", null, (_, _) => OpenInWindow(single)));
+                    view.Items.Add(MenuEntry(T("Origine del messaggio"), "", null, async (_, _) => await ShowSourceAsync(single)));
                     return view;
                 case "window" when single != null && reader == null:
-                    return MenuEntry("Apri in una nuova finestra", "", null, (_, _) => OpenInWindow(single));
+                    return MenuEntry(T("Apri in una nuova finestra"), "", null, (_, _) => OpenInWindow(single));
                 case "source" when single != null:
-                    return MenuEntry("Origine del messaggio", "", null, async (_, _) => await ShowSourceAsync(single));
+                    return MenuEntry(T("Origine del messaggio"), "", null, async (_, _) => await ShowSourceAsync(single));
                 default:
                     return null;
             }
@@ -4115,7 +4205,7 @@ public partial class MainWindow : Window
         var owner = reader != null ? Window.GetWindow(reader) ?? this : this;
         if (!provider.HasCalendar)
         {
-            Dialog.Show(owner, "Rispondi con riunione", $"Il calendario di {provider.Account.Email} non si usa ancora da Missiva: oggi c'è per gli account Microsoft e Google.");
+            Dialog.Show(owner, T("Rispondi con riunione"), T("Il calendario di {0} non si usa ancora da Missiva: oggi c'è per gli account Microsoft e Google.", provider.Account.Email));
             return;
         }
         CalendarData? data = null;
@@ -4124,9 +4214,9 @@ public partial class MainWindow : Window
         var choices = (data?.Calendars ?? new()).Where(c => c.CanEdit).Select(c => new EventWindow.Choice(provider, c)).ToList();
         if (choices.Count == 0)
         {
-            Dialog.Show(owner, "Rispondi con riunione", data == null
-                ? $"Per creare la riunione Missiva deve poter usare il calendario di {provider.Account.Email}: apri il Calendario e premi \"Consenti l'accesso al calendario\"."
-                : $"Nel calendario di {provider.Account.Email} non c'è un calendario in cui scrivere.");
+            Dialog.Show(owner, T("Rispondi con riunione"), data == null
+                ? T("Per creare la riunione Missiva deve poter usare il calendario di {0}: apri il Calendario e premi \"Consenti l'accesso al calendario\".", provider.Account.Email)
+                : T("Nel calendario di {0} non c'è un calendario in cui scrivere.", provider.Account.Email));
             return;
         }
         var summary = item.Summary;
@@ -4157,7 +4247,14 @@ public partial class MainWindow : Window
     /// leggere e in cima. Gmail non espone il suo Posponi ai programmi di posta: il ritorno lo fa Missiva, ogni minuto
     /// mentre è aperta, o appena si riapre.
     /// </summary>
-    const string SnoozeFolderName = "Posposti";
+    /// <remarks>
+    /// La cartella sul server si chiama "Posposti" in italiano (il nome di sempre) e "Snoozed" in inglese (22 ottobre 2026):
+    /// tutte e due sono la cartella di Posponi in tutte e due le lingue, e se l'account ne ha già una al primo livello Missiva
+    /// usa quella, così un cambio di lingua non ne crea una seconda (SnoozeFolderFor). I posposti tornano comunque: il ritorno
+    /// (WakeAsync) cerca il messaggio nella cartella con l'identificativo scritto quando è stato posposto
+    /// (SnoozedMessage.FolderId; per Graph l'identificativo del messaggio), non con il nome.
+    /// </remarks>
+    static readonly string[] SnoozeFolderNames = ["Posposti", "Snoozed"];
 
     readonly DispatcherTimer snoozeTimer = new() { Interval = TimeSpan.FromMinutes(1) };
     bool checkingSnoozed;
@@ -4165,17 +4262,36 @@ public partial class MainWindow : Window
     bool snoozeSkipped;
 #endif
 
-    static bool IsSnoozeFolder(FolderItem? f) => f is { Parent: null } && f.Folder.Name.Equals(SnoozeFolderName, StringComparison.OrdinalIgnoreCase);
+    static bool IsSnoozeFolder(FolderItem? f) => f is { Parent: null } && IsSnoozeName(f.Folder.Name);
+
+    /// <summary>Il nome è quello della cartella di Posponi, in una delle due lingue ("Posposti", "Snoozed"; maiuscole e minuscole non contano).</summary>
+    internal static bool IsSnoozeName(string name) => SnoozeFolderNames.Contains(name, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Il nome della cartella di Posponi di un account, dai nomi delle sue cartelle al primo livello: quella che c'è già (se
+    /// ci sono tutte e due, quella della lingua di Missiva), altrimenti quella da creare, nella lingua di Missiva
+    /// (T("Posposti"): "Posposti" in italiano, come sempre, "Snoozed" in inglese).
+    /// </summary>
+    internal static string SnoozeFolderFor(IEnumerable<string> topLevel)
+    {
+        var mine = T("Posposti");
+        var found = topLevel.Where(IsSnoozeName).ToList();
+        return found.FirstOrDefault(n => n.Equals(mine, StringComparison.OrdinalIgnoreCase)) ?? found.FirstOrDefault() ?? mine;
+    }
+
+    /// <summary>La cartella di Posponi di questo account (SnoozeFolderFor con le sue cartelle al primo livello).</summary>
+    static string SnoozeFolderName(AccountItem? account) =>
+        SnoozeFolderFor(account?.Folders.Where(f => f.Parent == null).Select(f => f.Folder.Name) ?? []);
 
     SnoozedMessage? SnoozeOf(AccountItem account, MessageSummary m) =>
         S.Snoozed.FirstOrDefault(s => s.AccountId == account.Provider.Account.Id && (s.Key == m.StableId || s.Key == m.Id));
 
     MenuItem SnoozeMenu(List<MessageItem> items)
     {
-        var menu = MenuEntry("Posponi", "", null);
+        var menu = MenuEntry(T("Posponi"), "", null);
         if (IsSnoozeFolder(folder))
         {
-            menu.Items.Add(MenuEntry("Riporta subito in Posta in arrivo", "", null, async (_, _) => await WakeNowAsync(items)));
+            menu.Items.Add(MenuEntry(T("Riporta subito in Posta in arrivo"), "", null, async (_, _) => await WakeNowAsync(items)));
             menu.Items.Add(new Separator());
         }
         void Option(string text, DateTime until)
@@ -4193,16 +4309,16 @@ public partial class MainWindow : Window
         }
         var now = DateTime.Now;
         // Di notte "più tardi oggi" vorrebbe dire le 4 del mattino: al suo posto, stamattina alle 8.
-        if (now.Hour < 6) Option("Stamattina", now.Date.AddHours(8));
-        else if (now.Hour < 18) Option("Più tardi oggi", now.Date.AddHours(now.Hour + 4)); // tra tre ore e qualcosa, a ora piena
-        Option("Domani", now.Date.AddDays(1).AddHours(8));
+        if (now.Hour < 6) Option(T("Stamattina"), now.Date.AddHours(8));
+        else if (now.Hour < 18) Option(T("Più tardi oggi"), now.Date.AddHours(now.Hour + 4)); // tra tre ore e qualcosa, a ora piena
+        Option(T("Domani"), now.Date.AddDays(1).AddHours(8));
         if (now.DayOfWeek is >= DayOfWeek.Monday and <= DayOfWeek.Thursday)
-            Option("Questo fine settimana", now.Date.AddDays(DayOfWeek.Saturday - now.DayOfWeek).AddHours(8));
+            Option(T("Questo fine settimana"), now.Date.AddDays(DayOfWeek.Saturday - now.DayOfWeek).AddHours(8));
         int toMonday = ((int)DayOfWeek.Monday - (int)now.DayOfWeek + 7) % 7;
         // Di domenica lunedì mattina è già "Domani": la stessa ora due volte non serve.
-        if (toMonday != 1) Option("La prossima settimana", now.Date.AddDays(toMonday == 0 ? 7 : toMonday).AddHours(8));
+        if (toMonday != 1) Option(T("La prossima settimana"), now.Date.AddDays(toMonday == 0 ? 7 : toMonday).AddHours(8));
         menu.Items.Add(new Separator());
-        menu.Items.Add(MenuEntry("Scegli una data e un'ora…", "", null, async (_, _) =>
+        menu.Items.Add(MenuEntry(T("Scegli una data e un'ora…"), "", null, async (_, _) =>
         {
             var dialog = new SnoozeWindow { Owner = this };
             if (dialog.ShowDialog() == true) await SnoozeAsync(items, dialog.Until);
@@ -4232,10 +4348,11 @@ public partial class MainWindow : Window
         }
 
         bool creating = !account.Folders.Any(IsSnoozeFolder);
+        var snoozeName = SnoozeFolderName(account);
         RemoveRows(items);
         await RunAsync("posponi", async () =>
         {
-            var target = await provider.EnsureFolderAsync(SnoozeFolderName);
+            var target = await provider.EnsureFolderAsync(snoozeName);
             // Un salvataggio subito solo alla fine, anche se un messaggio non riesce: prima uno per messaggio, 12-26 ms l'uno sul
             // thread dell'interfaccia. Fra un messaggio e l'altro SaveSoon: accorpato e in sottofondo, al più 2 s dopo, così
             // di un Posponi lungo interrotto a metà si perde al più l'ora di ritorno degli ultimi secondi.
@@ -4280,7 +4397,7 @@ public partial class MainWindow : Window
     {
         if (S.ScheduledSends.Count == 0) return;
         await ScheduledSending.RunDueAsync(DateTime.Now, id => accounts.FirstOrDefault(a => a.Provider.Account.Id == id)?.Provider,
-            (_, why) => Tell("Invio pianificato non riuscito", why));
+            (_, why) => Tell(T("Invio pianificato non riuscito"), why));
     }
 
     /// <summary>
@@ -4358,7 +4475,7 @@ public partial class MainWindow : Window
                     }
                     try
                     {
-                        var key = await account.Provider.WakeAsync(s.Key, new MailFolder { Id = s.FolderId, Name = SnoozeFolderName }, inbox);
+                        var key = await account.Provider.WakeAsync(s.Key, new MailFolder { Id = s.FolderId, Name = SnoozeFolderName(account) }, inbox);
                         snoozeWaitTold.Remove(s.AccountId);
                         S.Snoozed.Remove(s);
                         if (key != null)
@@ -4397,9 +4514,9 @@ public partial class MainWindow : Window
         try
         {
             App.Show(new Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder()
-                .AddText("Di nuovo in Posta in arrivo")
+                .AddText(T("Di nuovo in Posta in arrivo"))
                 .AddText(s.From)
-                .AddText(s.Subject.Length > 0 ? s.Subject : "(nessun oggetto)")
+                .AddText(s.Subject.Length > 0 ? s.Subject : T("(nessun oggetto)"))
                 .AddAttributionText(account.Provider.Account.Email));
         }
         catch (Exception ex)
@@ -4452,7 +4569,7 @@ public partial class MainWindow : Window
             ActionQueue.Apply(current.Account.Provider.Account.Id, page.Messages);
             if (!MergeFirstPage(page.Messages, current.Account)) ShowFirstPage(page.Messages, current.Account, fromCache: true);
             next = page.Next;
-            SetListStatus(rows.Rows.Count == 0 ? "Non ci sono messaggi qui." : null);
+            SetListStatus(rows.Rows.Count == 0 ? T("Non ci sono messaggi qui.") : null);
             SaveFirstPage(current.Account.Provider.Account, current.Folder.Id, focused, firstPage);
             _ = FillPreviewsAsync(current, version, firstPage, prefetch: true);
         }
@@ -4470,7 +4587,7 @@ public partial class MainWindow : Window
     /// </summary>
     MenuItem CategoryMenu(List<MessageItem> selected, AccountItem account)
     {
-        var menu = MenuEntry("Categorizza", "", null);
+        var menu = MenuEntry(T("Categorizza"), "", null);
         var id = account.Provider.Account.Id;
         var messages = Targets(selected);
         var categories = account.Categories.Where(c => !S.HiddenFolders.Contains(id + "|" + c.Name))
@@ -4491,10 +4608,10 @@ public partial class MainWindow : Window
             entry.Click += async (_, _) => await SetCategoryAsync(selected, name, !all);
             menu.Items.Add(entry);
         }
-        if (categories.Count == 0) menu.Items.Add(new MenuItem { Header = "Nessuna categoria", IsEnabled = false });
+        if (categories.Count == 0) menu.Items.Add(new MenuItem { Header = T("Nessuna categoria"), IsEnabled = false });
         menu.Items.Add(new Separator());
-        menu.Items.Add(MenuEntry("Nuova categoria…", "", null, async (_, _) => await NewCategoryAsync(selected)));
-        menu.Items.Add(MenuEntry("Togli tutte le categorie", "", null, async (_, _) => await ClearCategoriesAsync(selected),
+        menu.Items.Add(MenuEntry(T("Nuova categoria…"), "", null, async (_, _) => await NewCategoryAsync(selected)));
+        menu.Items.Add(MenuEntry(T("Togli tutte le categorie"), "", null, async (_, _) => await ClearCategoriesAsync(selected),
             messages.Any(m => m.Categories.Any(c => !c.Equals(m.FolderId, StringComparison.OrdinalIgnoreCase)))));
         return menu;
     }
@@ -4560,7 +4677,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log.Error("nuova categoria", ex);
-            Dialog.Show(this, "Categoria non creata", ex.Message);
+            Dialog.Show(this, T("Categoria non creata"), ex.Message);
             return;
         }
         account.Categories.Add(created);
@@ -4617,7 +4734,7 @@ public partial class MainWindow : Window
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
             FileName = Safety.SafeFileName(item.Subject) + ".eml",
-            Filter = "Messaggio di posta (*.eml)|*.eml",
+            Filter = T("Messaggio di posta (*.eml)|*.eml"),
         };
         if (dialog.ShowDialog(this) != true) return;
         // Con il marchio web come gli allegati salvati (audit, S-10): chi lo riapre da un'altra parte è avvisato da Windows. Dal
@@ -4632,10 +4749,10 @@ public partial class MainWindow : Window
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
             FileName = Safety.SafeFileName(item.Subject) + ".pdf",
-            Filter = "Documento PDF (*.pdf)|*.pdf",
+            Filter = T("Documento PDF (*.pdf)|*.pdf"),
         };
         if (dialog.ShowDialog(this) != true) return;
-        if (!await (reader ?? Reader).SavePdfAsync(dialog.FileName)) Dialog.Show(this, "PDF non salvato", "Il riquadro di lettura non è riuscito a creare il PDF.");
+        if (!await (reader ?? Reader).SavePdfAsync(dialog.FileName)) Dialog.Show(this, T("PDF non salvato"), T("Il riquadro di lettura non è riuscito a creare il PDF."));
     }
 
     /// <summary>L'Origine mostra al massimo l'inizio del messaggio: gli allegati grandi non si scaricano.</summary>
@@ -4649,18 +4766,18 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log.Error("origine del messaggio", ex);
-            Dialog.Show(this, "Origine non disponibile", ex.Message);
+            Dialog.Show(this, T("Origine non disponibile"), ex.Message);
             return;
         }
         var text = System.Text.Encoding.UTF8.GetString(raw);
-        if (raw.Length >= SourceLimit) text += "\n\n[Il messaggio continua: qui ci sono i primi 2 MB. Intero con Salva con nome, File .eml.]";
+        if (raw.Length >= SourceLimit) text += "\n\n" + T("[Il messaggio continua: qui ci sono i primi 2 MB. Intero con Salva con nome, File .eml.]");
         var box = new TextBox
         {
             Text = text, IsReadOnly = true, FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 12,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             BorderThickness = new Thickness(0), Padding = new Thickness(12),
         };
-        new Window { Title = "Origine: " + item.Subject, Content = box, Width = 900, Height = 700, Owner = this, Icon = Icon,
+        new Window { Title = T("Origine: {0}", item.Subject), Content = box, Width = 900, Height = 700, Owner = this, Icon = Icon,
                      WindowStartupLocation = WindowStartupLocation.CenterOwner }.Show();
     }
 
@@ -4745,8 +4862,8 @@ public partial class MainWindow : Window
         if (!invite.Answerable) return; // risposte, proposte ed eventi pubblicati non hanno pulsanti
         if (invite.NeedsConsent)
         {
-            Dialog.Show(this, "Serve l'accesso al calendario",
-                "Per rispondere agli inviti di Outlook, Missiva deve poter usare il tuo calendario: premi \"Consenti l'accesso al calendario\" nella scheda dell'invito.");
+            Dialog.Show(this, T("Serve l'accesso al calendario"),
+                T("Per rispondere agli inviti di Outlook, Missiva deve poter usare il tuo calendario: premi \"Consenti l'accesso al calendario\" nella scheda dell'invito."));
             return;
         }
         var window = new InviteWindow(invite, answer) { Owner = this };
@@ -4759,7 +4876,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log.Error("risposta all'invito", ex);
-            Dialog.Show(this, "Risposta non inviata", ex is MailException ? ex.Message : "La risposta all'invito non è partita: " + ex.Message);
+            Dialog.Show(this, T("Risposta non inviata"), ex is MailException ? ex.Message : T("La risposta all'invito non è partita: {0}", ex.Message));
         }
     }
 
@@ -4778,7 +4895,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log.Error("messaggio .eml", ex);
-            Dialog.Show(this, "Messaggio non leggibile", $"\"{name}\" non è un messaggio di posta che Missiva sa leggere.");
+            Dialog.Show(this, T("Messaggio non leggibile"), T("\"{0}\" non è un messaggio di posta che Missiva sa leggere.", name));
             return;
         }
         OpenEmlWindow(eml, fromJunk);
@@ -4793,7 +4910,7 @@ public partial class MainWindow : Window
         reader.EmlRequested += OpenEml;
         var window = new Window
         {
-            Title = eml.Summary.Subject.Length > 0 ? eml.Summary.Subject : "Messaggio",
+            Title = eml.Summary.Subject.Length > 0 ? eml.Summary.Subject : T("Messaggio"),
             Content = reader,
             Width = 900,
             Height = 780,
@@ -4871,11 +4988,11 @@ public partial class MainWindow : Window
         rows.ShowAccounts = Reader.ShowAccount = false;
         rows.ByDue = false;
         Reader.Clear();
-        ListTitle.Text = $"Risultati in {where?.Name ?? "Tutte le cartelle"}";
+        ListTitle.Text = where == null ? T("Risultati in Tutte le cartelle") : T("Risultati in {0}", where.Name);
         ListTitle.ToolTip = ListTitle.Text;
         // Preferiti ed Evidenziata/Altra valgono per la cartella, non per i risultati.
         StarButton.Visibility = FocusedTabs.Visibility = Visibility.Collapsed;
-        SetListStatus("Ricerca in corso…");
+        SetListStatus(T("Ricerca in corso…"));
         await SearchPageAsync(first: true);
     }
 
@@ -4898,8 +5015,8 @@ public partial class MainWindow : Window
             if (first && page.Next == OfflineResults)
             {
                 page = new MessagePage { Messages = page.Messages }; // la copia sul PC non ha altre pagine
-                ListTitle.Text = searchWhere == null ? "Risultati sul PC (non in linea)" : $"Risultati sul PC in {searchWhere.Name}";
-                ListTitle.ToolTip = "Non in linea: i risultati vengono dalla copia sul PC (messaggi aperti e Posta in arrivo degli ultimi 30 giorni).";
+                ListTitle.Text = searchWhere == null ? T("Risultati sul PC (non in linea)") : T("Risultati sul PC in {0}", searchWhere.Name);
+                ListTitle.ToolTip = T("Non in linea: i risultati vengono dalla copia sul PC (messaggi aperti e Posta in arrivo degli ultimi 30 giorni).");
             }
             // Graph dice solo l'identificativo della cartella: il nome lo sa l'elenco delle cartelle.
             if (searchWhere == null)
@@ -4907,13 +5024,13 @@ public partial class MainWindow : Window
                     m.FolderName = account.Folders.FirstOrDefault(f => f.Folder.Id == m.FolderId)?.Name ?? "";
             AppendKeepingPosition(() => rows.Append(page.Messages, account));
             searchNext = page.Next;
-            SetListStatus(rows.Rows.Count == 0 ? $"Nessun risultato per \"{searchQuery}\"." : null);
+            SetListStatus(rows.Rows.Count == 0 ? T("Nessun risultato per \"{0}\".", searchQuery) : null);
             _ = FillPreviewsAsync(searchWhere ?? (folder?.Account == account ? folder : null) ?? account.Folders[0], version, page.Messages, prefetch: first);
         }
         catch (Exception ex)
         {
             Log.Error("ricerca", ex);
-            if (version == listVersion) SetListStatus("Ricerca non riuscita: " + ex.Message, () => _ = SearchPageAsync(first));
+            if (version == listVersion) SetListStatus(T("Ricerca non riuscita: {0}", ex.Message), () => _ = SearchPageAsync(first));
         }
         finally
         {
@@ -4931,12 +5048,12 @@ public partial class MainWindow : Window
     {
         bool across = SearchesAccounts;
         if (folder == null && unified != null)
-            ShowMenu(SearchScopeButton, ("Tutti gli account", true, () => SetSearchScope(true, true)));
+            ShowMenu(SearchScopeButton, (T("Tutti gli account"), true, () => SetSearchScope(true, true)));
         else
             ShowMenu(SearchScopeButton,
-                ("Tutte le cartelle", searchAll && !across, () => SetSearchScope(true, false)),
-                ("Cartella corrente", !searchAll && !across, () => SetSearchScope(false, false)),
-                ("Tutti gli account", across, () => SetSearchScope(true, true)));
+                (T("Tutte le cartelle"), searchAll && !across, () => SetSearchScope(true, false)),
+                (T("Cartella corrente"), !searchAll && !across, () => SetSearchScope(false, false)),
+                (T("Tutti gli account"), across, () => SetSearchScope(true, true)));
     }
 
     /// <summary>Cambiando dove cercare, la ricerca in corso si ripete.</summary>
@@ -4951,7 +5068,7 @@ public partial class MainWindow : Window
     }
 
     void ShowSearchScope() =>
-        SearchScopeText.Text = SearchesAccounts ? "Tutti gli account" : searchAll ? "Tutte le cartelle" : "Cartella corrente";
+        SearchScopeText.Text = SearchesAccounts ? T("Tutti gli account") : searchAll ? T("Tutte le cartelle") : T("Cartella corrente");
 
     void OnClearSearch(object sender, RoutedEventArgs e)
     {
@@ -5027,7 +5144,7 @@ public partial class MainWindow : Window
         var prefill = new MailRule
         {
             AccountId = host.Provider.Account.Id,
-            Name = "Da " + (summary.From.Name.Length > 0 ? summary.From.Name : summary.From.Email),
+            Name = T("Da {0}", summary.From.Name.Length > 0 ? summary.From.Name : summary.From.Email),
             FromAddresses = summary.From.Email.Length > 0 ? [summary.From.Email] : [],
             SubjectContains = summary.Subject.Trim().Length > 0 ? [summary.Subject.Trim()] : [],
         };
@@ -5052,9 +5169,9 @@ public partial class MainWindow : Window
     }
 
     void OnMessagesMenu(object sender, RoutedEventArgs e) => ShowMenu(MessagesMenuButton,
-        ("Mostra i messaggi come conversazioni", S.GroupByConversation, () => { S.GroupByConversation = !S.GroupByConversation; SaveAndApply(); }),
-        ("Nel riquadro di lettura mostra tutta la conversazione", S.ReadingWholeConversation, () => { S.ReadingWholeConversation = !S.ReadingWholeConversation; SaveAndApply(); }),
-        ("Intestazioni per data", S.ShowDateHeaders, () => { S.ShowDateHeaders = !S.ShowDateHeaders; SaveAndApply(reload: false); }));
+        (T("Mostra i messaggi come conversazioni"), S.GroupByConversation, () => { S.GroupByConversation = !S.GroupByConversation; SaveAndApply(); }),
+        (T("Nel riquadro di lettura mostra tutta la conversazione"), S.ReadingWholeConversation, () => { S.ReadingWholeConversation = !S.ReadingWholeConversation; SaveAndApply(); }),
+        (T("Intestazioni per data"), S.ShowDateHeaders, () => { S.ShowDateHeaders = !S.ShowDateHeaders; SaveAndApply(reload: false); }));
 
     void OnZoomMenu(object sender, RoutedEventArgs e) => ShowMenu(ZoomButton,
         new[] { 80, 90, 100, 110, 125, 150 }.Select(z => ($"{z}%", S.Zoom == z, (Action)(() => { S.Zoom = z; SaveAndApply(reload: false); }))).ToArray());
@@ -5066,14 +5183,14 @@ public partial class MainWindow : Window
     }
 
     void OnPaneMenu(object sender, RoutedEventArgs e) => ShowMenu(PaneMenuButton,
-        ("A destra", S.ReadingPane == ReadingPanePosition.Right, () => { S.ReadingPane = ReadingPanePosition.Right; SaveAndApply(reload: false); }),
-        ("In basso", S.ReadingPane == ReadingPanePosition.Bottom, () => { S.ReadingPane = ReadingPanePosition.Bottom; SaveAndApply(reload: false); }),
-        ("Nascosto (apri i messaggi con doppio clic)", S.ReadingPane == ReadingPanePosition.Off, () => { S.ReadingPane = ReadingPanePosition.Off; SaveAndApply(reload: false); }));
+        (T("A destra"), S.ReadingPane == ReadingPanePosition.Right, () => { S.ReadingPane = ReadingPanePosition.Right; SaveAndApply(reload: false); }),
+        (T("In basso"), S.ReadingPane == ReadingPanePosition.Bottom, () => { S.ReadingPane = ReadingPanePosition.Bottom; SaveAndApply(reload: false); }),
+        (T("Nascosto (apri i messaggi con doppio clic)"), S.ReadingPane == ReadingPanePosition.Off, () => { S.ReadingPane = ReadingPanePosition.Off; SaveAndApply(reload: false); }));
 
     void OnSizeMenu(object sender, RoutedEventArgs e) => ShowMenu(SizeMenuButton,
-        ("Piccola", S.TextSize == TextSize.Small, () => { S.TextSize = TextSize.Small; SaveAndApply(); }),
-        ("Media", S.TextSize == TextSize.Medium, () => { S.TextSize = TextSize.Medium; SaveAndApply(); }),
-        ("Di grandi dimensioni", S.TextSize == TextSize.Large, () => { S.TextSize = TextSize.Large; SaveAndApply(); }));
+        (T("Piccola"), S.TextSize == TextSize.Small, () => { S.TextSize = TextSize.Small; SaveAndApply(); }),
+        (T("Media"), S.TextSize == TextSize.Medium, () => { S.TextSize = TextSize.Medium; SaveAndApply(); }),
+        (T("Di grandi dimensioni"), S.TextSize == TextSize.Large, () => { S.TextSize = TextSize.Large; SaveAndApply(); }));
 
     // ---------------------------------------------------------------- altro
 
@@ -5185,7 +5302,7 @@ public partial class MainWindow : Window
         ShowFromTray(); // anche ridotta a icona o nell'area di notifica: altrimenti nasconderebbe la scrittura
         if (accounts.Count == 0)
         {
-            Dialog.Show(this, "Nessun account", "Aggiungi un account di posta per scrivere il messaggio.");
+            Dialog.Show(this, T("Nessun account"), T("Aggiungi un account di posta per scrivere il messaggio."));
             return;
         }
         var window = new ComposeWindow(Providers.ToList(), folder?.Account.Provider ?? accounts[0].Provider, ComposeMode.New, null, null) { Owner = this };
@@ -5211,33 +5328,33 @@ public partial class MainWindow : Window
         // Una casella condivisa non ha accesso né nome suoi: li ha l'account di lavoro che la apre.
         if (!account.IsShared)
         {
-            var manage = new MenuItem { Header = "Gestisci account…" };
+            var manage = new MenuItem { Header = T("Gestisci account…") };
             manage.Click += async (_, _) => await ManageAccountAsync(mail, this);
             menu.Items.Add(manage);
         }
         if (account.Provider.HasAutoReplies)
         {
-            var replies = new MenuItem { Header = "Risposte automatiche…" };
+            var replies = new MenuItem { Header = T("Risposte automatiche…") };
             replies.Click += async (_, _) => await EditAutoRepliesAsync(mail, this);
             menu.Items.Add(replies);
         }
         // Caselle condivise solo per gli account di lavoro o della scuola, come il nuovo Outlook.
         if (mail.Kind == AccountKind.Microsoft && mail.Tenant != null && mail.SharedOf == null && only == null)
         {
-            var addShared = new MenuItem { Header = "Aggiungi casella condivisa…" };
+            var addShared = new MenuItem { Header = T("Aggiungi casella condivisa…") };
             addShared.Click += async (_, _) => await AddSharedMailboxAsync(mail);
             menu.Items.Add(addShared);
         }
-        var remove = new MenuItem { Header = account.IsShared ? "Rimuovi casella condivisa" : "Rimuovi account" };
+        var remove = new MenuItem { Header = account.IsShared ? T("Rimuovi casella condivisa") : T("Rimuovi account") };
         remove.Click += async (_, _) => await RemoveAccountAsync(account.Provider.Account);
         menu.Items.Add(remove);
         if (only != null || accounts.Count < 2) return;
         int index = accounts.IndexOf(account);
         menu.Items.Add(new Separator());
-        var up = new MenuItem { Header = "Sposta su", IsEnabled = index > 0 };
+        var up = new MenuItem { Header = T("Sposta su"), IsEnabled = index > 0 };
         up.Click += (_, _) => MoveAccount(account, index - 1);
         menu.Items.Add(up);
-        var down = new MenuItem { Header = "Sposta giù", IsEnabled = index < accounts.Count - 1 };
+        var down = new MenuItem { Header = T("Sposta giù"), IsEnabled = index < accounts.Count - 1 };
         down.Click += (_, _) => MoveAccount(account, index + 1);
         menu.Items.Add(down);
     }
@@ -5323,20 +5440,21 @@ public partial class MainWindow : Window
     public async Task RemoveAccountAsync(MailAccount account)
     {
         var shared = S.Accounts.Where(a => a.SharedOf == account.Id).ToList();
-        var text = account.SharedOf != null ? "La casella condivisa esce da Missiva. La posta resta dov'è: sul server non si cancella nulla."
-            : shared.Count > 0 ? $"L'account esce da Missiva con le sue caselle condivise ({string.Join(", ", shared.Select(s => s.Email))}). La posta resta dov'è: sul server non si cancella nulla."
-            : "L'account esce da Missiva. La posta resta dov'è: sul server non si cancella nulla.";
+        var text = account.SharedOf != null ? T("La casella condivisa esce da Missiva. La posta resta dov'è: sul server non si cancella nulla.")
+            : shared.Count > 0 ? T("L'account esce da Missiva con le sue caselle condivise ({0}). La posta resta dov'è: sul server non si cancella nulla.", string.Join(", ", shared.Select(s => s.Email)))
+            : T("L'account esce da Missiva. La posta resta dov'è: sul server non si cancella nulla.");
         // Quello che Missiva faceva per l'account e non farà più: detto prima, perché non resti in attesa senza saperlo.
         var gone = shared.Select(s => s.Id).Append(account.Id).ToHashSet();
         int scheduled = S.ScheduledSends.Count(s => gone.Contains(s.AccountId)), snoozed = S.Snoozed.Count(s => gone.Contains(s.AccountId));
-        if (scheduled > 0) text += scheduled == 1 ? " Un invio pianificato non partirà: il messaggio resta nelle Bozze." : $" {scheduled} invii pianificati non partiranno: i messaggi restano nelle Bozze.";
-        if (snoozed > 0) text += snoozed == 1 ? $" Un messaggio posposto non tornerà: resta nella cartella {SnoozeFolderName}." : $" {snoozed} messaggi posposti non torneranno: restano nella cartella {SnoozeFolderName}.";
+        if (scheduled > 0) text += " " + (scheduled == 1 ? T("Un invio pianificato non partirà: il messaggio resta nelle Bozze.") : T("{0} invii pianificati non partiranno: i messaggi restano nelle Bozze.", scheduled));
+        var snoozeName = SnoozeFolderName(accounts.FirstOrDefault(a => a.Provider.Account.Id == account.Id));
+        if (snoozed > 0) text += " " + (snoozed == 1 ? T("Un messaggio posposto non tornerà: resta nella cartella {0}.", snoozeName) : T("{0} messaggi posposti non torneranno: restano nella cartella {1}.", snoozed, snoozeName));
         text += OutboxRemovalText(gone.Sum(Outbox.Count));
-        if (Dialog.Ask(this, $"Rimuovere {account.Email}?", text, "Rimuovi") != Choice.Primary) return;
+        if (Dialog.Ask(this, T("Rimuovere {0}?", account.Email), text, T("Rimuovi")) != Choice.Primary) return;
         // I messaggi inviati senza rete da questi account non partiranno più: le loro finestre si riaprono, con il testo da
         // salvare altrove, e la barra della Posta in uscita non li promette più (audit dell'11 ottobre, C-54).
         foreach (var waiting in OutboxWindows().Where(w => w.OutboxAccountId is { } id && gone.Contains(id)))
-            waiting.LeaveOutbox("Non inviato: l'account è stato rimosso da Missiva. Copia il testo, se ti serve.");
+            waiting.LeaveOutbox(T("Non inviato: l'account è stato rimosso da Missiva. Copia il testo, se ti serve."));
         // Una casella condivisa non ha un accesso suo: quello dell'account di lavoro resta.
         var revocation = GoogleRevocation.NotNeeded;
         if (account.Kind == AccountKind.Microsoft && account.SharedOf == null) await MicrosoftAuth.SignOutAsync(account);
@@ -5367,8 +5485,8 @@ public partial class MainWindow : Window
     internal static string OutboxRemovalText(int waiting) => waiting switch
     {
         <= 0 => "",
-        1 => " Un messaggio nella Posta in uscita non partirà: la sua finestra si riapre.",
-        _ => $" {waiting} messaggi nella Posta in uscita non partiranno: le loro finestre si riaprono.",
+        1 => " " + T("Un messaggio nella Posta in uscita non partirà: la sua finestra si riapre."),
+        _ => " " + T("{0} messaggi nella Posta in uscita non partiranno: le loro finestre si riaprono.", waiting),
     };
 
     /// <summary>

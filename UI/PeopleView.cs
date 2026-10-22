@@ -31,7 +31,7 @@ public sealed partial class PeopleView : UserControl
     readonly Dictionary<IMailProvider, string> errors = new();
     readonly TextBox search = new();
     /// <summary>Il testo guida della ricerca, sopra la casella e sparito appena si scrive (come "Cerca" in alto nella finestra).</summary>
-    readonly TextBlock searchHint = new() { Text = "Cerca nei contatti", IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+    readonly TextBlock searchHint = new() { Text = T("Cerca nei contatti"), IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
     readonly ListBox list = new() { BorderThickness = new Thickness(0), Background = Brushes.Transparent };
     readonly Border card = new() { CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1), Margin = new Thickness(12, 0, 0, 0) };
     readonly TextBlock status = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
@@ -47,22 +47,22 @@ public sealed partial class PeopleView : UserControl
 
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
         Grid.SetColumnSpan(bar, 2);
-        var create = new Button { Content = "Nuovo contatto", Padding = new Thickness(14, 5, 14, 6), Margin = new Thickness(0, 0, 12, 0) };
+        var create = new Button { Content = T("Nuovo contatto"), Padding = new Thickness(14, 5, 14, 6), Margin = new Thickness(0, 0, 12, 0) };
         create.SetResourceReference(StyleProperty, "AccentButtonStyle");
-        AutomationProperties.SetName(create, "Nuovo contatto");
+        AutomationProperties.SetName(create, T("Nuovo contatto"));
         create.Click += (_, _) => Edit(null);
         bar.Children.Add(create);
         // Nuovo gruppo, come i gruppi di contatti del nuovo Outlook: nel campo A diventa gli indirizzi delle sue persone.
-        var group = new Button { Content = "Nuovo gruppo", Padding = new Thickness(14, 5, 14, 6), Margin = new Thickness(0, 0, 12, 0) };
-        AutomationProperties.SetName(group, "Nuovo gruppo");
+        var group = new Button { Content = T("Nuovo gruppo"), Padding = new Thickness(14, 5, 14, 6), Margin = new Thickness(0, 0, 12, 0) };
+        AutomationProperties.SetName(group, T("Nuovo gruppo"));
         group.Click += (_, _) => EditGroup(null);
         bar.Children.Add(group);
-        foreach (var (glyph, text, action) in new (string, string, Action)[] { ("", "Importa", Import), ("", "Esporta", Export) })
+        foreach (var (glyph, text, tip, action) in new (string, string, string, Action)[] { ("", T("Importa"), T("Importa una vCard (.vcf) o un CSV di Outlook o Gmail"), Import), ("", T("Esporta"), T("Esporta i contatti mostrati in una vCard (.vcf)"), Export) })
         {
             var content = new StackPanel { Orientation = Orientation.Horizontal };
             content.Children.Add(new TextBlock { Text = glyph, FontFamily = Icons, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
             content.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
-            var button = new Button { Content = content, Margin = new Thickness(0, 0, 4, 0), ToolTip = text == "Importa" ? "Importa una vCard (.vcf) o un CSV di Outlook o Gmail" : "Esporta i contatti mostrati in una vCard (.vcf)" };
+            var button = new Button { Content = content, Margin = new Thickness(0, 0, 4, 0), ToolTip = tip };
             button.SetResourceReference(StyleProperty, "Command");
             AutomationProperties.SetName(button, text);
             button.Click += (_, _) => action();
@@ -73,8 +73,8 @@ public sealed partial class PeopleView : UserControl
         root.Children.Add(bar);
 
         var left = new DockPanel();
-        AutomationProperties.SetName(search, "Cerca fra le persone");
-        search.ToolTip = "Nome, indirizzo, azienda, telefono o note";
+        AutomationProperties.SetName(search, T("Cerca fra le persone"));
+        search.ToolTip = T("Nome, indirizzo, azienda, telefono o note");
         searchHint.SetResourceReference(TextBlock.ForegroundProperty, "TextFillColorTertiaryBrush"); // lo stesso grigio di "Cerca" in alto
         search.TextChanged += (_, _) =>
         {
@@ -90,7 +90,7 @@ public sealed partial class PeopleView : UserControl
         // Righe create solo per quelle in vista, come l'elenco dei messaggi: lo stile Fluent del ListBox mette
         // CanContentScroll a falso, e con migliaia di contatti importati WPF creava tutte le righe a ogni lettera cercata.
         SetUpList(list);
-        AutomationProperties.SetName(list, "Persone");
+        AutomationProperties.SetName(list, T("Persone"));
         list.SelectionChanged += (_, _) => OnSelectionChanged();
         list.MouseDoubleClick += (_, e) => OnListDoubleClick(e);
         left.Children.Add(list);
@@ -125,14 +125,30 @@ public sealed partial class PeopleView : UserControl
     internal sealed record Row(Contact Contact, IMailProvider? Provider)
     {
         /// <summary>La seconda riga: il primo indirizzo, o per un gruppo quante persone ha.</summary>
-        public string Detail => Contact.IsGroup ? $"Gruppo, {Contact.Members.Count} {(Contact.Members.Count == 1 ? "persona" : "persone")}" : Contact.Emails.FirstOrDefault() ?? "";
+        public string Detail => Contact.IsGroup ? T("Gruppo, {0}", PeopleCount(Contact.Members.Count)) : Contact.Emails.FirstOrDefault() ?? "";
 
-        public override string ToString() => (Contact.IsGroup ? "Gruppo " : "") + Contact.Name + (Detail.Length > 0 && !Contact.IsGroup ? ", " + Detail : Contact.IsGroup ? ", " + Contact.Members.Count + " persone" : "") +
-                                             (Provider != null ? $", {Origin(Provider)} di {Provider.Account.Email}" : ", in Missiva");
+        /// <summary>
+        /// Il nome per UI Automation: nome, indirizzo o persone del gruppo, e di chi è. Per un gruppo il numero è sempre al plurale in
+        /// italiano ("1 persone"), com'era; in inglese con il singolare giusto.
+        /// </summary>
+        public override string ToString()
+        {
+            var where = Provider != null ? OriginOf(Provider) : T("in Missiva");
+            if (Contact.IsGroup)
+                return T("Gruppo {0}", Contact.Name) + ", " + (Lingua.English ? PeopleCount(Contact.Members.Count) : T("{0} persone", Contact.Members.Count)) + ", " + where;
+            return Contact.Name + (Detail.Length > 0 ? ", " + Detail : "") + ", " + where;
+        }
     }
+
+    /// <summary>Quante persone: "1 persona", "3 persone" (in inglese "1 person", "3 people").</summary>
+    internal static string PeopleCount(int n) => n == 1 ? T("1 persona") : T("{0} persone", n);
 
     /// <summary>Di chi sono i contatti di un account: Google per Gmail e Workspace, Outlook per gli altri.</summary>
     internal static string Origin(IMailProvider p) => p.Account.Kind == AccountKind.Gmail ? "Google" : "Outlook";
+
+    /// <summary>L'origine con l'account, "Google di ada@prova.example" (in inglese "Google (ada@prova.example)").</summary>
+    internal static string OriginOf(IMailProvider p) =>
+        p.Account.Kind == AccountKind.Gmail ? T("Google di {0}", p.Account.Email) : T("Outlook di {0}", p.Account.Email);
 
     /// <summary>Aperta: subito i contatti di Missiva, poi quelli degli account (solo con il consenso già dato).</summary>
     public void Open()
@@ -172,7 +188,7 @@ public sealed partial class PeopleView : UserControl
         list.SelectedItem = selected == null ? null : entries.OfType<Row>().FirstOrDefault(r => r.Contact.Id == selected);
         if (list.SelectedItem == null) ShowCard(null);
         int shown = entries.Count(e => e is Row);
-        status.Text = $"{shown} {(shown == 1 ? "persona" : "persone")}";
+        status.Text = PeopleCount(shown);
         Log.Time($"Persone, elenco riempito ({shown} persone{(words.Length > 0 ? $", ricerca di {words.Length} caratteri" : "")})", clock);
     }
 
@@ -255,10 +271,10 @@ public sealed partial class PeopleView : UserControl
     /// <summary>I telefoni di un contatto in ordine (cellulare, ufficio, casa, con gli altri di Outlook), senza i vuoti: Chiama prende il primo che è un numero valido.</summary>
     internal static List<(string Label, string Text)> PhonesOf(Contact c)
     {
-        var phones = new List<(string Label, string Text)> { ("Cellulare", c.Mobile), ("Telefono ufficio", c.BusinessPhone) };
-        phones.AddRange(c.MoreBusinessPhones.Select(p => ("Telefono ufficio", p)));
-        phones.Add(("Telefono casa", c.HomePhone));
-        phones.AddRange(c.MoreHomePhones.Select(p => ("Telefono casa", p)));
+        var phones = new List<(string Label, string Text)> { (T("Cellulare"), c.Mobile), (T("Telefono ufficio"), c.BusinessPhone) };
+        phones.AddRange(c.MoreBusinessPhones.Select(p => (T("Telefono ufficio"), p)));
+        phones.Add((T("Telefono casa"), c.HomePhone));
+        phones.AddRange(c.MoreHomePhones.Select(p => (T("Telefono casa"), p)));
         return phones.Where(p => p.Text.Trim().Length > 0).ToList();
     }
 
@@ -300,11 +316,11 @@ public sealed partial class PeopleView : UserControl
     static Button CopyButton(string text, string name)
     {
         var glyph = new TextBlock { Text = "", FontFamily = Icons, FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
-        var done = new TextBlock { Text = "Copiato", FontSize = 12, Visibility = Visibility.Collapsed, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var done = new TextBlock { Text = T("Copiato"), FontSize = 12, Visibility = Visibility.Collapsed, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         var content = new StackPanel { Orientation = Orientation.Horizontal };
         content.Children.Add(glyph);
         content.Children.Add(done);
-        var button = new Button { Content = content, Padding = new Thickness(7, 2, 7, 2), MinHeight = 26, MinWidth = 30, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top, ToolTip = "Copia" };
+        var button = new Button { Content = content, Padding = new Thickness(7, 2, 7, 2), MinHeight = 26, MinWidth = 30, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top, ToolTip = T("Copia") };
         button.SetResourceReference(StyleProperty, "Command");
         AutomationProperties.SetName(button, name);
         System.Windows.Threading.DispatcherTimer? timer = null;
@@ -407,7 +423,7 @@ public sealed partial class PeopleView : UserControl
     {
         if (row == null)
         {
-            var empty = Note("Scegli una persona per vedere la sua scheda.");
+            var empty = Note(T("Scegli una persona per vedere la sua scheda."));
             empty.Margin = new Thickness(24);
             card.Child = empty;
             return;
@@ -433,7 +449,7 @@ public sealed partial class PeopleView : UserControl
             roleLine.Margin = new Thickness(0, 2, 0, 0);
             title.Children.Add(roleLine);
         }
-        var origin = Note(row.Provider != null ? $"Contatti di {Origin(row.Provider)} di {row.Provider.Account.Email}" + (row.Provider.ContactsReadOnly ? ", in sola lettura" : "") : "In Missiva, su questo PC");
+        var origin = Note(row.Provider == null ? T("In Missiva, su questo PC") : row.Provider.ContactsReadOnly ? T("Contatti di {0} di {1}, in sola lettura", Origin(row.Provider), row.Provider.Account.Email) : T("Contatti di {0} di {1}", Origin(row.Provider), row.Provider.Account.Email));
         origin.Margin = new Thickness(0, 4, 0, 0);
         title.Children.Add(origin);
         head.Children.Add(title);
@@ -446,15 +462,15 @@ public sealed partial class PeopleView : UserControl
         var actions = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
         if (c.Emails.FirstOrDefault() is { } first && WriteRequested != null)
         {
-            var write = CardButton("", "Scrivi", "Scrivi a " + first, accent: true);
-            write.ToolTip = "Nuovo messaggio a " + first;
+            var write = CardButton("", T("Scrivi"), T("Scrivi a {0}", first), accent: true);
+            write.ToolTip = T("Nuovo messaggio a {0}", first);
             write.Click += (_, _) => WriteRequested(first);
             actions.Children.Add(write);
         }
         if (phones.FirstOrDefault(p => ContactLinks.TelUri(p.Text) != null) is { Text: { Length: > 0 } callText } callable)
         {
-            var call = CardButton("", "Chiama", "Chiama " + callText);
-            call.ToolTip = $"Chiama {callable.Label.ToLowerInvariant()}: {callText}";
+            var call = CardButton("", T("Chiama"), T("Chiama {0}", callText));
+            call.ToolTip = T("Chiama {0}: {1}", callable.Label.ToLowerInvariant(), callText);
             call.Click += (_, _) => OpenExternal(ContactLinks.TelUri(callText)!);
             actions.Children.Add(call);
         }
@@ -463,62 +479,62 @@ public sealed partial class PeopleView : UserControl
         bool google = row.Provider is { ContactsReadOnly: true, Account.Kind: AccountKind.Gmail };
         if (!readOnly || google)
         {
-            var edit = CardButton("", "Modifica", google ? "Modifica in Google Contatti" : "Modifica il contatto");
-            if (google) edit.ToolTip = "Apre questa persona in Google Contatti, nel browser";
+            var edit = CardButton("", T("Modifica"), google ? T("Modifica in Google Contatti") : T("Modifica il contatto"));
+            if (google) edit.ToolTip = T("Apre questa persona in Google Contatti, nel browser");
             edit.Click += (_, _) => Modify(row);
             actions.Children.Add(edit);
         }
         if (!readOnly)
         {
-            var remove = CardButton("", "Elimina", "Elimina il contatto");
+            var remove = CardButton("", T("Elimina"), T("Elimina il contatto"));
             remove.Click += async (_, _) => await RemoveAsync(row);
             actions.Children.Add(remove);
         }
         if (google && AllowWriteRequested != null)
         {
-            var allow = CardButton("\uE785", "Consenti la modifica", "Consenti la modifica dei contatti di " + row.Provider!.Account.Email);
-            allow.ToolTip = "Missiva potrà creare, cambiare ed eliminare i tuoi contatti di Google";
+            var allow = CardButton("\uE785", T("Consenti la modifica"), T("Consenti la modifica dei contatti di {0}", row.Provider!.Account.Email));
+            allow.ToolTip = T("Missiva potrà creare, cambiare ed eliminare i tuoi contatti di Google");
             allow.Click += (_, _) => AllowFor(row.Provider!, write: true);
             actions.Children.Add(allow);
         }
         panel.Children.Add(actions);
         if (google)
         {
-            var why = Note("Questo contatto è di Google: Modifica lo apre in Google Contatti. Per cambiarlo qui, consenti la modifica.");
+            var why = Note(T("Questo contatto è di Google: Modifica lo apre in Google Contatti. Per cambiarlo qui, consenti la modifica."));
             why.Margin = new Thickness(0, 0, 0, 2);
             panel.Children.Add(why);
         }
 
         if (c.Emails.Count > 0)
         {
-            panel.Children.Add(Heading("Posta elettronica"));
+            panel.Children.Add(Heading(T("Posta elettronica")));
             foreach (var email in c.Emails)
-                panel.Children.Add(ValueRow(email, "Posta elettronica", null, WriteRequested == null ? null : () => WriteRequested(email), "Scrivi a " + email, "Copia l'indirizzo " + email));
+                panel.Children.Add(ValueRow(email, T("Posta elettronica"), null, WriteRequested == null ? null : () => WriteRequested(email), T("Scrivi a {0}", email), T("Copia l'indirizzo {0}", email)));
         }
         if (phones.Count > 0)
         {
-            panel.Children.Add(Heading("Telefono"));
+            panel.Children.Add(Heading(T("Telefono")));
             foreach (var (label, text) in phones)
             {
                 var uri = ContactLinks.TelUri(text);
-                panel.Children.Add(ValueRow(text, label, label, uri == null ? null : () => OpenExternal(uri), "Chiama " + text, "Copia il numero " + text));
+                panel.Children.Add(ValueRow(text, label, label, uri == null ? null : () => OpenExternal(uri), T("Chiama {0}", text), T("Copia il numero {0}", text)));
             }
         }
         if (c.Address.Trim().Length > 0)
         {
-            panel.Children.Add(Heading("Indirizzo"));
-            panel.Children.Add(ValueRow(c.Address, "Indirizzo", null, null, "", "Copia l'indirizzo postale"));
+            panel.Children.Add(Heading(T("Indirizzo")));
+            panel.Children.Add(ValueRow(c.Address, T("Indirizzo"), null, null, "", T("Copia l'indirizzo postale")));
         }
         if (c.Website.Trim().Length > 0)
         {
-            panel.Children.Add(Heading("Sito web"));
+            panel.Children.Add(Heading(T("Sito web")));
             var url = ContactLinks.WebUrl(c.Website);
-            panel.Children.Add(ValueRow(c.Website.Trim(), "Sito web", null, url == null ? null : () => OpenExternal(url), "Apri il sito " + c.Website.Trim(), "Copia l'indirizzo del sito"));
+            panel.Children.Add(ValueRow(c.Website.Trim(), T("Sito web"), null, url == null ? null : () => OpenExternal(url), T("Apri il sito {0}", c.Website.Trim()), T("Copia l'indirizzo del sito")));
         }
         if (c.Notes.Trim().Length > 0)
         {
-            panel.Children.Add(Heading("Note"));
-            panel.Children.Add(ValueRow(c.Notes.Trim(), "Note", null, null, "", "Copia le note"));
+            panel.Children.Add(Heading(T("Note")));
+            panel.Children.Add(ValueRow(c.Notes.Trim(), T("Note"), null, null, "", T("Copia le note")));
         }
         card.Child = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -536,7 +552,7 @@ public sealed partial class PeopleView : UserControl
         head.Children.Add(avatar);
         var title = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         title.Children.Add(new TextBlock { Text = g.Name, FontSize = 24, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        var kind = Note($"Gruppo di contatti di Missiva, {row.Detail[(row.Detail.IndexOf(',') + 2)..]}");
+        var kind = Note(T("Gruppo di contatti di Missiva, {0}", PeopleCount(g.Members.Count)));
         kind.Margin = new Thickness(0, 4, 0, 0);
         title.Children.Add(kind);
         head.Children.Add(title);
@@ -545,24 +561,24 @@ public sealed partial class PeopleView : UserControl
         var people = g.MemberAddresses;
         if (people.Count > 0 && WriteRequested != null)
         {
-            var write = CardButton("", "Scrivi al gruppo", "Scrivi al gruppo " + g.Name, accent: true);
+            var write = CardButton("", T("Scrivi al gruppo"), T("Scrivi al gruppo {0}", g.Name), accent: true);
             write.Click += (_, _) => WriteRequested(string.Join("; ", people.Select(a => a.FieldText())));
             actions.Children.Add(write);
         }
-        var edit = CardButton("", "Modifica", "Modifica il gruppo");
+        var edit = CardButton("", T("Modifica"), T("Modifica il gruppo"));
         edit.Click += (_, _) => EditGroup(row);
         actions.Children.Add(edit);
-        var remove = CardButton("", "Elimina", "Elimina il gruppo");
+        var remove = CardButton("", T("Elimina"), T("Elimina il gruppo"));
         remove.Click += async (_, _) => await RemoveAsync(row);
         actions.Children.Add(remove);
         panel.Children.Add(actions);
-        panel.Children.Add(Heading("Persone"));
+        panel.Children.Add(Heading(T("Persone")));
         foreach (var member in g.Members)
         {
             var address = Contact.ParseMember(member);
             var email = address?.Email;
-            panel.Children.Add(ValueRow(member, "Persona del gruppo", null, email == null || WriteRequested == null ? null : () => WriteRequested(email),
-                                        "Scrivi a " + email, "Copia l'indirizzo " + (email ?? member)));
+            panel.Children.Add(ValueRow(member, T("Persona del gruppo"), null, email == null || WriteRequested == null ? null : () => WriteRequested(email),
+                                        T("Scrivi a {0}", email), T("Copia l'indirizzo {0}", email ?? member)));
         }
         card.Child = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -574,7 +590,7 @@ public sealed partial class PeopleView : UserControl
         if (window.ShowDialog() != true || window.Result is not { } saved) return;
         ContactBook.Put(saved);
         Log.Write(row == null ? $"persone: gruppo creato in Missiva ({saved.Members.Count} persone)" : $"persone: gruppo di Missiva modificato ({saved.Members.Count} persone)");
-        status.Text = row == null ? "Gruppo creato" : "Gruppo salvato";
+        status.Text = row == null ? T("Gruppo creato") : T("Gruppo salvato");
         Fill();
         list.SelectedItem = list.Items.OfType<Row>().FirstOrDefault(r => r.Contact.Id == saved.Id);
     }
@@ -621,7 +637,7 @@ public sealed partial class PeopleView : UserControl
                 }
             }
             if (filterKey.Length > 0 && filterKey != (target?.Account.Id ?? "missiva")) filterKey = ""; // il contatto nuovo si vede nella sua sezione
-            status.Text = before == null ? "Contatto creato" : "Contatto salvato";
+            status.Text = before == null ? T("Contatto creato") : T("Contatto salvato");
             Fill();
             list.SelectedItem = list.Items.OfType<Row>().FirstOrDefault(r => r.Contact.Id == after.Id);
         }
@@ -638,7 +654,7 @@ public sealed partial class PeopleView : UserControl
             }
             Fill();
             list.SelectedItem = list.Items.OfType<Row>().FirstOrDefault(r => r.Contact.Id == fresh.Id);
-            Dialog.Show(Window.GetWindow(this), "Contatto cambiato altrove", changed.Message);
+            Dialog.Show(Window.GetWindow(this), T("Contatto cambiato altrove"), changed.Message);
             Edit(new Row(fresh, target));
         }
         catch (MailException gone) when (gone.Status == 404 && before != null && target != null)
@@ -651,12 +667,12 @@ public sealed partial class PeopleView : UserControl
                 ContactBook.SetRemote(target.Account.Id, current);
             }
             Fill();
-            Dialog.Show(Window.GetWindow(this), "Contatto non salvato", gone.Message);
+            Dialog.Show(Window.GetWindow(this), T("Contatto non salvato"), gone.Message);
         }
         catch (Exception ex)
         {
             Log.Error("contatto non salvato", ex);
-            Dialog.Show(Window.GetWindow(this), "Contatto non salvato", ex.Message);
+            Dialog.Show(Window.GetWindow(this), T("Contatto non salvato"), ex.Message);
         }
     }
 
@@ -669,15 +685,15 @@ public sealed partial class PeopleView : UserControl
 
     /// <summary>Cosa dice la conferma di Elimina per un contatto di un account: la cancellazione arriva a tutti i dispositivi di quell'account.</summary>
     internal static string DeleteWarning(IMailProvider provider) => provider.Account.Kind == AccountKind.Gmail
-        ? "Elimina da Google Contatti: sparisce anche dal telefono e da tutti i tuoi dispositivi."
-        : $"Elimina da Outlook: sparisce anche dalle altre app e dai dispositivi che usano {provider.Account.Email}.";
+        ? T("Elimina da Google Contatti: sparisce anche dal telefono e da tutti i tuoi dispositivi.")
+        : T("Elimina da Outlook: sparisce anche dalle altre app e dai dispositivi che usano {0}.", provider.Account.Email);
 
     async Task RemoveAsync(Row row)
     {
         var owner = Window.GetWindow(this);
-        var heading = $"Eliminare {row.Contact.Name}?";
-        var answer = row.Provider != null ? Dialog.AskCancelFirst(owner, heading, DeleteWarning(row.Provider), "Elimina") // predefinito Annulla: non si disfa
-            : Dialog.Ask(owner, heading, row.Contact.IsGroup ? "Il gruppo esce da Missiva; le sue persone restano." : "Il contatto esce da Missiva.", "Elimina");
+        var heading = T("Eliminare {0}?", row.Contact.Name);
+        var answer = row.Provider != null ? Dialog.AskCancelFirst(owner, heading, DeleteWarning(row.Provider), T("Elimina")) // predefinito Annulla: non si disfa
+            : Dialog.Ask(owner, heading, row.Contact.IsGroup ? T("Il gruppo esce da Missiva; le sue persone restano.") : T("Il contatto esce da Missiva."), T("Elimina"));
         if (answer != Choice.Primary) return;
         try
         {
@@ -691,13 +707,13 @@ public sealed partial class PeopleView : UserControl
                     ContactBook.SetRemote(row.Provider.Account.Id, list);
                 }
             }
-            status.Text = "Contatto eliminato";
+            status.Text = T("Contatto eliminato");
             Fill();
         }
         catch (Exception ex)
         {
             Log.Error("contatto non eliminato", ex);
-            Dialog.Show(owner, "Contatto non eliminato", ex.Message);
+            Dialog.Show(owner, T("Contatto non eliminato"), ex.Message);
         }
     }
 
@@ -711,11 +727,11 @@ public sealed partial class PeopleView : UserControl
     async void Import()
     {
         if (importing) return;
-        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Rubriche (*.vcf;*.csv)|*.vcf;*.csv|vCard (*.vcf)|*.vcf|CSV di Outlook o Gmail (*.csv)|*.csv", Title = "Importa contatti" };
+        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = T("Rubriche (*.vcf;*.csv)|*.vcf;*.csv|vCard (*.vcf)|*.vcf|CSV di Outlook o Gmail (*.csv)|*.csv"), Title = T("Importa contatti") };
         if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
         var path = dialog.FileName;
         importing = true;
-        status.Text = "Importazione in corso…";
+        status.Text = T("Importazione in corso…");
         try
         {
             var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -725,13 +741,13 @@ public sealed partial class PeopleView : UserControl
             Log.Time($"persone: importazione di {found.Count} contatti", clock);
             Log.Write($"persone: {found.Count} contatti importati da un file {Path.GetExtension(path)}");
             Fill();
-            status.Text = $"{found.Count} contatti importati in Missiva";
+            status.Text = T("{0} contatti importati in Missiva", found.Count);
         }
         catch (Exception ex)
         {
             Log.Error("importazione dei contatti", ex);
             status.Text = "";
-            Dialog.Show(Window.GetWindow(this), "Contatti non importati", ex is MailException ? ex.Message : "Il file non si legge: " + ex.Message);
+            Dialog.Show(Window.GetWindow(this), T("Contatti non importati"), ex is MailException ? ex.Message : T("Il file non si legge: {0}", ex.Message));
         }
         finally
         {
@@ -744,16 +760,16 @@ public sealed partial class PeopleView : UserControl
     {
         var shown = list.Items.OfType<Row>().Select(r => r.Contact).Where(c => !c.IsGroup).ToList(); // i gruppi non sono vCard
         if (shown.Count == 0) return;
-        var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "vCard (*.vcf)|*.vcf", FileName = "Contatti.vcf", Title = "Esporta contatti" };
+        var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "vCard (*.vcf)|*.vcf", FileName = T("Contatti.vcf"), Title = T("Esporta contatti") };
         if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
         try
         {
             File.WriteAllText(dialog.FileName, ContactFiles.WriteVCard(shown), new System.Text.UTF8Encoding(false));
-            status.Text = $"{shown.Count} contatti esportati";
+            status.Text = T("{0} contatti esportati", shown.Count);
         }
         catch (Exception ex)
         {
-            Dialog.Show(Window.GetWindow(this), "Contatti non esportati", ex.Message);
+            Dialog.Show(Window.GetWindow(this), T("Contatti non esportati"), ex.Message);
         }
     }
 

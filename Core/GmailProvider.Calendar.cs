@@ -10,7 +10,7 @@ namespace Missiva;
 /// </summary>
 public sealed partial class GmailProvider
 {
-    const string CalendarConsentNeeded = "Per scrivere nel calendario Missiva deve poterlo usare: premi \"Consenti l'accesso al calendario\" nel calendario.";
+    static string CalendarConsentNeeded => T("Per scrivere nel calendario Missiva deve poterlo usare: premi \"Consenti l'accesso al calendario\" nel calendario.");
 
     public bool HasCalendar => true;
 
@@ -18,13 +18,18 @@ public sealed partial class GmailProvider
     /// Il permesso del calendario: un nuovo accesso nel browser con l'ambito in più, per lo stesso account (il token di prima
     /// è sostituito, e la posta continua senza interruzioni). Solo dal pulsante, mai da sola.
     /// </summary>
-    public Task AllowCalendarAsync() => AllowAsync(GoogleAuth.CalendarScope, "il calendario", "del calendario");
+    public Task AllowCalendarAsync() => AllowAsync(GoogleAuth.CalendarScope, "il calendario",
+        chosen => T("Nel browser hai scelto {0}, non {1}: per il calendario serve lo stesso account.", chosen, Account.Email),
+        T("Non hai dato a Missiva il permesso di usare il calendario. Riprova e lascia spuntata la casella del calendario."));
 
     /// <summary>
     /// Un permesso in più (calendario, contatti): un nuovo accesso nel browser per lo stesso account, con l'ambito nuovo e
     /// quelli che l'account ha già. Il token nuovo sostituisce il vecchio; solo dal pulsante, mai da solo.
     /// </summary>
-    async Task AllowAsync(string scope, string what, string ofWhat)
+    /// <param name="what">Il permesso, per il registro ("il calendario").</param>
+    /// <param name="otherAccount">L'errore quando nel browser si sceglie un altro account (quello scelto), già tradotto.</param>
+    /// <param name="refused">L'errore quando la casella del permesso è stata tolta, già tradotto.</param>
+    async Task AllowAsync(string scope, string what, Func<string, string> otherAccount, string refused)
     {
         using var wait = new CancellationTokenSource(TimeSpan.FromMinutes(MailLimits.BrowserSignInMinutes));
         GoogleAuth.SignInResult result;
@@ -36,12 +41,12 @@ public sealed partial class GmailProvider
         }
         catch (OperationCanceledException)
         {
-            throw new MailException("L'accesso nel browser non è stato completato in tempo. Riprova.");
+            throw new MailException(T("L'accesso nel browser non è stato completato in tempo. Riprova."));
         }
         if (!result.Email.Equals(Account.Email, StringComparison.OrdinalIgnoreCase))
-            throw new MailException($"Nel browser hai scelto {result.Email}, non {Account.Email}: per {what} serve lo stesso account.");
+            throw new MailException(otherAccount(result.Email));
         if (!result.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(scope))
-            throw new MailException($"Non hai dato a Missiva il permesso di usare {what}. Riprova e lascia spuntata la casella {ofWhat}.");
+            throw new MailException(refused);
         GoogleAuth.Apply(Account, result); // se nella pagina di Google è stata tolta un'altra casella, lo dice
         Store.Save();
         Log.Write($"permesso per {what} dato da {Account.Email}");
@@ -116,7 +121,7 @@ public sealed partial class GmailProvider
         RequireCalendar();
         var zone = GoogleCalendar.Zone;
         if (e.Repeat != EventRepeat.None && zone == null)
-            throw new MailException("Windows non dice a Missiva in che fuso orario sei: un evento che si ripete non si può scrivere sul calendario di Google.");
+            throw new MailException(T("Windows non dice a Missiva in che fuso orario sei: un evento che si ripete non si può scrivere sul calendario di Google."));
         var created = await GoogleCalendar.SendAsync(Account, HttpMethod.Post, $"calendars/{CalendarPath(e.CalendarId)}/events?sendUpdates=all", GoogleCalendar.ToGoogle(e, zone));
         return created?["id"]?.GetValue<string>() ?? "";
     }
@@ -144,7 +149,7 @@ public sealed partial class GmailProvider
         if (series && patch.ContainsKey("start"))
         {
             if (changed.Start.Date != original.Start.Date || changed.AllDay != original.AllDay)
-                throw new MailException("Tutta la serie si sposta solo di orario, nello stesso giorno: per cambiare i giorni della ripetizione usa Google Calendar sul web.");
+                throw new MailException(T("Tutta la serie si sposta solo di orario, nello stesso giorno: per cambiare i giorni della ripetizione usa Google Calendar sul web."));
             var master = await GoogleCalendar.SendAsync(Account, HttpMethod.Get, $"calendars/{calendar}/events/{EventId(original, true)}?fields=start,end");
             var (start, end) = Calendars.SeriesTimes(original, changed, GoogleCalendar.LocalTime(master?["start"]));
             GoogleCalendar.SetTimes(patch, start, end, changed.AllDay, zone);
@@ -180,7 +185,7 @@ public sealed partial class GmailProvider
         var path = $"calendars/{CalendarPath(e.CalendarId)}/events/{Uri.EscapeDataString(e.Id)}";
         var current = await GoogleCalendar.SendAsync(Account, HttpMethod.Get, path + "?fields=attendees");
         if (current?["attendees"] is not JsonArray { Count: > 0 })
-            throw new MailException("Questo evento non ha partecipanti a cui rispondere.");
+            throw new MailException(T("Questo evento non ha partecipanti a cui rispondere."));
         await GoogleCalendar.SendAsync(Account, new HttpMethod("PATCH"), path + $"?sendUpdates={(send ? "all" : "none")}",
             new JsonObject { ["attendees"] = GoogleCalendar.WithMyAnswer(current["attendees"], answer, comment) });
     }
@@ -204,7 +209,7 @@ public sealed partial class GmailProvider
             var errors = calendar?["errors"]?.AsArray();
             if (calendar == null || errors is { Count: > 0 })
                 return new Availability(email, "", errors?.FirstOrDefault()?["reason"]?.GetValue<string>() == "notFound"
-                    ? "il calendario non è condiviso con te" : "non disponibile");
+                    ? T("il calendario non è condiviso con te") : T("non disponibile"));
             return new Availability(email, GoogleCalendar.ViewOf(calendar["busy"], from, to), null);
         }).ToList();
     }

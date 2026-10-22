@@ -47,16 +47,16 @@ static partial class ProvaBozze
         }
         // Il pulsante: suggerimento e nome per UI Automation "Impostazioni", e il clic che apre le Impostazioni senza menu.
         var button = System.Text.RegularExpressions.Regex.Match(xaml, "<Button x:Name=\"SettingsButton\"[^>]*>").Value;
-        bool named = button.Contains("ToolTip=\"Impostazioni\"") && button.Contains("AutomationProperties.Name=\"Impostazioni\"") && button.Contains("Click=\"OnSettings\"");
+        bool named = button.Contains("ToolTip=\"{local:T 'Impostazioni'}\"") && button.Contains("AutomationProperties.Name=\"{local:T 'Impostazioni'}\"") && button.Contains("Click=\"OnSettings\"");
         string handler = Ch3Part(main, "void OnSettings(object sender, RoutedEventArgs e)", "\n}");
         bool direct = handler.Contains("=> OpenSettings();") && !main.Contains("OnSettingsMenu") && !main.Contains("\"Aggiungi account…\"")
                       && !main.Contains("\"Apri la cartella dei registri\"");
         // Aggiungi account resta in fondo alle cartelle (con il suo nome) e in Impostazioni, Account.
-        bool addKept = System.Text.RegularExpressions.Regex.IsMatch(xaml, "<Button DockPanel.Dock=\"Bottom\"[^>]*Click=\"OnAddAccount\" AutomationProperties.Name=\"Aggiungi account\">")
+        bool addKept = System.Text.RegularExpressions.Regex.IsMatch(xaml, "<Button DockPanel.Dock=\"Bottom\"[^>]*Click=\"OnAddAccount\" AutomationProperties.Name=\"\\{local:T 'Aggiungi account'\\}\">")
                        && Ch3Part(settings, "StackPanel AccountsPage()", "\n    }").Contains("addAccount()");
         // La cartella dei registri in Informazioni, come pulsante, con lo stesso avvio di prima (la cartella dei dati, dalla shell).
         string about = Ch3Part(settings, "StackPanel AboutPage()", "\n    }");
-        bool logs = Ch3InOrder(about, "Section(\"Registri\")", "Content = \"Apri la cartella dei registri\"",
+        bool logs = Ch3InOrder(about, "Section(T(\"Registri\"))", "Content = T(\"Apri la cartella dei registri\")",
                                "logs.Click += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Store.Dir) { UseShellExecute = true });", "p.Children.Add(logs);");
         Check(named && direct && addKept && logs,
               "la rotellina apre subito le Impostazioni, senza menu (suggerimento e nome per UI Automation \"Impostazioni\"); Aggiungi account resta in fondo alle cartelle e in Impostazioni, Account; " +
@@ -142,9 +142,9 @@ static partial class ProvaBozze
         bool looked = main.Contains("Activated += (_, _) => { if (only == null && fresh.Clear()) UpdateBadge(); };")
                       && Ch3Part(main, "internal void CountArrived(", "\n    }").Contains("looking: IsActive && IsVisible && WindowState != WindowState.Minimized");
         string page = Ch3Part(settings, "IEnumerable<UIElement> IconNumberPart()", "\n    }");
-        bool choices = Ch3InOrder(page, "Section(\"Numero sull'icona di Missiva\")", "(IconNumberKind.Unread, \"Messaggi da leggere nella Posta in arrivo\")",
-                                  "(IconNumberKind.New, \"Messaggi nuovi arrivati da quando hai guardato Missiva\")", "(IconNumberKind.None, \"Nessun numero\")",
-                                  "Text = \"Conta questi account\"", "S.IconNumberOff.Remove(account.Id);", "if (!on) S.IconNumberOff.Add(account.Id);", "Refresh();")
+        bool choices = Ch3InOrder(page, "Section(T(\"Numero sull'icona di Missiva\"))", "(IconNumberKind.Unread, T(\"Messaggi da leggere nella Posta in arrivo\"))",
+                                  "(IconNumberKind.New, T(\"Messaggi nuovi arrivati da quando hai guardato Missiva\"))", "(IconNumberKind.None, T(\"Nessun numero\"))",
+                                  "Text = T(\"Conta questi account\")", "S.IconNumberOff.Remove(account.Id);", "if (!on) S.IconNumberOff.Add(account.Id);", "Refresh();")
                        && page.Contains("main.RefreshBadge();") && Ch3Part(settings, "StackPanel NotificationsPage()", "\n    }").Contains("IconNumberPart()");
         Check(badge && tray && arrivals && looked && choices,
               "numero sull'icona nei sorgenti: la finestra principale lo calcola con IconCount e manda lo stesso numero con la stessa scelta all'area di notifica; i messaggi nuovi sono quelli " +
@@ -190,23 +190,23 @@ static partial class ProvaBozze
         string bar = Ch3Part(xaml, "<Grid x:Name=\"TitleBar\"", "<!-- Schede e barra dei comandi");
         bool placed = !xaml.Contains("x:Name=\"UpdateBar\"") && !xaml.Contains("x:Name=\"UpdateText\"")
                       && Ch3InOrder(bar, "<StackPanel x:Name=\"TitleTools\" Grid.Column=\"2\"", "WindowChrome.IsHitTestVisibleInChrome=\"True\"", "<Button x:Name=\"UpdateButton\" Visibility=\"Collapsed\" Click=\"OnUpdateButton\"",
-                                    "x:Name=\"UpdateLabel\" Text=\"Aggiornamento\"", "<Grid x:Name=\"UpdateProgress\"", "<ScaleTransform x:Name=\"UpdateProgressScale\"");
+                                    "x:Name=\"UpdateLabel\" Text=\"{local:T 'Aggiornamento'}\"", "<Grid x:Name=\"UpdateProgress\"", "<ScaleTransform x:Name=\"UpdateProgressScale\"");
         string panel = Ch3Part(window, "UIElement UpdatePanel()", "void OnUpdateLater(");
-        bool states = Ch3InOrder(panel, "case UpdateLook.Offer when manifest != null:", "UpdateNews(manifest)", "Add(\"Più tardi\", OnUpdateLater", "Add(\"Aggiorna\", OnUpdateNow, accent: true",
-                                 "case UpdateLook.Downloading when manifest != null:", "UpdateProgressText(manifest.Number, updateDone, manifest.Size)", "Add(\"Annulla\", OnUpdateCancel",
-                                 "case UpdateLook.Failed:", "updateLine ?? ", "Add(\"Riprova\", OnUpdateNow, accent: true", "else Add(\"Chiudi\", OnUpdateLater);")
+        bool states = Ch3InOrder(panel, "case UpdateLook.Offer when manifest != null:", "UpdateNews(manifest)", "Add(T(\"Più tardi\"), OnUpdateLater", "Add(T(\"Aggiorna\"), OnUpdateNow, accent: true",
+                                 "case UpdateLook.Downloading when manifest != null:", "UpdateProgressText(manifest.Number, updateDone, manifest.Size)", "Add(T(\"Annulla\"), OnUpdateCancel",
+                                 "case UpdateLook.Failed:", "updateLine ?? ", "Add(T(\"Riprova\"), OnUpdateNow, accent: true", "else Add(T(\"Chiudi\"), OnUpdateLater);")
                       && panel.Contains("manifest?.Title");
         string later = Ch3Part(window, "void OnUpdateLater(", "void OnUpdateNow(");
         bool dismissed = Ch3InOrder(later, "SetUpdateLook(UpdateLook.Hidden);", "if (updateOffer is not { } offer) return;", "S.UpdateDismissed = offer.Manifest.Number.ToString();", "S.UpdateDismissedOn = DateTime.Today;", "Store.Save();");
         string now = Ch3Part(window, "async Task UpdateNowAsync(", "void OnUpdateCancel(");
         bool flow = Ch3InOrder(now, "SetUpdateLook(UpdateLook.Downloading);", "catch (OperationCanceledException) when (cancel.IsCancellationRequested)", "ShowUpdateOffer();",
-                               "SetUpdateLook(UpdateLook.Failed, ex is Updates.Refused", "SetUpdateLook(UpdateLook.Busy, $\"Provo Missiva {number}…\");",
-                               "SetUpdateLook(UpdateLook.Failed, $\"Missiva {number} è stata scaricata ma su questo PC non parte", "Dialog.Ask(this, $\"Aggiornare a Missiva {number}?\"", "App.Current.UpdateOnExit(prepared);")
+                               "SetUpdateLook(UpdateLook.Failed, ex is Updates.Refused", "SetUpdateLook(UpdateLook.Busy, T(\"Provo Missiva {0}…\", number));",
+                               "SetUpdateLook(UpdateLook.Failed, T(\"Missiva {0} è stata scaricata ma su questo PC non parte", "Dialog.Ask(this, T(\"Aggiornare a Missiva {0}?\", number)", "App.Current.UpdateOnExit(prepared);")
                     && Ch3Part(window, "internal void ShowUpdateFailure(string notice)", "\n    }").Contains("SetUpdateLook(UpdateLook.Failed, notice);");
         string fit = Ch3Part(window, "void FitTitleBar()", "double TitleSearchWidth(");
         bool narrow = Ch3InOrder(fit, "TitleTools.Margin = margin;", "TitleToolsWidth(label: true)) < 280;", "UpdateLabel.Visibility = label;", "SearchArea.Width = Math.Clamp(TitleSearchWidth(left, caption, TitleToolsWidth(label: !narrow)), 200, 520);")
                       && Ch3Part(main, "void OnWindowSize(object sender, SizeChangedEventArgs e)", "FitColumns();").Contains("FitTitleBar();");
-        bool panelWindow = window.Contains("updateFlyout ??= new TitleFlyout(this, UpdateButton, \"Aggiornamento di Missiva\", 380);")
+        bool panelWindow = window.Contains("updateFlyout ??= new TitleFlyout(this, UpdateButton, T(\"Aggiornamento di Missiva\"), 380);")
                            && Ch3InOrder(flyout, "WindowStyle = WindowStyle.None", "if (DevTools.Photos) window.ShowActivated = false;", "opened.Deactivated +=", "> TimeSpan.FromMilliseconds(600)) Close(\"finestra non più attiva\");");
         bool about = settings.Contains("Aggiornamento\\\" nella barra del titolo, e si aggiorna solo con Aggiorna") && !settings.Contains("una barra in fondo all'elenco");
         Check(placed && states && dismissed && flow && narrow && panelWindow && about,
@@ -504,7 +504,7 @@ static partial class ProvaBozze
                                "if (Safety.IsDangerous(name) && !Dialog.ConfirmOpenDangerous(this, name)) return;", "if (!Dialog.ConfirmOpenWebPage(this, name)) return;",
                                "if (item.Temporary && !item.Marked && !Dialog.ConfirmOpenUnmarked(this, name)) return;", "Process.Start(new ProcessStartInfo(downloaded) { UseShellExecute = true });")
                     && Ch3Part(panel, "void ShowDownloaded(DownloadItem item)", "\n    }").Contains("Safety.ShowInFolder(path);")
-                    && panel.Contains("if (!item.Temporary) Action(\"Mostra nella cartella\"") && panel.Contains("if (item.Active) Action(\"Annulla\"")
+                    && panel.Contains("if (!item.Temporary) Action(T(\"Mostra nella cartella\")") && panel.Contains("if (item.Active) Action(T(\"Annulla\")")
                     && panel.Contains("clear.Click += (_, _) => DownloadList.Session.Clear();");
         bool bar = Ch3InOrder(Ch3Part(xaml.Replace("\r\n", "\n"), "<StackPanel x:Name=\"TitleTools\"", "</StackPanel>\n        </Grid>"),
                               "<Button x:Name=\"UpdateButton\"", "<Button x:Name=\"DownloadsButton\" Visibility=\"Collapsed\" Click=\"OnDownloadsButton\"");

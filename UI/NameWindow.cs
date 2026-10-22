@@ -12,17 +12,23 @@ public sealed class NameWindow : Window
 
     public string Value => box.Text.Trim();
 
-    /// <param name="label">Che cosa si scrive: "Nome" di base, "Indirizzo" per una casella condivisa.</param>
+    /// <param name="label">Che cosa si scrive: "Nome" di base (null), "Indirizzo" per una casella condivisa (già nella lingua di Missiva).</param>
     /// <param name="check">Un controllo del testo scritto: il motivo per cui non va, o null se va.</param>
     /// <param name="optional">Il testo si può lasciare vuoto (una nota facoltativa).</param>
-    public NameWindow(string heading, string initial, string confirm, string? note = null, string label = "Nome", Func<string, string?>? check = null, bool optional = false)
+    public NameWindow(string heading, string initial, string confirm, string? note = null, string? label = null, Func<string, string?>? check = null, bool optional = false)
     {
+        // Il nome di base nella lingua di Missiva: un valore predefinito non può passare da T (la lingua si sceglie all'avvio).
+        bool isName = label is null or "Nome";
+        label = isName ? T("Nome") : label!;
         Title = heading;
         Width = 420;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto): nasce fuori dallo schermo e non prende il fuoco
+#endif
 
         var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
         panel.Children.Add(new TextBlock { Text = heading, FontSize = 20, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 10), TextWrapping = TextWrapping.Wrap });
@@ -43,7 +49,7 @@ public sealed class NameWindow : Window
         ok.SetResourceReference(StyleProperty, "AccentButtonStyle");
         ok.Click += (_, _) =>
         {
-            var problem = Value.Length == 0 ? optional ? null : label == "Nome" ? "Scrivi un nome." : "Scrivi l'indirizzo." : check?.Invoke(Value);
+            var problem = Value.Length == 0 ? optional ? null : isName ? T("Scrivi un nome.") : T("Scrivi l'indirizzo.") : check?.Invoke(Value);
             if (problem != null)
             {
                 error.Text = problem;
@@ -52,7 +58,7 @@ public sealed class NameWindow : Window
             }
             DialogResult = true;
         };
-        var cancel = new Button { Content = "Annulla", MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+        var cancel = new Button { Content = T("Annulla"), MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
         DockPanel.SetDock(ok, Dock.Right);
         DockPanel.SetDock(cancel, Dock.Right);
         buttons.Children.Add(ok);

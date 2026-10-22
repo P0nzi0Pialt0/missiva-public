@@ -10,7 +10,7 @@ namespace Missiva;
 /// </summary>
 public sealed partial class GmailProvider
 {
-    const string ContactsWriteConsentNeeded = "Per cambiare i contatti di Google Missiva deve poterli modificare: premi \"Consenti la modifica dei contatti\" in Persone.";
+    static string ContactsWriteConsentNeeded => T("Per cambiare i contatti di Google Missiva deve poterli modificare: premi \"Consenti la modifica dei contatti\" in Persone.");
 
 #if DEBUG
     /// <summary>Prove (--google-scrittura, --google-sola-lettura e --prova-bozze): decide se i contatti si dicono modificabili, senza guardare gli ambiti dell'account.</summary>
@@ -29,10 +29,14 @@ public sealed partial class GmailProvider
 #endif
         !GoogleAuth.HasContactsWrite(Account);
 
-    public Task AllowContactsAsync() => AllowAsync(GoogleAuth.ContactsScope, "i contatti", "dei contatti");
+    public Task AllowContactsAsync() => AllowAsync(GoogleAuth.ContactsScope, "i contatti",
+        chosen => T("Nel browser hai scelto {0}, non {1}: per i contatti serve lo stesso account.", chosen, Account.Email),
+        T("Non hai dato a Missiva il permesso di usare i contatti. Riprova e lascia spuntata la casella dei contatti."));
 
     /// <summary>Il permesso di modificare i contatti: un nuovo accesso nel browser con contacts al posto di contacts.readonly e gli altri ambiti com'erano. Solo dal pulsante.</summary>
-    public Task AllowContactsWriteAsync() => AllowAsync(GoogleAuth.ContactsWriteScope, "la modifica dei contatti", "della modifica dei contatti");
+    public Task AllowContactsWriteAsync() => AllowAsync(GoogleAuth.ContactsWriteScope, "la modifica dei contatti",
+        chosen => T("Nel browser hai scelto {0}, non {1}: per la modifica dei contatti serve lo stesso account.", chosen, Account.Email),
+        T("Non hai dato a Missiva il permesso di usare la modifica dei contatti. Riprova e lascia spuntata la casella della modifica dei contatti."));
 
     /// <summary>
     /// I contatti di Google (people/me/connections) a pagine di 1000, al massimo 20 pagine, solo i campi della scheda. Senza il
@@ -50,7 +54,7 @@ public sealed partial class GmailProvider
             page = answer?["nextPageToken"] is JsonValue v && v.TryGetValue<string>(out var next) && next.Length > 0 ? next : null;
             if (page == null) break;
         }
-        return found.Where(c => c.Emails.Count > 0 || c.Name != "(senza nome)").ToList();
+        return found.Where(c => c.Emails.Count > 0 || c.Name != Contact.NoName).ToList();
     }
 
     /// <summary>

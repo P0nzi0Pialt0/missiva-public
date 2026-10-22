@@ -44,7 +44,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     public sealed record Sender(IMailProvider Provider, SendIdentity? Identity)
     {
-        public string Display => Identity == null ? Provider.Account.Email : $"{Identity.Email} (da {Provider.Account.Email})";
+        public string Display => Identity == null ? Provider.Account.Email : T("{0} (da {1})", Identity.Email, Provider.Account.Email);
     }
 
     /// <summary>L'account scelto nel Da, con il suo provider di adesso (Current).</summary>
@@ -82,6 +82,11 @@ public partial class ComposeWindow : Window
                          MessageSummary? draft = null, MessageBody? draftBody = null, SendIdentity? sendAs = null)
     {
         InitializeComponent();
+#if DEBUG
+        // Le foto (--foto): ogni scrittura nasce fuori dallo schermo, anche una risposta (--rispondi, le foto in inglese), non
+        // solo quella di --formato-finto; senza --foto non fa nulla.
+        DevTools.HideForPhotos(this);
+#endif
         // Il correttore ortografico si accende a finestra disegnata, non nel costruttore e non dal XAML. Dal XAML
         // (SpellCheck.IsEnabled prima del FlowDocument) WPF lo creava sul documento di partenza e lo buttava subito cambiando
         // Document: la prima volta in una sessione il rilascio dell'oggetto COM bloccava l'interfaccia per 200 ms. Creato nel
@@ -123,13 +128,7 @@ public partial class ComposeWindow : Window
 
         if (original != null)
         {
-            var subject = original.Subject;
-            SubjectBox.Text = mode switch
-            {
-                ComposeMode.Forward => subject.StartsWith("I:", StringComparison.OrdinalIgnoreCase) ? subject : "I: " + subject,
-                _ => subject.StartsWith("R:", StringComparison.OrdinalIgnoreCase) || subject.StartsWith("RE:", StringComparison.OrdinalIgnoreCase)
-                    ? subject : "R: " + subject,
-            };
+            SubjectBox.Text = SubjectFor(mode, original.Subject);
             initialSubject = SubjectBox.Text;
         }
         Loaded += async (_, _) =>
@@ -189,10 +188,10 @@ public partial class ComposeWindow : Window
             Choice answer;
             try
             {
-                answer = Dialog.Ask(this, "Salvare la bozza?",
-                    own ? "Il messaggio non è stato inviato. Salvalo nelle Bozze per continuarlo più tardi; Scarta elimina anche la bozza già salvata."
-                        : "Il messaggio non è stato inviato. Salvalo nelle Bozze per continuarlo più tardi.",
-                    "Salva bozza", "Scarta");
+                answer = Dialog.Ask(this, T("Salvare la bozza?"),
+                    own ? T("Il messaggio non è stato inviato. Salvalo nelle Bozze per continuarlo più tardi; Scarta elimina anche la bozza già salvata.")
+                        : T("Il messaggio non è stato inviato. Salvalo nelle Bozze per continuarlo più tardi."),
+                    T("Salva bozza"), T("Scarta"));
             }
             finally
             {
@@ -216,6 +215,22 @@ public partial class ComposeWindow : Window
             }
         };
     }
+
+    /// <summary>
+    /// L'oggetto di una risposta o di un inoltro, che parte con il messaggio e quindi segue la lingua di Missiva: in
+    /// italiano "R: " e "I: " come il nuovo Outlook in italiano (lo stesso testo di sempre), in inglese "RE: " e "FW: ". Un
+    /// prefisso già presente non si ripete, in tutte e due le lingue e qualunque sia quella di adesso: una risposta a
+    /// "RE: Offerta" resta "RE: Offerta" anche in italiano, un inoltro di "I: Offerta" resta com'è anche in inglese (così
+    /// una conversazione fra le due lingue non diventa "RE: R: I: ..."). Maiuscole e minuscole non contano.
+    /// </summary>
+    internal static string SubjectFor(ComposeMode mode, string subject) => mode == ComposeMode.Forward
+        ? StartsWithAny(subject, ForwardPrefixes) ? subject : T("I: {0}", subject)
+        : StartsWithAny(subject, ReplyPrefixes) ? subject : T("R: {0}", subject);
+
+    /// <summary>I prefissi già presenti che si riconoscono: quelli di Missiva nelle due lingue.</summary>
+    static readonly string[] ReplyPrefixes = ["R:", "RE:"], ForwardPrefixes = ["I:", "FW:"];
+
+    static bool StartsWithAny(string subject, string[] prefixes) => prefixes.Any(p => subject.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Salva bozza, poi chiude; false se la bozza non si è salvata e la finestra resta aperta.</summary>
     async Task<bool> SaveAndCloseAsync()
@@ -250,7 +265,7 @@ public partial class ComposeWindow : Window
         if (InOutbox)
         {
             if (keepOutbox) return true;
-            LeaveOutbox("Non inviato: manca la rete. Salvalo nelle Bozze, o riprova quando la rete torna.");
+            LeaveOutbox(T("Non inviato: manca la rete. Salvalo nelle Bozze, o riprova quando la rete torna."));
         }
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate(); // la domanda è sua: si vede di quale messaggio si parla
@@ -320,7 +335,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     async Task LoadDraftAsync(IMailProvider provider, MessageSummary draft, MessageBody? body)
     {
-        Status.Text = "Apertura della bozza…";
+        Status.Text = T("Apertura della bozza…");
         try
         {
             body ??= await provider.GetBodyAsync(draft);
@@ -329,8 +344,8 @@ public partial class ComposeWindow : Window
         {
             Log.Error("apertura della bozza", ex);
             Status.Text = "";
-            Dialog.Show(this, "Bozza non disponibile", Network.Explain(ex) is { } offline
-                ? offline + " La bozza si riprende dal server, perché le modifiche fatte altrove non vadano perse: riprova quando torna la rete."
+            Dialog.Show(this, T("Bozza non disponibile"), Network.Explain(ex) is { } offline
+                ? T("{0} La bozza si riprende dal server, perché le modifiche fatte altrove non vadano perse: riprova quando torna la rete.", offline)
                 : ex.Message);
             Close();
             return;
@@ -370,7 +385,7 @@ public partial class ComposeWindow : Window
         foreach (var a in draft.Attachments)
         {
             keptAttachments.Add(a);
-            var chip = Chip(a.Size > 0 ? $"{a.Name} ({SizeText(a.Size)})" : a.Name, "", "Togli l'allegato");
+            var chip = Chip(a.Size > 0 ? $"{a.Name} ({SizeText(a.Size)})" : a.Name, "", T("Togli l'allegato"));
             AutomationProperties.SetName(chip, a.Name);
             chip.Click += (_, _) =>
             {
@@ -391,11 +406,12 @@ public partial class ComposeWindow : Window
         }
     }
 
+    /// <summary>La dimensione di un allegato della bozza, con i decimali della lingua di Missiva (Lingua.Culture).</summary>
     static string SizeText(long bytes) => bytes switch
     {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:0} KB",
-        _ => $"{bytes / 1048576.0:0.#} MB",
+        < 1024 => bytes.ToString(Lingua.Culture) + " B",
+        < 1024 * 1024 => (bytes / 1024.0).ToString("0", Lingua.Culture) + " KB",
+        _ => (bytes / 1048576.0).ToString("0.#", Lingua.Culture) + " MB",
     };
 
     /// <summary>Com'è ora il messaggio: se è quello dell'ultimo salvataggio, chiudendo non c'è niente da perdere.</summary>
@@ -424,7 +440,7 @@ public partial class ComposeWindow : Window
         FromBox.IsEnabled = false; // la bozza va nelle Bozze di questo account: "Da" non cambia finché non è arrivata
         // Com'era il messaggio salvato: quello che si scrive mentre la bozza va sul server resta da salvare.
         var content = ContentState();
-        Status.Text = "Salvataggio della bozza…";
+        Status.Text = T("Salvataggio della bozza…");
         try
         {
 #if DEBUG || PROVA
@@ -440,7 +456,7 @@ public partial class ComposeWindow : Window
                 // nel registro (TestingProvider, che nella prova avvolge ogni provider).
                 savedDraft ??= new SavedDraft { Message = new MessageSummary { Id = "prova", FolderId = "prova", Subject = message.Subject, IsDraft = true } };
                 draftProvider = provider;
-                Status.Text = $"Bozza salvata alle {DateTime.Now:HH:mm} (versione di prova: solo nel registro)";
+                Status.Text = T("Bozza salvata alle {0} (versione di prova: solo nel registro)", Pec.Time(DateTime.Now));
                 Saved();
                 return true;
             }
@@ -450,7 +466,7 @@ public partial class ComposeWindow : Window
             Log.Time(auto ? "bozza salvata da sola" : "bozza salvata", clock);
             draftProvider = provider;
             ShowDraft(saved, message.AttachmentPaths, content); // i file salvati ora sono allegati della bozza sul server
-            Status.Text = $"Bozza salvata alle {DateTime.Now:HH:mm}";
+            Status.Text = T("Bozza salvata alle {0}", Pec.Time(DateTime.Now));
             Saved();
             DraftsChanged?.Invoke(provider);
             return true;
@@ -465,12 +481,12 @@ public partial class ComposeWindow : Window
             Log.Error(auto ? "salvataggio automatico della bozza" : "salvataggio della bozza", ex);
             if (auto)
             {
-                Status.Text = "Bozza non salvata: nuovo tentativo fra poco";
+                Status.Text = T("Bozza non salvata: nuovo tentativo fra poco");
                 autoFailed = true;
                 return false;
             }
             Status.Text = "";
-            Dialog.Show(this, "Bozza non salvata", ex.Message);
+            Dialog.Show(this, T("Bozza non salvata"), ex.Message);
             return false;
         }
         finally
@@ -697,9 +713,8 @@ public partial class ComposeWindow : Window
         // Un modello che su questo PC non si decifra più (impostazioni di un altro utente di Windows): non inserisce nulla, e
         // lo si dice. Prima il testo "non leggibile" diventava l'oggetto e il testo del messaggio (audit dell'11 ottobre, T-21).
         if (Templates.Unreadable(template))
-            Dialog.Show(this, "Questo modello su questo PC non si legge",
-                "Il modello è cifrato per un altro utente di Windows, e qui non si riesce a decifrarlo: le parti che non si leggono non vengono inserite. " +
-                "Con l'utente di Windows con cui è stato scritto si legge ancora; altrimenti eliminalo e riscrivilo in Impostazioni, Posta, Modelli.");
+            Dialog.Show(this, T("Questo modello su questo PC non si legge"),
+                T("Il modello è cifrato per un altro utente di Windows, e qui non si riesce a decifrarlo: le parti che non si leggono non vengono inserite. Con l'utente di Windows con cui è stato scritto si legge ancora; altrimenti eliminalo e riscrivilo in Impostazioni, Posta, Modelli."));
         var blocks = Templates.Blocks(template, name, DateTime.Today);
         var subject = Templates.Subject(template, name, DateTime.Today);
         if (SubjectBox.Text.Trim().Length == 0 && subject.Length > 0) SubjectBox.Text = subject;
@@ -739,15 +754,15 @@ public partial class ComposeWindow : Window
         var rtf = System.Text.Encoding.UTF8.GetString(stream.ToArray());
         if (range.Text.Trim().Length == 0)
         {
-            Dialog.Show(this, "Salva come modello", "Scrivi prima il testo del modello.");
+            Dialog.Show(this, T("Salva come modello"), T("Scrivi prima il testo del modello."));
             return;
         }
-        var ask = new NameWindow("Salva come modello", SubjectBox.Text.Trim(), "Salva",
-            "Il testo scritto finora (senza la firma) e l'oggetto diventano un modello. {nome} diventa il nome del primo destinatario, {data} la data di oggi.") { Owner = this };
+        var ask = new NameWindow(T("Salva come modello"), SubjectBox.Text.Trim(), T("Salva"),
+            T("Il testo scritto finora (senza la firma) e l'oggetto diventano un modello. {nome} diventa il nome del primo destinatario, {data} la data di oggi.")) { Owner = this };
         if (ask.ShowDialog() != true) return;
         Store.Settings.Templates.Add(new MailTemplate { Name = ask.Value, Subject = SubjectBox.Text.Trim(), Rtf = rtf, AccountId = null });
         Store.Save();
-        Status.Text = "Modello salvato";
+        Status.Text = T("Modello salvato");
         Log.Write("scrittura: modello salvato");
     }
 
@@ -820,8 +835,6 @@ public partial class ComposeWindow : Window
 
     // ---------------------------------------------------------------- messaggio originale
 
-    static readonly System.Globalization.CultureInfo Italian = new("it-IT");
-
     /// <summary>
     /// Sotto il corpo, come nel nuovo Outlook: Da, Inviato, A, Cc, Oggetto e il testo del messaggio a cui si risponde o
     /// che si inoltra, cioè quello che il provider citerà. Testo semplice dall'HTML già letto (MailHtml.ToText): niente
@@ -843,11 +856,11 @@ public partial class ComposeWindow : Window
         {
             if (value.Length > 0) OriginalHeader.Children.Add(new TextBlock { Text = $"{label}: {value}", TextWrapping = TextWrapping.Wrap });
         }
-        Line("Da", original.From.ToString());
-        Line("Inviato", original.Date.ToString("dddd d MMMM yyyy HH:mm", Italian));
-        Line("A", string.Join("; ", originalBody.To));
+        Line(T("Da"), original.From.ToString());
+        Line(T("Inviato"), MimeOptions.QuoteDate(original.Date));
+        Line(T("A"), string.Join("; ", originalBody.To));
         Line("Cc", string.Join("; ", originalBody.Cc));
-        Line("Oggetto", original.Subject);
+        Line(T("Oggetto"), original.Subject);
         // Il testo dell'originale (un'analisi intera dell'HTML: 26 ms per una newsletter da 211 KB) in sottofondo, non sul
         // thread dell'interfaccia mentre la finestra si apre (audit, v2 V-09).
         var reading = System.Diagnostics.Stopwatch.StartNew();
@@ -872,7 +885,7 @@ public partial class ComposeWindow : Window
     {
         if (double.IsInfinity(OriginalClip.MaxHeight) || OriginalClip.ActualWidth <= 0) return;
         var t = OriginalText;
-        var formatted = new System.Windows.Media.FormattedText(t.Text, Italian, FlowDirection.LeftToRight,
+        var formatted = new System.Windows.Media.FormattedText(t.Text, Lingua.Culture, FlowDirection.LeftToRight,
             new System.Windows.Media.Typeface(t.FontFamily, t.FontStyle, t.FontWeight, t.FontStretch), t.FontSize,
             System.Windows.Media.Brushes.Black, System.Windows.Media.VisualTreeHelper.GetDpi(this).PixelsPerDip)
         {
@@ -955,7 +968,7 @@ public partial class ComposeWindow : Window
     }
 
     void OnSubjectChanged(object sender, TextChangedEventArgs e) =>
-        Title = SubjectBox.Text.Trim().Length > 0 ? SubjectBox.Text.Trim() : "Nuovo messaggio";
+        Title = SubjectBox.Text.Trim().Length > 0 ? SubjectBox.Text.Trim() : T("Nuovo messaggio");
 
     void OnShowCcBcc(object sender, RoutedEventArgs e)
     {
@@ -999,8 +1012,8 @@ public partial class ComposeWindow : Window
             .Select(a => a.Email).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         ExternalBar.Visibility = outside.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (outside.Count > 0)
-            ExternalText.Text = "Stai scrivendo a persone esterne alla tua organizzazione: " + string.Join(", ", outside.Take(3)) +
-                                (outside.Count > 3 ? $" e altri {outside.Count - 3}" : "") + ".";
+            ExternalText.Text = T("Stai scrivendo a persone esterne alla tua organizzazione: {0}.",
+                                  outside.Count > 3 ? T("{0} e altri {1}", string.Join(", ", outside.Take(3)), outside.Count - 3) : string.Join(", ", outside));
     }
 
     void OnRecipientChanged(object sender, TextChangedEventArgs e)
@@ -1057,7 +1070,9 @@ public partial class ComposeWindow : Window
     }
 
     /// <summary>La voce in fondo ai suggerimenti degli account di lavoro: cerca fra i colleghi (me/people).</summary>
-    static readonly AddressBook.Entry ColleaguesEntry = new() { Name = "Cerca anche fra i colleghi", Email = "nella directory di Microsoft 365 della tua organizzazione" };
+    /// <remarks>Creata alla prima richiesta, nella lingua di Missiva (Lingua.Start è già passato): una sola, confrontata per riferimento.</remarks>
+    static AddressBook.Entry ColleaguesEntry => colleaguesEntry ??= new() { Name = T("Cerca anche fra i colleghi"), Email = T("nella directory di Microsoft 365 della tua organizzazione") };
+    static AddressBook.Entry? colleaguesEntry;
 
     /// <summary>Per account: se il consenso alle persone c'è (true), manca (false) o non si sa ancora (assente).</summary>
     static readonly Dictionary<string, bool> peopleConsent = new();
@@ -1084,7 +1099,7 @@ public partial class ComposeWindow : Window
                 if (MainWindow.Testing)
                 {
                     await provider.AllowPeopleAsync(); // TestingProvider: solo "prova: chiederei il consenso alle persone ..." nel registro
-                    Status.Text = "Nella versione di prova la finestra di Microsoft non si apre.";
+                    Status.Text = T("Nella versione di prova la finestra di Microsoft non si apre.");
                     return;
                 }
                 MicrosoftAuth.OpenOver(this);
@@ -1100,7 +1115,7 @@ public partial class ComposeWindow : Window
         catch (Exception ex)
         {
             Log.Error("colleghi di Microsoft 365", ex);
-            if (ask) ReadingView.ShowConsentError(this, "Ricerca fra i colleghi non riuscita", ex, provider.Account, "cercare fra i colleghi della tua organizzazione");
+            if (ask) ReadingView.ShowConsentError(this, T("Ricerca fra i colleghi non riuscita"), ex, provider.Account, T("cercare fra i colleghi della tua organizzazione"));
             return;
         }
         peopleConsent[provider.Account.Id] = found != null;
@@ -1276,7 +1291,7 @@ public partial class ComposeWindow : Window
 
     void OnAttach(object sender, RoutedEventArgs e)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Title = "Allega file" };
+        var dialog = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Title = T("Allega file") };
         if (dialog.ShowDialog(this) != true) return;
         AddFiles(dialog.FileNames);
     }
@@ -1297,14 +1312,14 @@ public partial class ComposeWindow : Window
                 continue;
             }
             if (Safety.IsDangerous(file) &&
-                Dialog.Ask(this, "Allegare questo file?", $"{Path.GetFileName(file)} \u00E8 un tipo di file che pu\u00F2 eseguire programmi: Gmail e Outlook di " +
-                           "solito lo bloccano, e chi lo riceve potrebbe non riuscire ad aprirlo.", "Allega comunque") != Choice.Primary)
+                Dialog.Ask(this, T("Allegare questo file?"), T("{0} è un tipo di file che può eseguire programmi: Gmail e Outlook di solito lo bloccano, e chi lo riceve potrebbe non riuscire ad aprirlo.", Path.GetFileName(file)),
+                           T("Allega comunque")) != Choice.Primary)
                 continue;
             // Account Microsoft: il limite di Outlook per gli allegati di un messaggio si dice subito, non dopo Invia (audit, F-15).
             if (FromProvider?.Account.Kind == AccountKind.Microsoft && AttachedBytes() + new FileInfo(file).Length > GraphProvider.MaxAttachments)
             {
-                Dialog.Show(this, "Allegati troppo grandi", $"Con {Path.GetFileName(file)} gli allegati supererebbero i {GraphProvider.MaxAttachments / 1048576} MB che Outlook accetta " +
-                                                            "per un messaggio: il file non è stato allegato. Puoi condividerlo con un link.");
+                Dialog.Show(this, T("Allegati troppo grandi"), T("Con {0} gli allegati supererebbero i {1} MB che Outlook accetta per un messaggio: il file non è stato allegato. Puoi condividerlo con un link.",
+                                                                 Path.GetFileName(file), GraphProvider.MaxAttachments / 1048576));
                 continue;
             }
             attachments.Add(file);
@@ -1312,14 +1327,14 @@ public partial class ComposeWindow : Window
             Touched();
         }
         if (skipped.Count > 0)
-            Dialog.Show(this, "Non allegato", $"{string.Join(", ", skipped)}: le cartelle non si possono allegare. Comprimile prima in un file .zip.");
+            Dialog.Show(this, T("Non allegato"), T("{0}: le cartelle non si possono allegare. Comprimile prima in un file .zip.", string.Join(", ", skipped)));
         Log.Write($"allegati nella scrittura: {attachments.Count}");
     }
 
     /// <summary>La scheda di un file nuovo, che con la X esce dagli allegati.</summary>
     void AddChip(string file)
     {
-        var chip = Chip(Path.GetFileName(file), "\uE711", "Togli l'allegato");
+        var chip = Chip(Path.GetFileName(file), "\uE711", T("Togli l'allegato"));
         AutomationProperties.SetName(chip, Path.GetFileName(file));
         chip.Click += (_, _) =>
         {
@@ -1350,7 +1365,7 @@ public partial class ComposeWindow : Window
         try
         {
             // Il PNG, se c'\u00E8 (Strumento di cattura), tiene la trasparenza e non si ricodifica; altrimenti la bitmap.
-            if (data.GetDataPresent("PNG") && data.GetData("PNG") is MemoryStream png) image = new InlineImage(EditorImages.NewContentId(), "immagine.png", "image/png", png.ToArray());
+            if (data.GetDataPresent("PNG") && data.GetData("PNG") is MemoryStream png) image = new InlineImage(EditorImages.NewContentId(), T("immagine.png"), "image/png", png.ToArray());
             else if (data.GetDataPresent(DataFormats.Bitmap) && data.GetData(DataFormats.Bitmap) is System.Windows.Media.Imaging.BitmapSource bitmap) image = EditorImages.FromBitmap(bitmap);
         }
         catch (Exception ex)
@@ -1373,7 +1388,7 @@ public partial class ComposeWindow : Window
         if (screen && EditorImages.PixelWidth(data.Content) is int pixels) width = pixels / System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX;
         if (EditorImages.Create(data, width) is not { } image)
         {
-            Dialog.Show(this, "Immagine non inserita", $"{data.Name} non si riesce a leggere come immagine.");
+            Dialog.Show(this, T("Immagine non inserita"), T("{0} non si riesce a leggere come immagine.", data.Name));
             return;
         }
         Editor.BeginChange();
@@ -1439,7 +1454,7 @@ public partial class ComposeWindow : Window
             return;
         }
         foreach (var a in originalBody.Attachments.Where(a => !a.IsInline))
-            AttachmentsPanel.Children.Insert(0, Chip(a.Name, "\uE723", "Allegato del messaggio originale: viene inoltrato"));
+            AttachmentsPanel.Children.Insert(0, Chip(a.Name, "\uE723", T("Allegato del messaggio originale: viene inoltrato")));
     }
 
     static Button Chip(string name, string glyph, string tip)
@@ -1496,7 +1511,7 @@ public partial class ComposeWindow : Window
         var bcc = Parse(BccBox.Text, out var bad3, quiet);
         if (to == null || cc == null || bcc == null)
         {
-            Dialog.Show(this, "Indirizzo non valido", $"Controlla \"{bad1 ?? bad2 ?? bad3}\".");
+            Dialog.Show(this, T("Indirizzo non valido"), T("Controlla \"{0}\".", bad1 ?? bad2 ?? bad3));
             return null;
         }
         if (bad1 != null || bad2 != null || bad3 != null) Log.Write("salvataggio automatico: un indirizzo non valido resta fuori dalla bozza");
@@ -1566,7 +1581,7 @@ public partial class ComposeWindow : Window
             // La bozza si sta salvando (da sola o con Ctrl+S): si invia appena è sul server, con quella bozza. Prima Invia
             // non faceva nulla, e chi poi chiudeva la finestra lasciava nelle Bozze un messaggio che credeva partito.
             IsEnabled = false;
-            Status.Text = "Invio dopo il salvataggio della bozza…";
+            Status.Text = T("Invio dopo il salvataggio della bozza…");
             while (saving) await Task.Delay(50);
             IsEnabled = true;
             if (closed) return null;
@@ -1574,16 +1589,16 @@ public partial class ComposeWindow : Window
         if (FromProvider is not { } provider || Message(provider, sendAt: sendAt) is not { } message) return null;
         if (message.To.Count + message.Cc.Count + message.Bcc.Count == 0)
         {
-            Dialog.Show(this, "Manca il destinatario", "Scrivi almeno un indirizzo nel campo A.");
+            Dialog.Show(this, T("Manca il destinatario"), T("Scrivi almeno un indirizzo nel campo A."));
             return null;
         }
         if (message.Subject.Length == 0 &&
-            Dialog.Ask(this, "Inviare senza oggetto?", "Il messaggio non ha un oggetto.", "Invia comunque") != Choice.Primary)
+            Dialog.Ask(this, T("Inviare senza oggetto?"), T("Il messaggio non ha un oggetto."), T("Invia comunque")) != Choice.Primary)
             return null;
         if (ForgottenAttachment(provider) is { } word)
         {
             Log.Write("invio: il testo parla di un allegato e non ce n'è nessuno, domanda");
-            if (Dialog.Ask(this, "Hai dimenticato l'allegato?", $"Nel messaggio hai scritto \"{word}\", ma non c'è nessun allegato.", "Invia comunque", null, "Torna al messaggio") != Choice.Primary)
+            if (Dialog.Ask(this, T("Hai dimenticato l'allegato?"), T("Nel messaggio hai scritto \"{0}\", ma non c'è nessun allegato.", word), T("Invia comunque"), null, T("Torna al messaggio")) != Choice.Primary)
                 return null;
             attachmentAsked = true; // detto una volta: Riprova e un nuovo Invia dopo Annulla invio non lo richiedono
         }
@@ -1709,7 +1724,7 @@ public partial class ComposeWindow : Window
             return;
         }
         IsEnabled = false;
-        Status.Text = "Invio in corso…";
+        Status.Text = T("Invio in corso…");
         // La finestra è nascosta (Annulla invio): la barra "Invio in corso" della finestra principale resta finché l'invio non
         // è finito, e dice il caricamento degli allegati grandi. Prima spariva alla fine dell'attesa, e un invio di minuti
         // non si vedeva da nessuna parte (segnalato dall'autore il 4 ottobre 2026).
@@ -1729,7 +1744,7 @@ public partial class ComposeWindow : Window
             if (int.TryParse(Environment.GetEnvironmentVariable("MISSIVA_CARICAMENTO_FINTO"), out var megabytes) && megabytes > 0)
                 for (double done = 0; done < megabytes; done += 1.25)
                 {
-                    message.Progress?.Report($"Caricamento di relazione-prova.zip: {done.ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("it-IT"))} di {megabytes} MB…");
+                    message.Progress?.Report(T("Caricamento di {0}: {1} di {2} MB…", "relazione-prova.zip", done.ToString("0.#", Lingua.Culture), megabytes)); // il testo di GraphProvider, anche in inglese
                     await Task.Delay(700, message.Cancel);
                 }
 #endif
@@ -1747,7 +1762,7 @@ public partial class ComposeWindow : Window
             IsEnabled = true;
             if (!IsVisible) Show();
             Activate();
-            Status.Text = "Invio annullato";
+            Status.Text = T("Invio annullato");
         }
         catch (Exception ex) when (Network.IsOffline(ex))
         {
@@ -1778,14 +1793,14 @@ public partial class ComposeWindow : Window
     internal static (string Body, string Primary, AccountFix Fix) SendFailure(Exception ex, string prefix = "")
     {
         var fix = MailException.FixOf(ex) is var f and (AccountFix.Password or AccountFix.SignIn) ? f : AccountFix.None;
-        var next = fix switch
+        // Una frase intera per rimedio (Lingua): in italiano lo stesso testo di prima.
+        var body = fix switch
         {
-            AccountFix.Password => "Aggiorna la password dell'account e poi premi di nuovo Invia",
-            AccountFix.SignIn => "Rifai l'accesso all'account e poi premi di nuovo Invia",
-            _ => "Puoi riprovare",
+            AccountFix.Password => T("{0}{1}\n\nIl messaggio è ancora qui, con destinatari, testo e allegati. Aggiorna la password dell'account e poi premi di nuovo Invia, salvarlo nelle Bozze o tornare a scriverlo.", prefix, ex.Message),
+            AccountFix.SignIn => T("{0}{1}\n\nIl messaggio è ancora qui, con destinatari, testo e allegati. Rifai l'accesso all'account e poi premi di nuovo Invia, salvarlo nelle Bozze o tornare a scriverlo.", prefix, ex.Message),
+            _ => T("{0}{1}\n\nIl messaggio è ancora qui, con destinatari, testo e allegati. Puoi riprovare, salvarlo nelle Bozze o tornare a scriverlo.", prefix, ex.Message),
         };
-        return ($"{prefix}{ex.Message}\n\nIl messaggio è ancora qui, con destinatari, testo e allegati. {next}, salvarlo nelle Bozze o tornare a scriverlo.",
-                fix switch { AccountFix.Password => "Aggiorna password", AccountFix.SignIn => "Accedi di nuovo", _ => "Riprova" }, fix);
+        return (body, fix switch { AccountFix.Password => T("Aggiorna password"), AccountFix.SignIn => T("Accedi di nuovo"), _ => T("Riprova") }, fix);
     }
 
     /// <summary>
@@ -1798,19 +1813,19 @@ public partial class ComposeWindow : Window
     {
         var (body, primary, fix) = SendFailure(ex, prefix);
         // Interrotto quando il server aveva già tutto il messaggio (MailException.MaybeSent): "non inviato" non è detto.
-        var choice = Dialog.Ask(this, MailException.MaybeSentOf(ex) ? "Invio interrotto" : "Messaggio non inviato", body, primary, "Salva nelle Bozze", "Torna al messaggio");
+        var choice = Dialog.Ask(this, MailException.MaybeSentOf(ex) ? T("Invio interrotto") : T("Messaggio non inviato"), body, primary, T("Salva nelle Bozze"), T("Torna al messaggio"));
         if (closed) return;
         if (choice == Choice.Secondary)
         {
-            if (await SaveDraftAsync() && !closed) Status.Text = $"Non inviato: salvato nelle Bozze alle {DateTime.Now:HH:mm}";
+            if (await SaveDraftAsync() && !closed) Status.Text = T("Non inviato: salvato nelle Bozze alle {0}", Pec.Time(DateTime.Now));
         }
         else if (choice == Choice.Primary && fix != AccountFix.None)
         {
             if (Application.Current.MainWindow is MainWindow main) await main.ManageAccountAsync(provider.Account, this, focusPassword: fix == AccountFix.Password);
-            if (!closed) Status.Text = "Non inviato: premi Invia per riprovare";
+            if (!closed) Status.Text = T("Non inviato: premi Invia per riprovare");
         }
         else if (choice == Choice.Primary) OnSend(this, new RoutedEventArgs());
-        else Status.Text = "Non inviato";
+        else Status.Text = T("Non inviato");
     }
 
     /// <summary>Partito (subito o dalla Posta in uscita): la rubrica, le Bozze se c'era una bozza, e la finestra si chiude.</summary>
@@ -1863,7 +1878,7 @@ public partial class ComposeWindow : Window
                 ResumeAutoSave();
                 Show();
                 Activate();
-                _ = SendFailedAsync(provider, ex, "Dalla Posta in uscita: ");
+                _ = SendFailedAsync(provider, ex, T("Dalla Posta in uscita: "));
             },
         };
         outboxEntry = entry;
@@ -1933,7 +1948,7 @@ public partial class ComposeWindow : Window
             IsEnabled = true;
             Show();
             Activate();
-            Status.Text = "Invio annullato";
+            Status.Text = T("Invio annullato");
             sendDone.TrySetResult();
             return false;
         }
@@ -1952,19 +1967,18 @@ public partial class ComposeWindow : Window
     {
         if (FromProvider is not { } provider) return;
         var menu = new ContextMenu { PlacementTarget = SendMenuButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
-        menu.Items.Add(new MenuItem { Header = "Pianifica invio", IsEnabled = false, FontWeight = FontWeights.SemiBold });
+        menu.Items.Add(new MenuItem { Header = T("Pianifica invio"), IsEnabled = false, FontWeight = FontWeights.SemiBold });
         var now = DateTime.Now;
         int toMonday = ((int)DayOfWeek.Monday - (int)now.DayOfWeek + 7) % 7;
-        var italian = new System.Globalization.CultureInfo("it-IT");
         void Add(string text, DateTime at)
         {
-            var item = new MenuItem { Header = $"{text} ({at.ToString("ddd d MMM", italian)})" };
+            var item = new MenuItem { Header = $"{text} ({at.ToString("ddd d MMM", Lingua.Culture)})" };
             item.Click += async (_, _) => await ScheduleAsync(at);
             menu.Items.Add(item);
         }
-        Add("Domani alle 8:00", now.Date.AddDays(1).AddHours(8));
-        Add("Lunedì alle 8:00", now.Date.AddDays(toMonday == 0 ? 7 : toMonday).AddHours(8));
-        var custom = new MenuItem { Header = "Scegli data e ora…" };
+        Add(T("Domani alle 8:00"), now.Date.AddDays(1).AddHours(8));
+        Add(T("Lunedì alle 8:00"), now.Date.AddDays(toMonday == 0 ? 7 : toMonday).AddHours(8));
+        var custom = new MenuItem { Header = T("Scegli data e ora…") };
         custom.Click += async (_, _) =>
         {
             var window = new ScheduleWindow { Owner = this };
@@ -1979,8 +1993,8 @@ public partial class ComposeWindow : Window
             {
                 MaxWidth = 300, TextWrapping = TextWrapping.Wrap,
                 Text = provider.SchedulesOnServer
-                    ? "Outlook tiene il messaggio nella Posta in uscita e lo invia all'ora scelta, anche con Missiva chiusa."
-                    : "Il messaggio resta nelle Bozze e lo invia Missiva all'ora scelta, se è aperta; altrimenti appena la riapri.",
+                    ? T("Outlook tiene il messaggio nella Posta in uscita e lo invia all'ora scelta, anche con Missiva chiusa.")
+                    : T("Il messaggio resta nelle Bozze e lo invia Missiva all'ora scelta, se è aperta; altrimenti appena la riapri."),
             },
         });
         menu.IsOpen = true;
@@ -1994,12 +2008,12 @@ public partial class ComposeWindow : Window
     {
         if (at <= DateTime.Now.AddMinutes(1))
         {
-            Dialog.Show(this, "Ora già passata", "Scegli un giorno e un'ora futuri.");
+            Dialog.Show(this, T("Ora già passata"), T("Scegli un giorno e un'ora futuri."));
             return;
         }
         if (await ReadyAsync(at) is not var (provider, message)) return;
         IsEnabled = false;
-        Status.Text = "Pianificazione…";
+        Status.Text = T("Pianificazione…");
         try
         {
             if (provider.SchedulesOnServer)
@@ -2027,14 +2041,14 @@ public partial class ComposeWindow : Window
         catch (Exception ex)
         {
             Log.Error("invio pianificato", ex);
-            Dialog.Show(this, "Invio non pianificato", ex.Message);
+            Dialog.Show(this, T("Invio non pianificato"), ex.Message);
         }
         finally
         {
             if (!closed)
             {
                 IsEnabled = true;
-                if (Status.Text == "Pianificazione…") Status.Text = "";
+                if (Status.Text == T("Pianificazione…")) Status.Text = "";
             }
         }
     }
@@ -2057,11 +2071,11 @@ public partial class ComposeWindow : Window
             };
             return item;
         }
-        menu.Items.Add(Item("Importanza alta", importance == Importance.High, on => importance = on ? Importance.High : Importance.Normal));
-        menu.Items.Add(Item("Importanza bassa", importance == Importance.Low, on => importance = on ? Importance.Low : Importance.Normal));
+        menu.Items.Add(Item(T("Importanza alta"), importance == Importance.High, on => importance = on ? Importance.High : Importance.Normal));
+        menu.Items.Add(Item(T("Importanza bassa"), importance == Importance.Low, on => importance = on ? Importance.Low : Importance.Normal));
         menu.Items.Add(new Separator());
-        menu.Items.Add(Item("Richiedi conferma di lettura", readReceipt, on => readReceipt = on));
-        menu.Items.Add(Item("Richiedi conferma di recapito", deliveryReceipt, on => deliveryReceipt = on));
+        menu.Items.Add(Item(T("Richiedi conferma di lettura"), readReceipt, on => readReceipt = on));
+        menu.Items.Add(Item(T("Richiedi conferma di recapito"), deliveryReceipt, on => deliveryReceipt = on));
         menu.IsOpen = true;
     }
 
@@ -2069,11 +2083,11 @@ public partial class ComposeWindow : Window
     void ShowOptions()
     {
         var parts = new List<string>();
-        if (importance == Importance.High) parts.Add("Importanza alta");
-        if (importance == Importance.Low) parts.Add("Importanza bassa");
-        if (readReceipt) parts.Add("Lettura");
-        if (deliveryReceipt) parts.Add("Recapito");
-        OptionsText.Text = parts.Count == 0 ? "Opzioni" : string.Join(", ", parts);
+        if (importance == Importance.High) parts.Add(T("Importanza alta"));
+        if (importance == Importance.Low) parts.Add(T("Importanza bassa"));
+        if (readReceipt) parts.Add(T("Lettura"));
+        if (deliveryReceipt) parts.Add(T("Recapito"));
+        OptionsText.Text = parts.Count == 0 ? T("Opzioni") : string.Join(", ", parts);
         OptionsGlyph.Text = importance switch { Importance.High => "", Importance.Low => "", _ => "" };
         if (importance == Importance.High) OptionsGlyph.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC5, 0x0F, 0x1F));
         else OptionsGlyph.ClearValue(TextBlock.ForegroundProperty); // il colore del tema, anche quando cambia

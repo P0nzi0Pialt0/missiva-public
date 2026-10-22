@@ -11,6 +11,13 @@
 # installa.ps1). Per questo il file è UTF-8 con BOM: senza, 5.1 storpierebbe le lettere accentate dei messaggi.
 param([string]$InCartella)
 $ErrorActionPreference = "Stop"
+
+# I messaggi in italiano se la lingua di visualizzazione di Windows è l'italiano, altrimenti in inglese, come Missiva con
+# "Come Windows" (Missiva in inglese, 21 ottobre 2026). Solo per provare lo script: MISSIVA_PROVA_LINGUA=it o en sceglie
+# la lingua dei messaggi senza toccare le impostazioni di Windows.
+$italiano = (Get-UICulture).TwoLetterISOLanguageName -eq "it"
+if ($env:MISSIVA_PROVA_LINGUA -in "it", "en") { $italiano = $env:MISSIVA_PROVA_LINGUA -eq "it" }
+function Testo([string]$it, [string]$en) { if ($italiano) { $it } else { $en } }
 $dir = if ($InCartella) { $InCartella } else { Join-Path $env:LOCALAPPDATA "Programs\Missiva" }
 $exe = Join-Path $dir "Missiva.exe"
 $release = (Test-Path (Join-Path $PSScriptRoot "Missiva.exe")) -and -not (Test-Path (Join-Path $PSScriptRoot "Missiva.csproj"))
@@ -21,7 +28,7 @@ if ($release) {
     $staging = Join-Path ([IO.Path]::GetTempPath()) ("missiva-installazione-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
     New-Item -ItemType Directory $staging | Out-Null
     Copy-Item (Join-Path $PSScriptRoot "Missiva.exe") $staging
-    Write-Host "Installo Missiva da un rilascio..."
+    Write-Host (Testo "Installo Missiva da un rilascio..." "Installing Missiva from a release...")
 } else {
     # Prima si compila e si prova, in una cartella a parte, e solo dopo si tocca la Missiva installata: se la compilazione
     # non riesce o l'eseguibile nuovo non parte, quella di prima resta dov'è. Fino al 13 ottobre 2026 la cartella di
@@ -34,9 +41,9 @@ if ($release) {
     Get-ChildItem (Join-Path $PSScriptRoot "obj\Release") -Recurse -Directory -Filter R2R -ErrorAction SilentlyContinue |
         Remove-Item -Recurse -Force
 
-    Write-Host "Compilo Missiva..."
+    Write-Host (Testo "Compilo Missiva..." "Building Missiva...")
     dotnet publish (Join-Path $PSScriptRoot "Missiva.csproj") -c Release -o $staging --nologo -v q
-    if ($LASTEXITCODE -ne 0) { throw "Compilazione non riuscita. La Missiva installata non è stata toccata." }
+    if ($LASTEXITCODE -ne 0) { throw (Testo "Compilazione non riuscita. La Missiva installata non è stata toccata." "The build failed. The installed Missiva wasn't touched.") }
 }
 # Accanto all'eseguibile disinstalla.ps1, e le licenze: MIT e BSD chiedono le note a chi distribuisce i binari.
 foreach ($name in "disinstalla.ps1", "LICENSE", "TERZE-PARTI.md") {
@@ -50,10 +57,10 @@ $start.UseShellExecute = $false
 $check = [System.Diagnostics.Process]::Start($start)
 if (-not $check.WaitForExit(120000)) {
     $check.Kill()
-    throw "L'eseguibile nuovo non risponde. La Missiva installata non è stata toccata."
+    throw (Testo "L'eseguibile nuovo non risponde. La Missiva installata non è stata toccata." "The new executable isn't responding. The installed Missiva wasn't touched.")
 }
 if ($check.ExitCode -ne 0) {
-    throw ("L'eseguibile nuovo non parte (codice 0x{0:X8}). La Missiva installata non è stata toccata." -f $check.ExitCode)
+    throw ((Testo "L'eseguibile nuovo non parte (codice 0x{0:X8}). La Missiva installata non è stata toccata." "The new executable doesn't start (code 0x{0:X8}). The installed Missiva wasn't touched.") -f $check.ExitCode)
 }
 
 # La versione la dice l'eseguibile appena compilato (Missiva.csproj, MissivaGitVersion): il numero per App installate e
@@ -63,7 +70,13 @@ $version = "{0}.{1}.{2}" -f $info.FileMajorPart, $info.FileMinorPart, $info.File
 $described = if ($info.ProductVersion) { $info.ProductVersion } else { $version }
 # (Fino al 14 ottobre 2026 era "0.3.0+" con il commit intero: se ne tengono sette cifre.)
 $previous = if (Test-Path $exe) { (Get-Item $exe).VersionInfo.ProductVersion -replace '\+([0-9a-f]{7})[0-9a-f]{33}$', ' ($1)' }
-$made = if ($release) { "provata" } else { "compilata e provata" }
+$made = if ($release) { Testo "provata" "tested" } else { Testo "compilata e provata" "built and tested" }
+# Il testo della versione lo scrive la compilazione, in italiano ("0.3.525 del 14/10/2026 (8c444de)", con ", con modifiche
+# non ancora in un commit"): in inglese le sue parole sono in inglese.
+if (-not $italiano) {
+    $described = $described -replace '^(\S+) del (\S+) ', '$1 from $2 ' -replace ', con modifiche non ancora in un commit$', ', with changes not yet committed'
+    if ($previous) { $previous = $previous -replace '^(\S+) del (\S+) ', '$1 from $2 ' -replace ', con modifiche non ancora in un commit$', ', with changes not yet committed' }
+}
 Write-Host "Missiva $described $made."
 
 # Missiva aperta dalla cartella di installazione blocca i file: le si chiede di uscire come con Esci, anche quando è
@@ -75,7 +88,7 @@ Write-Host "Missiva $described $made."
 $pipeOptions = [System.IO.Pipes.PipeOptions]::None
 if ([enum]::GetNames([System.IO.Pipes.PipeOptions]) -contains "CurrentUserOnly") { $pipeOptions = [System.IO.Pipes.PipeOptions]"CurrentUserOnly" }
 Get-Process Missiva -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } | ForEach-Object {
-    Write-Host "Chiudo Missiva per aggiornarla..."
+    Write-Host (Testo "Chiudo Missiva per aggiornarla..." "Closing Missiva to update it...")
     try {
         $pipe = New-Object System.IO.Pipes.NamedPipeClientStream(".", "Missiva-mailto-$($_.SessionId)", [System.IO.Pipes.PipeDirection]::Out, $pipeOptions)
         $pipe.Connect(3000)
@@ -95,7 +108,7 @@ Get-Process Missiva -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $
 for ($try = 1; (Test-Path $dir) -and (Get-ChildItem $dir).Count -gt 0; $try++) {
     try { Get-ChildItem $dir | Remove-Item -Recurse -Force -ErrorAction Stop }
     catch {
-        if ($try -ge 10) { throw "Non riesco a sostituire Missiva: il file è ancora in uso. Chiudi Missiva e riprova." }
+        if ($try -ge 10) { throw (Testo "Non riesco a sostituire Missiva: il file è ancora in uso. Chiudi Missiva e riprova." "Can't replace Missiva: the file is still in use. Close Missiva and try again.") }
         Start-Sleep -Milliseconds 500
     }
 }
@@ -104,7 +117,7 @@ New-Item -ItemType Directory -Force $dir | Out-Null
 Get-ChildItem $staging | Move-Item -Destination $dir -Force
 Remove-Item $staging -Recurse -Force
 if ($InCartella) {
-    Write-Host "Missiva $described $made in $dir. Quella installata non è stata toccata."
+    Write-Host (Testo "Missiva $described $made in $dir. Quella installata non è stata toccata." "Missiva $described $made in $dir. The installed one wasn't touched.")
     return
 }
 
@@ -115,7 +128,7 @@ $shortcut = $shell.CreateShortcut($link)
 $shortcut.TargetPath = $exe
 $shortcut.WorkingDirectory = $dir
 $shortcut.IconLocation = "$exe,0"
-$shortcut.Description = "Posta, senza il nuovo Outlook"
+$shortcut.Description = Testo "Posta, senza il nuovo Outlook" "Email, without the new Outlook"
 $shortcut.Save()
 
 # Voce in Impostazioni, App installate
@@ -139,7 +152,7 @@ foreach ($name in $values.Keys) {
 # Sceglierla resta a te, in Impostazioni, App, App predefinite, Missiva (MAILTO): Windows non lascia farlo ai programmi.
 $progId = "HKCU:\Software\Classes\Missiva.Mailto"
 New-Item "$progId\shell\open\command" -Force | Out-Null
-Set-Item $progId -Value "Link di posta (mailto:)"
+Set-Item $progId -Value (Testo "Link di posta (mailto:)" "Email link (mailto:)")
 New-ItemProperty $progId -Name "URL Protocol" -Value "" -PropertyType String -Force | Out-Null
 New-Item "$progId\DefaultIcon" -Force | Out-Null
 Set-Item "$progId\DefaultIcon" -Value "$exe,0"
@@ -149,7 +162,7 @@ Set-Item "$progId\shell\open\command" -Value "`"$exe`" --mailto `"%1`""
 $capabilities = "HKCU:\Software\Missiva\Capabilities"
 New-Item "$capabilities\URLAssociations" -Force | Out-Null
 New-ItemProperty $capabilities -Name ApplicationName -Value "Missiva" -PropertyType String -Force | Out-Null
-New-ItemProperty $capabilities -Name ApplicationDescription -Value "Posta, senza il nuovo Outlook" -PropertyType String -Force | Out-Null
+New-ItemProperty $capabilities -Name ApplicationDescription -Value (Testo "Posta, senza il nuovo Outlook" "Email, without the new Outlook") -PropertyType String -Force | Out-Null
 New-ItemProperty $capabilities -Name ApplicationIcon -Value "$exe,0" -PropertyType String -Force | Out-Null
 New-ItemProperty "$capabilities\URLAssociations" -Name mailto -Value "Missiva.Mailto" -PropertyType String -Force | Out-Null
 # RegisteredApplications è di tutte le app: si crea solo se manca (New-Item -Force la rifarebbe vuota).
@@ -157,6 +170,6 @@ $registered = "HKCU:\Software\RegisteredApplications"
 if (-not (Test-Path $registered)) { New-Item $registered | Out-Null }
 New-ItemProperty $registered -Name Missiva -Value "Software\Missiva\Capabilities" -PropertyType String -Force | Out-Null
 
-Write-Host "Missiva $described installata in $dir. La trovi nel menu Start."
-if ($previous) { Write-Host "Prima c'era Missiva $previous." }
-Write-Host "Per aprire con Missiva i link mailto: sceglila in Impostazioni, App, App predefinite, Missiva."
+Write-Host (Testo "Missiva $described installata in $dir. La trovi nel menu Start." "Missiva $described installed in $dir. You'll find it in the Start menu.")
+if ($previous) { Write-Host (Testo "Prima c'era Missiva $previous." "Before, it was Missiva $previous.") }
+Write-Host (Testo "Per aprire con Missiva i link mailto: sceglila in Impostazioni, App, App predefinite, Missiva." "To open mailto: links with Missiva, choose it in Settings, Apps, Default apps, Missiva.")

@@ -30,7 +30,7 @@ public static class P7m
     /// <summary>La busta aperta; il nome del contenuto è quello del file senza .p7m (FATTURA.xml.p7m diventa FATTURA.xml).</summary>
     public static Result Open(byte[] file, string name)
     {
-        if (file.Length > MaxSize) throw new MailException("Il file firmato è troppo grande per aprirlo in Missiva: salvalo e aprilo con il programma di firma.");
+        if (file.Length > MaxSize) throw new MailException(T("Il file firmato è troppo grande per aprirlo in Missiva: salvalo e aprilo con il programma di firma."));
         var content = file;
         var signatures = new List<(SignatureState State, string Signer, DateTime? SignedAt)>();
         int layers = 0;
@@ -42,7 +42,7 @@ public static class P7m
             signatures.AddRange(Check(cms));
             content = cms.ContentInfo.Content;
         }
-        if (layers == 0) throw new MailException("Non è un file firmato valido (.p7m): la busta della firma non si legge.");
+        if (layers == 0) throw new MailException(T("Non è un file firmato valido (.p7m): la busta della firma non si legge."));
         var inner = name;
         while (IsP7m(inner)) inner = inner[..^4];
         // Vale la firma peggiore fra tutte, con il suo firmatario; alla pari, la prima (revisione del 13 ottobre 2026, K-06).
@@ -52,7 +52,7 @@ public static class P7m
         foreach (var one in signatures)
             if (Rank(one.State) > Rank(worst.State)) worst = one;
         var signers = signatures.Select(s => s.Signer).Where(s => s.Length > 0).Distinct().ToList();
-        return new Result(content, inner.Length > 0 ? inner : "documento", worst.Signer, worst.SignedAt, worst.State, layers, signers);
+        return new Result(content, inner.Length > 0 ? inner : T("documento"), worst.Signer, worst.SignedAt, worst.State, layers, signers);
     }
 
     /// <summary>Quanto è grave lo stato di una firma: fra più firme vale la più grave (anche per le buste S/MIME: Pec.Verify).</summary>
@@ -178,33 +178,32 @@ public static class P7m
     /// </summary>
     public static (string Text, string Tone) Band(Result r)
     {
-        var layers = r.Layers > 1 ? $" ({r.Layers} firme una dentro l'altra)" : "";
+        // Le frasi passano da T (Lingua), una per chiave; le buste una dentro l'altra e la data sono pezzi che possono mancare.
+        var layers = r.Layers > 1 ? T(" ({0} firme una dentro l'altra)", r.Layers) : "";
         if (r.Signers.Count > 1)
         {
             // Ogni firma ha la sua ora: con più firmatari non se ne dice una sola.
-            var all = string.Join(", ", r.Signers.Take(r.Signers.Count - 1)) + " e " + r.Signers[^1];
-            var whose = r.Signer.Length > 0 ? r.Signer : "uno dei firmatari";
+            var all = T("{0} e {1}", string.Join(", ", r.Signers.Take(r.Signers.Count - 1)), r.Signers[^1]);
+            var whose = r.Signer.Length > 0 ? r.Signer : T("uno dei firmatari");
             return r.Signature switch
             {
-                SignatureState.Verified => ($"Firmato da {all}{layers}: firme valide, certificati riconosciuti da Windows.", "ok"),
-                SignatureState.Untrusted => ($"Firmato da {all}{layers}: il documento è integro, ma il certificato di {whose} non è fra quelli riconosciuti da Windows " +
-                                             "(per i certificati di firma italiani serve l'elenco dell'AgID, come nei programmi di firma).", "warn"),
-                SignatureState.Invalid => ($"Firma non valida: il documento è stato modificato dopo la firma. Non fidarti del contenuto. Le firme sono di {all}.", "danger"),
-                SignatureState.Unsuitable => ($"Firma non valida: il certificato di {whose} non serve a firmare documenti (per esempio è quello di un sito web). " +
-                                              $"Non fidarti del contenuto. Le firme sono di {all}.", "danger"),
-                _ => ($"Una delle buste del file non ha una firma. Le altre sono di {all}.", "warn"),
+                SignatureState.Verified => (T("Firmato da {0}{1}: firme valide, certificati riconosciuti da Windows.", all, layers), "ok"),
+                SignatureState.Untrusted => (T("Firmato da {0}{1}: il documento è integro, ma il certificato di {2} non è fra quelli riconosciuti da Windows (per i certificati di firma italiani serve l'elenco dell'AgID, come nei programmi di firma).", all, layers, whose), "warn"),
+                SignatureState.Invalid => (T("Firma non valida: il documento è stato modificato dopo la firma. Non fidarti del contenuto. Le firme sono di {0}.", all), "danger"),
+                SignatureState.Unsuitable => (T("Firma non valida: il certificato di {0} non serve a firmare documenti (per esempio è quello di un sito web). Non fidarti del contenuto. Le firme sono di {1}.", whose, all), "danger"),
+                _ => (T("Una delle buste del file non ha una firma. Le altre sono di {0}.", all), "warn"),
             };
         }
-        var when = r.SignedAt is { } w ? $" il {w:dd/MM/yyyy} alle {w:HH:mm}" : "";
+        var when = r.SignedAt is { } w ? Pec.When(w) : "";
         return r.Signature switch
         {
-            SignatureState.Verified => ($"Firmato da {r.Signer}{when}{layers}: firma valida, certificato riconosciuto da Windows.", "ok"),
-            SignatureState.Untrusted => ($"Firmato da {r.Signer}{when}{layers}: il documento è integro, ma il certificato non è fra quelli riconosciuti da Windows " +
-                                         "(per i certificati di firma italiani serve l'elenco dell'AgID, come nei programmi di firma).", "warn"),
-            SignatureState.Invalid => ($"Firma non valida: il documento è stato modificato dopo la firma{(r.Signer.Length > 0 ? $" ({r.Signer})" : "")}. Non fidarti del contenuto.", "danger"),
-            SignatureState.Unsuitable => ($"Firma non valida: il certificato di {(r.Signer.Length > 0 ? r.Signer : "chi ha firmato")} non serve a firmare documenti " +
-                                          "(per esempio è quello di un sito web). Non fidarti del contenuto.", "danger"),
-            _ => ("Il file non ha una firma.", "warn"),
+            SignatureState.Verified => (T("Firmato da {0}{1}{2}: firma valida, certificato riconosciuto da Windows.", r.Signer, when, layers), "ok"),
+            SignatureState.Untrusted => (T("Firmato da {0}{1}{2}: il documento è integro, ma il certificato non è fra quelli riconosciuti da Windows (per i certificati di firma italiani serve l'elenco dell'AgID, come nei programmi di firma).", r.Signer, when, layers), "warn"),
+            SignatureState.Invalid => (r.Signer.Length > 0
+                ? T("Firma non valida: il documento è stato modificato dopo la firma ({0}). Non fidarti del contenuto.", r.Signer)
+                : T("Firma non valida: il documento è stato modificato dopo la firma. Non fidarti del contenuto."), "danger"),
+            SignatureState.Unsuitable => (T("Firma non valida: il certificato di {0} non serve a firmare documenti (per esempio è quello di un sito web). Non fidarti del contenuto.", r.Signer.Length > 0 ? r.Signer : T("chi ha firmato")), "danger"),
+            _ => (T("Il file non ha una firma."), "warn"),
         };
     }
 }

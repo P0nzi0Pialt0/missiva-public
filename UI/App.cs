@@ -50,6 +50,10 @@ public sealed class App : Application
         imported = loading != null ? loading.GetAwaiter().GetResult() : LoadSettings();
         loading = null;
         Log.Startup("impostazioni lette");
+        // La lingua (Lingua, 21 ottobre 2026): dall'impostazione o da Windows, prima di ogni finestra e di ogni testo. Dalla riga
+        // di comando conta solo --lingua, e solo in Debug e nella versione di prova; da un link mailto: solo il link (T-27).
+        Lingua.Start(Store.Settings.Language, Program.Arguments(Environment.GetCommandLineArgs()[1..]));
+        Log.Startup("lingua");
 #if DEBUG || PROVA
         // Prove senza rete: i provider falliscono come con un firewall che blocca Missiva (errore 10013), prima di collegarsi.
         // Con --senza-rete (Debug) o MISSIVA_SENZA_RETE=1 (anche la versione finale di prova: le misure dell'avvio, ripetute
@@ -87,13 +91,13 @@ public sealed class App : Application
         Store.SaveFailed += error => Dispatcher.BeginInvoke(() =>
         {
             if (Store.Recovery is { Blocked: true }) return;
-            var body = "Missiva non è riuscita a scrivere il file delle impostazioni: quello che hai appena cambiato può non esserci al prossimo avvio. " +
-                       $"Controlla lo spazio sul disco. Missiva riprova da sola al prossimo salvataggio, e in questa sessione non lo ripete.\n\n{error.Message}";
-            if (Dialog.Show(MainWindow, "Impostazioni non salvate", body, "Apri la cartella") == Choice.Secondary) OpenDataFolder();
+            var body = T("Missiva non è riuscita a scrivere il file delle impostazioni: quello che hai appena cambiato può non esserci al prossimo avvio. Controlla lo spazio sul disco. Missiva riprova da sola al prossimo salvataggio, e in questa sessione non lo ripete.\n\n{0}",
+                         error.Message);
+            if (Dialog.Show(MainWindow, T("Impostazioni non salvate"), body, T("Apri la cartella")) == Choice.Secondary) OpenDataFolder();
         });
         // Un nuovo accesso a Google che toglie il calendario o i contatti (GoogleAuth.SetScopes): detto, sopra la finestra attiva.
         GoogleAuth.PermissionsLost += (_, notice) => Dispatcher.BeginInvoke(() =>
-            Dialog.Show(Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? MainWindow, "Google ha tolto un permesso a Missiva", notice), DispatcherPriority.ApplicationIdle);
+            Dialog.Show(Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? MainWindow, T("Google ha tolto un permesso a Missiva"), notice), DispatcherPriority.ApplicationIdle);
         Log.Startup("gestori delle impostazioni");
         AddressBook.Preload();
         Safety.CleanTemp(TimeSpan.FromDays(1)); // allegati rimasti da sessioni precedenti
@@ -121,9 +125,9 @@ public sealed class App : Application
             var error = ev.Exception;
             Dispatcher.BeginInvoke(() =>
             {
-                var body = "L'ultima operazione può non essere riuscita. Puoi continuare a usare Missiva: se si ripete, il registro (missiva.log) dice che cosa è successo. " +
-                           $"In questa sessione l'avviso non si ripete.\n\n{error.GetType().Name}: {error.Message}";
-                if (Dialog.Show(MainWindow is { IsVisible: true } w ? w : null, "Missiva ha avuto un errore imprevisto", body, "Apri la cartella") == Choice.Secondary) OpenDataFolder();
+                var body = T("L'ultima operazione può non essere riuscita. Puoi continuare a usare Missiva: se si ripete, il registro (missiva.log) dice che cosa è successo. In questa sessione l'avviso non si ripete.\n\n{0}: {1}",
+                             error.GetType().Name, error.Message);
+                if (Dialog.Show(MainWindow is { IsVisible: true } w ? w : null, T("Missiva ha avuto un errore imprevisto"), body, T("Apri la cartella")) == Choice.Secondary) OpenDataFolder();
             }, DispatcherPriority.ApplicationIdle);
         };
         SessionEnding += (_, ev) =>
@@ -137,7 +141,12 @@ public sealed class App : Application
         MicrosoftAuth.Quiet = () => WindowHidden;
         StallLog.Start(Dispatcher); // blocchi oltre 50 ms e fotogrammi oltre 33 ms nel registro, anche nella versione installata
         // Quale Missiva gira, in testa alle righe di questa sessione (AppVersion): a interfaccia ferma, fuori dai tempi dell'avvio.
-        _ = Dispatcher.BeginInvoke(() => Log.Write($"Missiva {AppVersion.Text} avviata"), DispatcherPriority.ApplicationIdle);
+        // E la lingua, con come è stata scelta (Lingua.Start).
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            Log.Write($"Missiva {AppVersion.Text} avviata");
+            Log.Write(Lingua.Described);
+        }, DispatcherPriority.ApplicationIdle);
 
         ReadingView.ResetDark();
         dark = ReadingView.Dark;
@@ -197,12 +206,12 @@ public sealed class App : Application
         if (Store.Recovery is { } recovery)
             Dispatcher.BeginInvoke(() =>
             {
-                if (Dialog.Show(main, recovery.Heading, recovery.Body, "Apri la cartella") == Choice.Secondary) OpenDataFolder();
+                if (Dialog.Show(main, recovery.Heading, recovery.Body, T("Apri la cartella")) == Choice.Secondary) OpenDataFolder();
             }, DispatcherPriority.ApplicationIdle);
         if (imported != null)
             Dispatcher.BeginInvoke(() =>
             {
-                if (Dialog.Show(main, imported.Heading, imported.Body, "Apri la cartella") == Choice.Secondary) OpenDataFolder();
+                if (Dialog.Show(main, imported.Heading, imported.Body, T("Apri la cartella")) == Choice.Secondary) OpenDataFolder();
             }, DispatcherPriority.ApplicationIdle);
         // Testi cifrati delle impostazioni che non si decifrano più (ProtectedTextConverter.Open: impostazioni di un altro PC
         // o di un altro utente di Windows): detto una volta, non a ogni avvio (audit, F-44 punto 4).
@@ -213,7 +222,7 @@ public sealed class App : Application
             Store.Settings.UnreadableTold = true;
             Store.Save();
             Log.Write($"impostazioni: {unreadable} testi cifrati non si decifrano più su questo PC (restano nel file com'erano)");
-            Dispatcher.BeginInvoke(() => Dialog.Show(main, "Alcuni dati salvati non si leggono su questo PC", UnreadableNotice(unreadable)), DispatcherPriority.ApplicationIdle);
+            Dispatcher.BeginInvoke(() => Dialog.Show(main, T("Alcuni dati salvati non si leggono su questo PC"), UnreadableNotice(unreadable)), DispatcherPriority.ApplicationIdle);
         }
         if (Store.Settings.StartWithWindows) ApplyStartWithWindows(); // il percorso giusto anche dopo un aggiornamento
         // Avviata da un link mailto: (Missiva app di posta di Windows): il messaggio nuovo appena ci sono gli account.
@@ -280,12 +289,10 @@ public sealed class App : Application
         Log.Startup("notifiche: gestore registrato");
     }
 
-    internal static string UnreadableNotice(int count) =>
-        $"{(count == 1 ? "Un testo cifrato" : count + " testi cifrati")} delle impostazioni di Missiva (modelli, firme, parole e cartelle delle regole, oggetti dei messaggi " +
-        "posposti o contrassegnati, ricerche recenti, mittenti delle immagini, calendari nascosti) non si " + (count == 1 ? "decifra" : "decifrano") + " più: succede quando le impostazioni vengono da un altro PC o da un " +
-        "altro utente di Windows.\n\nAl loro posto vedi \"(testo cifrato non leggibile su questo PC)\". Nel file restano com'erano, e sul PC di prima si leggono ancora. " +
-        "Le regole di Missiva che li usano restano ferme finché non le correggi.\n\nAnche le password e gli accessi degli account possono non leggersi più: lo dice la barra " +
-        "sotto l'account, con Aggiorna password o Accedi di nuovo.";
+    internal static string UnreadableNotice(int count) => count == 1
+        ? T("Un testo cifrato delle impostazioni di Missiva (modelli, firme, parole e cartelle delle regole, oggetti dei messaggi posposti o contrassegnati, ricerche recenti, mittenti delle immagini, calendari nascosti) non si decifra più: succede quando le impostazioni vengono da un altro PC o da un altro utente di Windows.\n\nAl loro posto vedi \"(testo cifrato non leggibile su questo PC)\". Nel file restano com'erano, e sul PC di prima si leggono ancora. Le regole di Missiva che li usano restano ferme finché non le correggi.\n\nAnche le password e gli accessi degli account possono non leggersi più: lo dice la barra sotto l'account, con Aggiorna password o Accedi di nuovo.")
+        : T("{0} testi cifrati delle impostazioni di Missiva (modelli, firme, parole e cartelle delle regole, oggetti dei messaggi posposti o contrassegnati, ricerche recenti, mittenti delle immagini, calendari nascosti) non si decifrano più: succede quando le impostazioni vengono da un altro PC o da un altro utente di Windows.\n\nAl loro posto vedi \"(testo cifrato non leggibile su questo PC)\". Nel file restano com'erano, e sul PC di prima si leggono ancora. Le regole di Missiva che li usano restano ferme finché non le correggi.\n\nAnche le password e gli accessi degli account possono non leggersi più: lo dice la barra sotto l'account, con Aggiorna password o Accedi di nuovo.",
+            count);
 
     /// <summary>La cartella dei dati di Missiva in Esplora file (impostazioni, copie messe da parte, registri).</summary>
     public static void OpenDataFolder()
@@ -374,9 +381,12 @@ public sealed class App : Application
     /// Chiude Missiva e la riapre (Riavvia ora, dopo l'importazione di una copia di sicurezza): l'uscita è quella di Esci,
     /// con le domande delle scritture aperte; se una viene annullata Missiva resta e non si riavvia.
     /// </summary>
-    public void Restart()
+    public void Restart() => RestartBecause("dopo l'importazione di una copia di sicurezza");
+
+    /// <summary>Come Restart(), con il perché nel registro (anche Riavvia ora dopo un cambio di lingua, Impostazioni, Generali, Aspetto).</summary>
+    public void RestartBecause(string why)
     {
-        Log.Write("riavvio di Missiva chiesto dopo l'importazione di una copia di sicurezza");
+        Log.Write($"riavvio di Missiva chiesto {why}");
         restartAfterExit = true;
         ExitAll();
     }
@@ -725,7 +735,7 @@ public sealed class App : Application
         Log.Write($"{why}: {open.Count} scritture aperte");
         if (open.Count == 0) return;
         var handle = MainWindow is { } main ? new System.Windows.Interop.WindowInteropHelper(main).Handle : IntPtr.Zero;
-        if (handle != IntPtr.Zero) ShutdownBlockReasonCreate(handle, "Missiva sta salvando le bozze dei messaggi aperti.");
+        if (handle != IntPtr.Zero) ShutdownBlockReasonCreate(handle, T("Missiva sta salvando le bozze dei messaggi aperti."));
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var all = Task.WhenAll(open.Select(w => w.SaveForSessionEndAsync()));
         var frame = new DispatcherFrame();
@@ -1320,7 +1330,7 @@ public sealed class App : Application
             {
                 Show(new ToastContentBuilder()
                     .AddArgument("account", provider.Account.Id)
-                    .AddText($"{incoming.Count} nuovi messaggi")
+                    .AddText(T("{0} nuovi messaggi", incoming.Count))
                     .AddText(string.Join(", ", incoming.Select(m => m.From.Display).Distinct().Take(4)))
                     .AddAttributionText(provider.Account.Email));
                 Log.Write($"notifica mostrata: {incoming.Count} nuovi messaggi di {provider.Account.Email}");
@@ -1338,7 +1348,7 @@ public sealed class App : Application
                     .AddArgument("folder", m.FolderId)
                     .AddArgument("message", m.Id)
                     .AddText(m.From.Display)
-                    .AddText(m.Subject.Length > 0 ? m.Subject : "(nessun oggetto)")
+                    .AddText(m.Subject.Length > 0 ? m.Subject : T("(nessun oggetto)"))
                     .AddText(m.Preview)
                     .AddAttributionText(provider.Account.Email);
                 // Il logo del marchio del mittente, se è già stato trovato (Logos), nel cerchio come nell'elenco; altrimenti il
@@ -1362,9 +1372,9 @@ public sealed class App : Application
 
     /// <summary>
     /// Il pulsante del contrassegno: "Contrassegna" (12 lettere) non ci sta nella terza parte della larghezza della notifica
-    /// (Windows 11: "Contrassegn" e la "a" a capo, 29 settembre 2026), "Segna" sì.
+    /// (Windows 11: "Contrassegn" e la "a" a capo, 29 settembre 2026), "Segna" sì. In inglese "Flag", la parola di Outlook.
     /// </summary>
-    internal const string FlagButton = "Segna";
+    internal static string FlagButton => T("Segna");
 
     /// <summary>
     /// Le notifiche di un solo messaggio (non "N nuovi messaggi"), come le ha chieste l'autore: tre pulsanti, Rispondi, Contrassegna
@@ -1379,9 +1389,9 @@ public sealed class App : Application
     /// <param name="target">Account, cartella e messaggio: le voci del menu non ricevono gli argomenti del costruttore.</param>
     internal static void AddActions(ToastContentBuilder toast, ToastArguments target)
     {
-        toast.AddButton(new ToastButton().SetContent("Rispondi").AddArgument("action", "reply"))
+        toast.AddButton(new ToastButton().SetContent(T("Rispondi")).AddArgument("action", "reply"))
             .AddButton(new ToastButton().SetContent(FlagButton).AddArgument("action", "flag").SetBackgroundActivation())
-            .AddButton(new ToastButton().SetContent("Elimina").AddArgument("action", "delete").SetBackgroundActivation());
+            .AddButton(new ToastButton().SetContent(T("Elimina")).AddArgument("action", "delete").SetBackgroundActivation());
         if (toast.GetToastContent().Actions is not ToastActionsCustom actions) return;
         string For(string action, string? choice = null)
         {
@@ -1391,8 +1401,8 @@ public sealed class App : Application
             if (choice != null) arguments.Add("snooze", choice);
             return arguments.ToString();
         }
-        actions.ContextMenuItems.Add(new ToastContextMenuItem("Posponi di un'ora", For("snooze", "1h")) { ActivationType = ToastActivationType.Background });
-        actions.ContextMenuItems.Add(new ToastContextMenuItem("Posponi...", For("snoozepick")));
+        actions.ContextMenuItems.Add(new ToastContextMenuItem(T("Posponi di un'ora"), For("snooze", "1h")) { ActivationType = ToastActivationType.Background });
+        actions.ContextMenuItems.Add(new ToastContextMenuItem(T("Posponi..."), For("snoozepick")));
     }
 
     /// <summary>
@@ -1414,6 +1424,15 @@ public sealed class App : Application
     internal static void Show(ToastContentBuilder toast)
     {
         if (!Store.Settings.NotificationSound) toast.AddAudio(new ToastAudio { Silent = true }); // Impostazioni, Generali, Notifiche
+#if DEBUG
+        // Le prove a finestra senza nulla sullo schermo (le foto, anche in inglese): con MISSIVA_NOTIFICHE_SOLO_REGISTRO=1 la
+        // notifica non si mostra e il suo XML va nel registro (21 ottobre 2026, per leggere le notifiche in inglese).
+        if (Environment.GetEnvironmentVariable("MISSIVA_NOTIFICHE_SOLO_REGISTRO") == "1")
+        {
+            Log.Write("prova: notifica non mostrata (MISSIVA_NOTIFICHE_SOLO_REGISTRO), XML: " + toast.GetToastContent().GetContent());
+            return;
+        }
+#endif
 #if DEBUG || PROVA
         toast.Show(t => t.ExpirationTime = DateTimeOffset.Now.AddMinutes(10));
 #else

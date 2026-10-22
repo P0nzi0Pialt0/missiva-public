@@ -137,10 +137,13 @@ internal sealed class CalendarReminders(DateTime start)
     /// <param name="was">L'ora dell'orologio in cui il promemoria doveva arrivare (DueReminder.Was); null se è puntuale.</param>
     internal static (string When, string? Late) Text(CalendarEvent e, DateTime? was, DateTime today)
     {
-        var when = e.AllDay ? "tutto il giorno" : e.Start.Date == today.Date ? $"alle {e.Start:HH:mm}" : Calendars.When(e);
+        var when = e.AllDay ? T("tutto il giorno") : e.Start.Date == today.Date ? T("alle {0}", e.Start.ToString("HH:mm")) : Calendars.When(e);
         if (was is not { } at) return (when, null);
-        var day = at.Date == today.Date ? "" : at.Date == today.Date.AddDays(-1) ? "ieri " : at.ToString("dddd d MMMM", new System.Globalization.CultureInfo("it-IT")) + " ";
-        return (when, $"Promemoria in ritardo: era {day}alle {at:HH:mm}");
+        var time = at.ToString("HH:mm");
+        var late = at.Date == today.Date ? T("Promemoria in ritardo: era alle {0}", time)
+            : at.Date == today.Date.AddDays(-1) ? T("Promemoria in ritardo: era ieri alle {0}", time)
+            : T("Promemoria in ritardo: era {0} alle {1}", at.ToString("dddd d MMMM", Lingua.Culture), time);
+        return (when, late);
     }
 
     /// <summary>La riga del registro per i promemoria in ritardo non mostrati: quanti, mai i titoli delle riunioni.</summary>

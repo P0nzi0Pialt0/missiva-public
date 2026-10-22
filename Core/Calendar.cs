@@ -257,20 +257,23 @@ public static class Calendars
     public static IEnumerable<CalendarEvent> AllDayOn(IEnumerable<CalendarEvent> events, DateTime day) =>
         events.Where(e => e.AllDay && e.Start.Date <= day.Date && e.End > day.Date);
 
-    /// <summary>Quando, in parole: "sabato 26 settembre, 09:00 - 10:00", "tutto il giorno", o due date.</summary>
+    /// <summary>
+    /// Quando, in parole: "sabato 26 settembre, 09:00 - 10:00", "tutto il giorno", o due date; giorni e mesi nella lingua
+    /// di Missiva (Lingua.Culture: in inglese "Saturday 26 September, all day").
+    /// </summary>
     public static string When(CalendarEvent e)
     {
-        var it = new CultureInfo("it-IT");
+        var culture = Lingua.Culture;
         if (e.AllDay)
         {
             var last = e.End.AddDays(-1);
             return last.Date <= e.Start.Date
-                ? $"{e.Start.ToString("dddd d MMMM", it)}, tutto il giorno"
-                : $"dal {e.Start.ToString("dddd d MMMM", it)} al {last.ToString("dddd d MMMM", it)}, tutto il giorno";
+                ? T("{0}, tutto il giorno", e.Start.ToString("dddd d MMMM", culture))
+                : T("dal {0} al {1}, tutto il giorno", e.Start.ToString("dddd d MMMM", culture), last.ToString("dddd d MMMM", culture));
         }
         return e.End.Date == e.Start.Date || e.End == e.Start.Date.AddDays(1)
-            ? $"{e.Start.ToString("dddd d MMMM", it)}, {e.Start:HH:mm} - {e.End:HH:mm}"
-            : $"{e.Start.ToString("dddd d MMMM, HH:mm", it)} - {e.End.ToString("dddd d MMMM, HH:mm", it)}";
+            ? $"{e.Start.ToString("dddd d MMMM", culture)}, {e.Start:HH:mm} - {e.End:HH:mm}"
+            : $"{e.Start.ToString("dddd d MMMM, HH:mm", culture)} - {e.End.ToString("dddd d MMMM, HH:mm", culture)}";
     }
 
     /// <summary>
@@ -439,11 +442,11 @@ public static class Calendars
     /// <summary>La risposta in parole, per i dettagli.</summary>
     public static string ResponseText(string response) => response switch
     {
-        "organizer" => "Organizzatore",
-        "accepted" => "Accettato",
-        "tentativelyAccepted" => "Provvisorio",
-        "declined" => "Rifiutato",
-        "notResponded" => "Nessuna risposta",
+        "organizer" => T("Organizzatore"),
+        "accepted" => T("Accettato"),
+        "tentativelyAccepted" => T("Provvisorio"),
+        "declined" => T("Rifiutato"),
+        "notResponded" => T("Nessuna risposta"),
         _ => "",
     };
 

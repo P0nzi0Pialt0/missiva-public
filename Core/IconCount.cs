@@ -39,8 +39,8 @@ public static class IconCount
     /// <summary>Che cosa dice il numero, per la descrizione dell'icona e il suggerimento dell'area di notifica: vuoto senza numero.</summary>
     public static string Describe(IconNumberKind kind, int count) =>
         count <= 0 || kind == IconNumberKind.None ? ""
-        : kind == IconNumberKind.New ? (count == 1 ? "1 nuovo" : $"{count} nuovi")
-        : $"{count} da leggere";
+        : kind == IconNumberKind.New ? (count == 1 ? T("1 nuovo") : T("{0} nuovi", count))
+        : T("{0} da leggere", count);
 
     /// <summary>Il suggerimento dell'icona dell'area di notifica: il nome, e con un numero anche quello, come sull'icona della barra.</summary>
     public static string TrayTip(string name, IconNumberKind kind, int count) => Describe(kind, count) is { Length: > 0 } said ? $"{name}: {said}" : name;

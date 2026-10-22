@@ -57,22 +57,22 @@ public sealed class AttachmentPreview : UserControl
     {
         var root = new DockPanel { Margin = new Thickness(12, 6, 12, 12) };
         var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 8), LastChildFill = true };
-        var back = Command("", "Torna al messaggio");
+        var back = Command("", T("Torna al messaggio"));
         back.Click += (_, _) => BackRequested?.Invoke();
         DockPanel.SetDock(back, Dock.Left);
         bar.Children.Add(back);
         var right = new StackPanel { Orientation = Orientation.Horizontal };
-        previous = Command("", "Allegato precedente");
+        previous = Command("", T("Allegato precedente"));
         previous.Click += async (_, _) => await MoveAsync(-1);
-        next = Command("", "Allegato successivo");
+        next = Command("", T("Allegato successivo"));
         next.Click += async (_, _) => await MoveAsync(1);
-        zoomOut = Command("", "Riduci");
+        zoomOut = Command("", T("Riduci"));
         zoomOut.Click += (_, _) => Zoom(zoom / 1.25);
-        zoomIn = Command("", "Ingrandisci");
+        zoomIn = Command("", T("Ingrandisci"));
         zoomIn.Click += (_, _) => Zoom(zoom * 1.25);
-        var save = Command("", "Scarica");
+        var save = Command("", T("Scarica"));
         save.Click += async (_, _) => { if (Current is { } a && SaveRequested != null) await SaveRequested(a); };
-        var open = Command("", "Apri con il programma di Windows");
+        var open = Command("", T("Apri con il programma di Windows"));
         open.Click += async (_, _) => { if (Current is { } a && OpenRequested != null) await OpenRequested(a); };
         foreach (var b in new[] { zoomOut, zoomIn, previous, next, save, open }) right.Children.Add(b);
         DockPanel.SetDock(right, Dock.Right);
@@ -232,7 +232,7 @@ public sealed class AttachmentPreview : UserControl
         title.Text = attachment.Name;
         previous.IsEnabled = next.IsEnabled = items.Count > 1;
         zoomIn.IsEnabled = zoomOut.IsEnabled = kind != Kind.Text;
-        status.Text = "Caricamento…";
+        status.Text = T("Caricamento…");
         status.Visibility = Visibility.Visible;
         var clock = Stopwatch.StartNew();
         byte[] bytes;
@@ -244,7 +244,7 @@ public sealed class AttachmentPreview : UserControl
         {
             if (v != version) return;
             Log.Error("anteprima dell'allegato", ex);
-            status.Text = "L'allegato non è disponibile: " + ex.Message;
+            status.Text = T("L'allegato non è disponibile: {0}", ex.Message);
             return;
         }
         if (v != version) return;
@@ -276,7 +276,7 @@ public sealed class AttachmentPreview : UserControl
             for (int i = 0; i < count; i++)
             {
                 var slot = new Border { Margin = new Thickness(0, 0, 0, PageGap), Background = Brushes.White };
-                AutomationProperties.SetName(slot, $"Pagina {i + 1} di {count}");
+                AutomationProperties.SetName(slot, T("Pagina {0} di {1}", i + 1, count));
                 pageSlots.Add(slot);
                 pages.Children.Add(slot);
             }
@@ -414,8 +414,8 @@ public sealed class AttachmentPreview : UserControl
         {
             Log.Write($"anteprima dell'immagine non riuscita: {ex.GetType().Name} {ex.Message}");
             status.Text = ex is Sandbox.SandboxException
-                ? "L'anteprima protetta non si è potuta avviare su questo PC, e senza protezione Missiva non apre l'immagine: aprila con il programma di Windows (Apri)."
-                : "L'immagine non si legge: il formato non è PNG, JPEG, GIF o BMP, o il file è rovinato. Puoi aprirla con il programma di Windows.";
+                ? T("L'anteprima protetta non si è potuta avviare su questo PC, e senza protezione Missiva non apre l'immagine: aprila con il programma di Windows (Apri).")
+                : T("L'immagine non si legge: il formato non è PNG, JPEG, GIF o BMP, o il file è rovinato. Puoi aprirla con il programma di Windows.");
             return;
         }
         catch (Exception)
@@ -441,7 +441,7 @@ public sealed class AttachmentPreview : UserControl
             AcceptsReturn = true, BorderThickness = new Thickness(0), Padding = new Thickness(12), MinWidth = Math.Max(300, ActualWidth - 64),
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
-        AutomationProperties.SetName(box, "Testo dell'allegato");
+        AutomationProperties.SetName(box, T("Testo dell'allegato"));
         pages.HorizontalAlignment = HorizontalAlignment.Stretch;
         pages.Children.Add(box);
         Log.Time($"anteprima: testo ({bytes.Length / 1024} KB)", clock);

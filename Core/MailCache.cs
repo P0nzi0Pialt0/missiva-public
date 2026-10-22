@@ -28,8 +28,15 @@ public static class MailCache
         return Path.Combine(AccountDir(account), $"{hash}{suffix}.json");
     }
 
+    /// <summary>
+    /// Le cartelle della copia locale. I nomi delle cartelle speciali sono quelli di Missiva nella lingua di quando la
+    /// copia è stata scritta: si rimettono in quella di adesso (MailFolder.SpecialName), così dopo un cambio di lingua
+    /// non restano nell'altra fino alla lettura dal server (o, senza rete, per tutta la sessione).
+    /// </summary>
     public static List<MailFolder>? LoadFolders(MailAccount account) =>
-        Read<List<MailFolder>>(Path.Combine(AccountDir(account), "cartelle.json"));
+        Read<List<MailFolder>>(Path.Combine(AccountDir(account), "cartelle.json"))?
+            .Select(f => MailFolder.SpecialShown(account.Kind, f.Kind) is { Length: > 0 } shown && f.Name != shown ? f.Renamed(shown) : f)
+            .ToList();
 
     public static void SaveFolders(MailAccount account, List<MailFolder> folders) =>
         Write(Path.Combine(AccountDir(account), "cartelle.json"), folders);

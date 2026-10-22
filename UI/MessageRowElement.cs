@@ -173,7 +173,7 @@ public sealed class MessageRowElement : FrameworkElement
             Tune(readButton!, item, item.ReadTip, item.ReadGlyph);
             Tune(flagButton!, item, item.FlagTip, null);
             Tune(pinButton!, item, item.PinTip, null);
-            Tune(deleteButton!, item, "Elimina", null);
+            Tune(deleteButton!, item, T("Elimina"), null);
         }
         if (showCheck && check != null)
         {
@@ -693,7 +693,7 @@ public sealed class MessageRowElement : FrameworkElement
         if (layout == null) return null;
         if (ChipAt(p) is { } chip) return chip.Tip;
         if (!layout.WhereRect.IsEmpty && layout.WhereRect.Contains(p) && layout.WhereTip.Length > 0) return layout.WhereTip;
-        if (!layout.ImportantRect.IsEmpty && layout.ImportantRect.Contains(p)) return "Importanza alta";
+        if (!layout.ImportantRect.IsEmpty && layout.ImportantRect.Contains(p)) return T("Importanza alta");
         return null;
     }
 

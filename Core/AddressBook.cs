@@ -54,7 +54,7 @@ public static class AddressBook
 
         /// <summary>La seconda riga del suggerimento: indirizzo e azienda, o le persone del gruppo.</summary>
         [JsonIgnore]
-        public string Detail => Group is { } g ? $"Gruppo, {g.Members.Count} {(g.Members.Count == 1 ? "persona" : "persone")}"
+        public string Detail => Group is { } g ? g.Members.Count == 1 ? T("Gruppo, {0} persona", g.Members.Count) : T("Gruppo, {0} persone", g.Members.Count)
             : Company.Length > 0 ? $"{Email} · {Company}" : Email;
 
         /// <summary>Il nome per UI Automation e Assistente vocale: la persona con l'azienda, il gruppo con quante persone ha.</summary>

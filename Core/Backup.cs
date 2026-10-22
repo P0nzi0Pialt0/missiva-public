@@ -106,25 +106,25 @@ public static class BackupFile
     public static void Check(ReadOnlySpan<byte> file)
     {
         if (file.Length < Magic.Length || !file[..Magic.Length].SequenceEqual(Magic))
-            throw new BackupException(BackupProblem.NotABackup, "Questo file non è una copia di sicurezza di Missiva.");
+            throw new BackupException(BackupProblem.NotABackup, T("Questo file non è una copia di sicurezza di Missiva."));
         if (file.Length < Fixed)
-            throw new BackupException(BackupProblem.Incomplete, "Il file è incompleto: si ferma dopo pochi byte. Forse la copia o il trasferimento si sono interrotti: copialo di nuovo dal PC di partenza.");
+            throw new BackupException(BackupProblem.Incomplete, T("Il file è incompleto: si ferma dopo pochi byte. Forse la copia o il trasferimento si sono interrotti: copialo di nuovo dal PC di partenza."));
         int version = BinaryPrimitives.ReadUInt16LittleEndian(file[8..]);
         if (version > Version)
             throw new BackupException(BackupProblem.NewerFormat,
-                $"Questa copia di sicurezza è stata fatta con una versione più nuova di Missiva (formato {version}; questa Missiva legge fino al formato {Version}). " +
-                "Aggiorna Missiva su questo PC e riprova: il file va bene così com'è.");
+                T("Questa copia di sicurezza è stata fatta con una versione più nuova di Missiva (formato {0}; questa Missiva legge fino al formato {1}). Aggiorna Missiva su questo PC e riprova: il file va bene così com'è.",
+                  version, Version));
         uint iterations = BinaryPrimitives.ReadUInt32LittleEndian(file[12..]);
         ulong length = BinaryPrimitives.ReadUInt64LittleEndian(file[20..]);
         if (version != Version || file[10] != 1 || file[11] != 1 || file[16] != SaltSize || file[17] != NonceSize || file[18] != TagSize || file[19] != 0
             || iterations < Iterations || iterations > MaxIterations || length > MaxContent)
-            throw new BackupException(BackupProblem.Damaged, "Il file è rovinato: la sua intestazione non è valida. Serve un'altra copia.");
+            throw new BackupException(BackupProblem.Damaged, T("Il file è rovinato: la sua intestazione non è valida. Serve un'altra copia."));
         long expected = Body + (long)length + TagSize;
         if (file.Length < expected)
             throw new BackupException(BackupProblem.Incomplete,
-                $"Il file è incompleto: mancano {expected - file.Length:N0} byte su {expected:N0}. Forse la copia o il trasferimento si sono interrotti: copialo di nuovo dal PC di partenza.");
+                T("Il file è incompleto: mancano {0:N0} byte su {1:N0}. Forse la copia o il trasferimento si sono interrotti: copialo di nuovo dal PC di partenza.", expected - file.Length, expected));
         if (file.Length > expected)
-            throw new BackupException(BackupProblem.Damaged, "Il file è più lungo di come Missiva l'ha scritto: è stato modificato dopo l'esportazione. Serve un'altra copia.");
+            throw new BackupException(BackupProblem.Damaged, T("Il file è più lungo di come Missiva l'ha scritto: è stato modificato dopo l'esportazione. Serve un'altra copia."));
     }
 
     /// <summary>Il contenuto in chiaro, o una BackupException che dice perché no. Chi chiama lo azzera quando ha finito.</summary>
@@ -144,7 +144,7 @@ public static class BackupFile
             }
             catch (CryptographicException)
             {
-                throw new BackupException(BackupProblem.WrongPassword, "La password non è quella di questa copia. Controlla maiuscole, minuscole e il blocco delle maiuscole, e riprova.");
+                throw new BackupException(BackupProblem.WrongPassword, T("La password non è quella di questa copia. Controlla maiuscole, minuscole e il blocco delle maiuscole, e riprova."));
             }
             var content = new byte[length];
             try
@@ -155,8 +155,7 @@ public static class BackupFile
             {
                 CryptographicOperations.ZeroMemory(content);
                 throw new BackupException(BackupProblem.Damaged,
-                    "La password è giusta, ma il file è rovinato o è stato modificato dopo l'esportazione: il contenuto non corrisponde più al suo sigillo, e Missiva non lo importa. " +
-                    "Serve un'altra copia del file.");
+                    T("La password è giusta, ma il file è rovinato o è stato modificato dopo l'esportazione: il contenuto non corrisponde più al suo sigillo, e Missiva non lo importa. Serve un'altra copia del file."));
             }
             return content;
         }
@@ -206,28 +205,28 @@ sealed partial class BackupJson : JsonSerializerContext;
 public sealed record BackupSummary(DateTime Created, IReadOnlyList<MailAccount> Accounts, int Signatures, int Templates, int Rules, int Contacts, int Groups,
                                    int AddressBook, int Snoozed, int Flags, int Passwords)
 {
-    static string Count(int n, string one, string many) => n == 1 ? one : $"{n} {many}";
+    /// <summary>Quando è stata fatta, nella lingua di Missiva: "27 settembre 2026 alle 14:30".</summary>
+    public string When => Backup.DateTimeText(Created.ToLocalTime());
 
-    public string When => Created.ToLocalTime().ToString("d MMMM yyyy 'alle' HH:mm", System.Globalization.CultureInfo.GetCultureInfo("it-IT"));
-
-    /// <summary>"2 account (mario@..., maria@...), 3 firme, ...": solo quello che c'è.</summary>
+    /// <summary>"2 account (mario@..., maria@...), 3 firme, ...": solo quello che c'è, nella lingua di Missiva.</summary>
     public string Contents
     {
         get
         {
+            var emails = string.Join(", ", Accounts.Select(a => a.Email));
             var parts = new List<string>
             {
-                Accounts.Count == 0 ? "nessun account" : Count(Accounts.Count, "1 account", "account") + " (" + string.Join(", ", Accounts.Select(a => a.Email)) + ")",
+                Accounts.Count switch { 0 => T("nessun account"), 1 => T("1 account ({0})", emails), var n => T("{0} account ({1})", n, emails) },
             };
-            if (Signatures > 0) parts.Add(Count(Signatures, "1 firma", "firme"));
-            if (Templates > 0) parts.Add(Count(Templates, "1 modello", "modelli"));
-            if (Rules > 0) parts.Add(Count(Rules, "1 regola di Missiva", "regole di Missiva"));
-            if (Contacts > 0) parts.Add(Count(Contacts, "1 contatto di Missiva", "contatti di Missiva"));
-            if (Groups > 0) parts.Add(Count(Groups, "1 gruppo", "gruppi"));
-            if (AddressBook > 0) parts.Add(Count(AddressBook, "1 indirizzo nella rubrica dei destinatari", "indirizzi nella rubrica dei destinatari"));
-            if (Snoozed > 0) parts.Add(Count(Snoozed, "1 messaggio posposto", "messaggi posposti"));
-            if (Flags > 0) parts.Add(Count(Flags, "1 contrassegno con data", "contrassegni con data"));
-            return string.Join(", ", parts) + ", e le impostazioni";
+            if (Signatures > 0) parts.Add(Signatures == 1 ? T("1 firma") : T("{0} firme", Signatures));
+            if (Templates > 0) parts.Add(Templates == 1 ? T("1 modello") : T("{0} modelli", Templates));
+            if (Rules > 0) parts.Add(Rules == 1 ? T("1 regola di Missiva") : T("{0} regole di Missiva", Rules));
+            if (Contacts > 0) parts.Add(Contacts == 1 ? T("1 contatto di Missiva") : T("{0} contatti di Missiva", Contacts));
+            if (Groups > 0) parts.Add(Groups == 1 ? T("1 gruppo") : T("{0} gruppi", Groups));
+            if (AddressBook > 0) parts.Add(AddressBook == 1 ? T("1 indirizzo nella rubrica dei destinatari") : T("{0} indirizzi nella rubrica dei destinatari", AddressBook));
+            if (Snoozed > 0) parts.Add(Snoozed == 1 ? T("1 messaggio posposto") : T("{0} messaggi posposti", Snoozed));
+            if (Flags > 0) parts.Add(Flags == 1 ? T("1 contrassegno con data") : T("{0} contrassegni con data", Flags));
+            return T("{0}, e le impostazioni", string.Join(", ", parts));
         }
     }
 
@@ -253,33 +252,43 @@ public sealed record BackupSummary(DateTime Created, IReadOnlyList<MailAccount> 
 /// Che cosa è successo all'avvio con un'importazione in attesa (Backup.ApplyPending): riuscita, con gli account che chiedono
 /// di nuovo l'accesso e i file messi da parte, oppure no, con il motivo. Heading e Body sono l'avviso che App mostra.
 /// </summary>
-public sealed record BackupOutcome(bool Applied, DateTime Created, IReadOnlyList<MailAccount> NeedAccess, IReadOnlyList<string> SetAside, string? Error)
+/// <remarks>
+/// ApplyPending gira prima che la lingua sia scelta (App.LoadSettings, prima di Lingua.Start): i testi si calcolano quando si
+/// leggono, così in inglese escono in inglese. Per questo il motivo (ErrorText) e le note (NoteTexts) sono funzioni: Error e
+/// Notes le chiamano a ogni lettura. In italiano il testo è quello di prima.
+/// </remarks>
+public sealed record BackupOutcome(bool Applied, DateTime Created, IReadOnlyList<MailAccount> NeedAccess, IReadOnlyList<string> SetAside, Func<string>? ErrorText)
 {
-    public string Heading => Applied ? "Copia di sicurezza importata" : "Importazione non riuscita";
+    /// <summary>Il motivo per cui non è riuscita, o che cosa non è andato in una riuscita: null se niente.</summary>
+    public string? Error => ErrorText?.Invoke();
+
+    public string Heading => Applied ? T("Copia di sicurezza importata") : T("Importazione non riuscita");
 
     public string Body
     {
         get
         {
-            if (!Applied) return $"La copia di sicurezza non è stata importata: {Error}";
-            var text = $"Missiva è ripartita con i dati della copia del {Created.ToLocalTime().ToString("d MMMM yyyy 'alle' HH:mm", System.Globalization.CultureInfo.GetCultureInfo("it-IT"))}.";
+            if (!Applied) return T("La copia di sicurezza non è stata importata: {0}", Error);
+            var text = T("Missiva è ripartita con i dati della copia del {0}.", Backup.DateTimeText(Created.ToLocalTime()));
             if (NeedAccess.Count == 1)
-                text += $"\n\nSu questo PC {NeedAccess[0].Email} chiede di nuovo l'accesso, perché la copia non contiene gli accessi: sotto l'account, nell'elenco delle cartelle, " +
-                        "c'è la barra con Accedi di nuovo o Aggiorna password.";
+                text += "\n\n" + T("Su questo PC {0} chiede di nuovo l'accesso, perché la copia non contiene gli accessi: sotto l'account, nell'elenco delle cartelle, c'è la barra con Accedi di nuovo o Aggiorna password.",
+                                     NeedAccess[0].Email);
             else if (NeedAccess.Count > 1)
-                text += "\n\nSu questo PC questi account chiedono di nuovo l'accesso, perché la copia non contiene gli accessi: " + string.Join(", ", NeedAccess.Select(a => a.Email)) +
-                        ". Sotto ogni account, nell'elenco delle cartelle, c'è la barra con Accedi di nuovo o Aggiorna password.";
+                text += "\n\n" + T("Su questo PC questi account chiedono di nuovo l'accesso, perché la copia non contiene gli accessi: {0}. Sotto ogni account, nell'elenco delle cartelle, c'è la barra con Accedi di nuovo o Aggiorna password.",
+                                     string.Join(", ", NeedAccess.Select(a => a.Email)));
             if (SetAside.Count > 0)
-                text += "\n\nI dati che c'erano prima non sono stati cancellati: sono nella cartella dei dati di Missiva, con \"prima-dell-importazione\" e la data nel nome. " +
-                        "Dentro ci sono anche gli accessi degli account di prima: quando non ti servono più si eliminano da Impostazioni, Generali, Copia di sicurezza.";
+                text += "\n\n" + T("I dati che c'erano prima non sono stati cancellati: sono nella cartella dei dati di Missiva, con \"prima-dell-importazione\" e la data nel nome. Dentro ci sono anche gli accessi degli account di prima: quando non ti servono più si eliminano da Impostazioni, Generali, Copia di sicurezza.");
             foreach (var note in Notes) text += "\n\n" + note;
-            if (Error != null) text += "\n\n" + Error;
+            if (Error is { } error) text += "\n\n" + error;
             return text;
         }
     }
 
-    /// <summary>Altro da sapere dopo un'importazione riuscita: le regole di Missiva arrivate accese, le voci non importate.</summary>
-    public IReadOnlyList<string> Notes { get; init; } = [];
+    /// <summary>Altro da sapere dopo un'importazione riuscita (le regole di Missiva arrivate accese, le voci non importate), calcolato quando si legge.</summary>
+    public IReadOnlyList<Func<string>> NoteTexts { get; init; } = [];
+
+    /// <summary>Le note di NoteTexts, nella lingua di Missiva.</summary>
+    public IReadOnlyList<string> Notes => NoteTexts.Select(note => note()).ToList();
 }
 
 /// <summary>
@@ -307,6 +316,15 @@ public static class Backup
     /// </summary>
     internal const int MaxPlain = 64 << 20;
 
+    /// <summary>
+    /// Il motivo di Apply per un file di adesso che non si lascia mettere da parte: nasce all'avvio, prima della lingua, e si
+    /// traduce quando l'esito si legge (Shown).
+    /// </summary>
+    static readonly string Locked = N("non si lascia spostare, forse è in uso da un altro programma");
+
+    /// <summary>Il testo di un'eccezione per l'esito: Locked nella lingua di Missiva, gli altri (di Windows) come sono.</summary>
+    static string Shown(string message) => message == Locked ? T(Locked) : message;
+
     // ---------------------------------------------------------------- esportazione
 
     /// <summary>
@@ -331,9 +349,9 @@ public static class Backup
         static string Readable(string text) => ProtectedTextConverter.IsUnreadable(text) ? "" : text;
         foreach (var s in copy.Snoozed) (s.Subject, s.From) = (Readable(s.Subject), Readable(s.From));
         foreach (var f in copy.Flags) (f.Subject, f.From) = (Readable(f.Subject), Readable(f.From));
-        if (rules > 0) notes.Add(rules == 1 ? "Una regola di Missiva ha parti che su questo PC non si leggono più: non è nella copia." : $"{rules} regole di Missiva hanno parti che su questo PC non si leggono più: non sono nella copia.");
-        if (templates > 0) notes.Add(templates == 1 ? "Un modello su questo PC non si legge più: non è nella copia." : $"{templates} modelli su questo PC non si leggono più: non sono nella copia.");
-        if (signatures > 0) notes.Add(signatures == 1 ? "Una firma su questo PC non si legge più: non è nella copia." : $"{signatures} firme su questo PC non si leggono più: non sono nella copia.");
+        if (rules > 0) notes.Add(rules == 1 ? T("Una regola di Missiva ha parti che su questo PC non si leggono più: non è nella copia.") : T("{0} regole di Missiva hanno parti che su questo PC non si leggono più: non sono nella copia.", rules));
+        if (templates > 0) notes.Add(templates == 1 ? T("Un modello su questo PC non si legge più: non è nella copia.") : T("{0} modelli su questo PC non si leggono più: non sono nella copia.", templates));
+        if (signatures > 0) notes.Add(signatures == 1 ? T("Una firma su questo PC non si legge più: non è nella copia.") : T("{0} firme su questo PC non si leggono più: non sono nella copia.", signatures));
         copy.ScheduledSends.Clear();
         copy.UnreadableTold = false;
 
@@ -342,7 +360,7 @@ public static class Backup
         if (copy.ProtectedGoogleClientSecret != null)
         {
             if (Store.TryUnprotect(copy.ProtectedGoogleClientSecret, out var secret)) data.GoogleClientSecret = secret;
-            else notes.Add("Il segreto dell'app Google su questo PC non si legge più: non è nella copia, andrà riscritto in Impostazioni, Account.");
+            else notes.Add(T("Il segreto dell'app Google su questo PC non si legge più: non è nella copia, andrà riscritto in Impostazioni, Account."));
             copy.ProtectedGoogleClientSecret = null;
         }
         foreach (var account in copy.Accounts)
@@ -353,15 +371,15 @@ public static class Backup
             if (withPasswords && server.ProtectedPassword != null)
             {
                 if (Store.TryUnprotect(server.ProtectedPassword, out var password)) data.ImapPasswords[account.Id] = password;
-                else notes.Add($"La password di {account.Email} su questo PC non si legge più: non è nella copia.");
+                else notes.Add(T("La password di {0} su questo PC non si legge più: non è nella copia.", account.Email));
             }
             server.ProtectedPassword = null;
         }
         data.Settings = PortableJson(copy);
 
-        data.Contacts = ReadFile(Path.Combine(dir, ContactsName), "I contatti di Missiva", notes, Unprotected);
+        data.Contacts = ReadFile(Path.Combine(dir, ContactsName), T("I contatti di Missiva su questo PC non si leggono: non sono nella copia."), notes, Unprotected);
         // La rubrica scritta in chiaro dalle prime versioni comincia con una graffa (AddressBook.Ensure).
-        data.AddressBook = ReadFile(Path.Combine(dir, BookName), "La rubrica dei destinatari", notes, raw => raw[0] == (byte)'{' ? Encoding.UTF8.GetString(raw) : Unprotected(raw));
+        data.AddressBook = ReadFile(Path.Combine(dir, BookName), T("La rubrica dei destinatari su questo PC non si leggono: non sono nella copia."), notes, raw => raw[0] == (byte)'{' ? Encoding.UTF8.GetString(raw) : Unprotected(raw));
         return data;
     }
 
@@ -373,7 +391,8 @@ public static class Backup
         finally { CryptographicOperations.ZeroMemory(plain); }
     }
 
-    static string? ReadFile(string path, string what, List<string> notes, Func<byte[], string> open)
+    /// <param name="unreadable">Che cosa dire se il file non si legge: la nota dell'esportazione.</param>
+    static string? ReadFile(string path, string unreadable, List<string> notes, Func<byte[], string> open)
     {
         try
         {
@@ -386,7 +405,7 @@ public static class Backup
         }
         catch (Exception ex) when (ex is CryptographicException or FormatException or JsonException or IOException or UnauthorizedAccessException)
         {
-            notes.Add($"{what} su questo PC non si leggono: non sono nella copia.");
+            notes.Add(unreadable);
             Log.Write($"copia di sicurezza: {Path.GetFileName(path)} non letto ({ex.GetType().Name})");
             return null;
         }
@@ -399,8 +418,8 @@ public static class Backup
         try
         {
             if (json.Length > MaxPlain)
-                throw new InvalidOperationException($"i dati da copiare superano i {MaxPlain >> 20} MB che una copia di sicurezza può tenere. " +
-                                                    "Di solito sono firme o modelli con immagini molto grandi: alleggeriscili e riprova.");
+                throw new InvalidOperationException(T("i dati da copiare superano i {0} MB che una copia di sicurezza può tenere. Di solito sono firme o modelli con immagini molto grandi: alleggeriscili e riprova.",
+                                                      MaxPlain >> 20));
             packed = Compress(json);
             return BackupFile.Seal(packed, password);
         }
@@ -440,7 +459,7 @@ public static class Backup
             var data = JsonSerializer.Deserialize(json, BackupJson.Default.BackupData) ?? throw new JsonException("vuoto");
             if (data.Format > BackupFile.Version)
                 throw new BackupException(BackupProblem.NewerFormat,
-                    $"Questa copia di sicurezza è stata fatta con una versione più nuova di Missiva (formato {data.Format}). Aggiorna Missiva su questo PC e riprova.");
+                    T("Questa copia di sicurezza è stata fatta con una versione più nuova di Missiva (formato {0}). Aggiorna Missiva su questo PC e riprova.", data.Format));
             Validate(data);
             return data;
         }
@@ -450,7 +469,7 @@ public static class Backup
             // posto di un altro, una proprietà scritta due volte) è un file che non si importa, mai un'eccezione che arriva
             // a chi chiama: all'avvio chiuderebbe Missiva (audit dell'11 ottobre, T-16).
             throw new BackupException(BackupProblem.Damaged,
-                $"Il contenuto della copia non si legge ({ex.GetType().Name}): viene da una versione di Missiva più nuova di questa, oppure è rovinato. Aggiorna Missiva e riprova; se non basta serve un'altra copia.");
+                T("Il contenuto della copia non si legge ({0}): viene da una versione di Missiva più nuova di questa, oppure è rovinato. Aggiorna Missiva e riprova; se non basta serve un'altra copia.", ex.GetType().Name));
         }
         finally
         {
@@ -476,9 +495,9 @@ public static class Backup
         // Gli identificativi degli account diventano nomi di cartelle e chiavi: una copia costruita apposta con
         // "..\..\Documenti" o un percorso intero non entra (audit dell'11 ottobre, T-14).
         if (MailAccount.Problem(settings.Accounts) is { } problem) throw Foreign(problem);
-        if (settings.Accounts.Any(a => a.Email.Trim().Length == 0)) throw Foreign("un account è senza indirizzo");
+        if (settings.Accounts.Any(a => a.Email.Trim().Length == 0)) throw Foreign(T("un account è senza indirizzo"));
         var withServer = settings.Accounts.Where(a => a.Imap != null).Select(a => a.Id).ToHashSet();
-        if (data.ImapPasswords.Any(p => p.Value == null || !withServer.Contains(p.Key))) throw Foreign("una password non è di un account IMAP della copia");
+        if (data.ImapPasswords.Any(p => p.Value == null || !withServer.Contains(p.Key))) throw Foreign(T("una password non è di un account IMAP della copia"));
         if (data.Contacts != null)
         {
             var contacts = (JsonNode.Parse(data.Contacts) ?? throw new JsonException("contatti vuoti")).AsArray();
@@ -512,7 +531,7 @@ public static class Backup
         }
         else if (node is JsonArray list)
             foreach (var item in list)
-                StripNulls(item ?? throw Foreign("un elenco ha una voce vuota"));
+                StripNulls(item ?? throw Foreign(T("un elenco ha una voce vuota")));
     }
 
     /// <summary>
@@ -520,7 +539,7 @@ public static class Backup
     /// conosce la password. Si rifiuta come un file rovinato, dicendo perché.
     /// </summary>
     static BackupException Foreign(string why) => new(BackupProblem.Damaged,
-        $"Il contenuto della copia non è quello che Missiva scrive ({why}): il file è stato costruito o cambiato da altri, e Missiva non lo importa.");
+        T("Il contenuto della copia non è quello che Missiva scrive ({0}): il file è stato costruito o cambiato da altri, e Missiva non lo importa.", why));
 
     /// <param name="current">Le impostazioni di questo PC, per dire nella conferma che cosa la copia cambia degli account che ci sono già; null per non confrontare.</param>
     public static BackupSummary Describe(BackupData data, Settings? current = null)
@@ -557,23 +576,26 @@ public static class Backup
 
     static string Server(string host, int port) => $"{Short(host, 80)}:{port}";
 
+    /// <summary>Data e ora con le parole nella lingua di Missiva: "27 settembre 2026 alle 14:30", "27 September 2026 at 14:30".</summary>
+    internal static string DateTimeText(DateTime when) => when.ToString(T("d MMMM yyyy 'alle' HH:mm"), Lingua.Culture);
+
     static string AccountLine(Settings settings, MailAccount account)
     {
         string kind = account.SharedOf != null
-            ? "casella condivisa di Microsoft 365" + (settings.Accounts.FirstOrDefault(a => a.Id == account.SharedOf) is { } owner ? $", aperta con {owner.Email}" : "")
+            ? settings.Accounts.FirstOrDefault(a => a.Id == account.SharedOf) is { } owner ? T("casella condivisa di Microsoft 365, aperta con {0}", owner.Email) : T("casella condivisa di Microsoft 365")
             : account.Kind switch
             {
                 AccountKind.Microsoft when account.Tenant == null => "Microsoft (Outlook.com)",
                 AccountKind.Microsoft => "Microsoft 365" + (account.Tenant != MicrosoftAuth.Organizations ? $", directory {account.Tenant}" : "") + (account.ClientId != null ? $", app {account.ClientId}" : ""),
                 AccountKind.Gmail => AccountTypes.IsGmailDomain(account.Email) ? "Gmail" : "Google Workspace",
-                _ when account.Imap is { } server => $"IMAP, posta in arrivo da {Server(server.ImapHost, server.ImapPort)}, in uscita da {Server(server.SmtpHost, server.SmtpPort)}" +
-                                                    (server.UserName.Length > 0 && !server.UserName.Equals(account.Email, StringComparison.OrdinalIgnoreCase) ? $", utente {server.UserName}" : ""),
-                _ => "IMAP, senza server",
+                _ when account.Imap is { } server => T("IMAP, posta in arrivo da {0}, in uscita da {1}", Server(server.ImapHost, server.ImapPort), Server(server.SmtpHost, server.SmtpPort)) +
+                                                    (server.UserName.Length > 0 && !server.UserName.Equals(account.Email, StringComparison.OrdinalIgnoreCase) ? T(", utente {0}", server.UserName) : ""),
+                _ => T("IMAP, senza server"),
             };
-        return Short($"{account.Email}: {kind}{(settings.NotificationsOff.Contains(account.Id) ? ", notifiche spente" : "")}", 400);
+        return Short($"{account.Email}: {kind}" + (settings.NotificationsOff.Contains(account.Id) ? T(", notifiche spente") : ""), 400);
     }
 
-    static string OwnerOf(Settings settings, MailRule rule) => settings.Accounts.FirstOrDefault(a => a.Id == rule.AccountId)?.Email ?? "un account che nella copia non c'è";
+    static string OwnerOf(Settings settings, MailRule rule) => settings.Accounts.FirstOrDefault(a => a.Id == rule.AccountId)?.Email ?? T("un account che nella copia non c'è");
 
     /// <summary>Una regola accesa, senza condizioni e con un'azione: vale per ogni messaggio che arriva.</summary>
     static bool ForEveryMessage(MailRule rule) => rule.Enabled && rule.HasActions && !rule.HasConditions;
@@ -584,8 +606,8 @@ public static class Backup
     {
         // Prima quelle che fanno più danno se non le si è volute: per tutti i messaggi, poi elimina, poi segna come letto.
         var ordered = settings.Rules.OrderBy(r => ForEveryMessage(r) ? 0 : r.Delete ? 1 : r.MarkRead ? 2 : 3).ToList();
-        var lines = ordered.Take(MaxRuleLines).Select(r => Short($"{OwnerOf(settings, r)}: {Rules.Describe(r)}{(r.Enabled ? "" : " (spenta)")}", 400)).ToList();
-        if (ordered.Count > MaxRuleLines) lines.Add($"e altre {ordered.Count - MaxRuleLines}: dopo l'importazione sono in Impostazioni, Posta, Regole");
+        var lines = ordered.Take(MaxRuleLines).Select(r => Short($"{OwnerOf(settings, r)}: {Rules.Describe(r)}" + (r.Enabled ? "" : " " + T("(spenta)")), 400)).ToList();
+        if (ordered.Count > MaxRuleLines) lines.Add(T("e altre {0}: dopo l'importazione sono in Impostazioni, Posta, Regole", ordered.Count - MaxRuleLines));
         return lines;
     }
 
@@ -595,7 +617,7 @@ public static class Backup
         foreach (var rule in incoming.Rules.Where(ForEveryMessage))
         {
             var words = Rules.Describe(rule); // "Per tutti i messaggi: elimina (nel Cestino), ...": qui servono le azioni
-            lines.Add(Short($"Una regola di {OwnerOf(incoming, rule)} vale per tutti i messaggi che arrivano: {words[(words.IndexOf(": ", StringComparison.Ordinal) + 2)..]}.", 400));
+            lines.Add(Short(T("Una regola di {0} vale per tutti i messaggi che arrivano: {1}.", OwnerOf(incoming, rule), words[(words.IndexOf(": ", StringComparison.Ordinal) + 2)..]), 400));
         }
         if (current == null) return lines;
         bool google = false;
@@ -603,13 +625,14 @@ public static class Backup
         {
             if (current.Accounts.FirstOrDefault(a => a.Id == account.Id && a.Kind == account.Kind && a.Email.Equals(account.Email, StringComparison.OrdinalIgnoreCase)) is not { } mine) continue;
             if (account.Kind == AccountKind.Imap && account.Imap is { } theirs && mine.Imap is { } here && !SameServer(here, theirs))
-                lines.Add(Short($"{account.Email} su questo PC c'è già, con altri server: qui {Server(here.ImapHost, here.ImapPort)} e {Server(here.SmtpHost, here.SmtpPort)}, utente {here.UserName}; " +
-                                $"nella copia {Server(theirs.ImapHost, theirs.ImapPort)} e {Server(theirs.SmtpHost, theirs.SmtpPort)}, utente {theirs.UserName}. La password di questo PC non va ai server della copia.", 600));
+                lines.Add(Short(T("{0} su questo PC c'è già, con altri server: qui {1} e {2}, utente {3}; nella copia {4} e {5}, utente {6}. La password di questo PC non va ai server della copia.",
+                                  account.Email, Server(here.ImapHost, here.ImapPort), Server(here.SmtpHost, here.SmtpPort), here.UserName,
+                                  Server(theirs.ImapHost, theirs.ImapPort), Server(theirs.SmtpHost, theirs.SmtpPort), theirs.UserName), 600));
             else if (account.Kind == AccountKind.Microsoft && account.SharedOf == null && MicrosoftApp(current, mine) != MicrosoftApp(incoming, account))
-                lines.Add(Short($"{account.Email} su questo PC c'è già, ma nella copia entra in Microsoft con un'altra app o un'altra directory: l'accesso di questo PC non vale, e lo chiederà di nuovo.", 400));
+                lines.Add(Short(T("{0} su questo PC c'è già, ma nella copia entra in Microsoft con un'altra app o un'altra directory: l'accesso di questo PC non vale, e lo chiederà di nuovo.", account.Email), 400));
             else if (account.Kind == AccountKind.Gmail && current.GoogleClientId != incoming.GoogleClientId) google = true;
         }
-        if (google) lines.Add("Gli account Google che su questo PC ci sono già nella copia usano un altro client di Google: l'accesso di questo PC non vale, e lo chiederanno di nuovo.");
+        if (google) lines.Add(T("Gli account Google che su questo PC ci sono già nella copia usano un altro client di Google: l'accesso di questo PC non vale, e lo chiederanno di nuovo."));
         return lines;
     }
 
@@ -633,7 +656,7 @@ public static class Backup
         var node = JsonNode.Parse(json) as JsonObject ?? throw new JsonException("le impostazioni non sono un oggetto");
         StripNulls(node);
         if (node["Accounts"] is JsonArray accounts && accounts.Any(a => a is not JsonObject account || account["Id"] is not JsonValue || account["Email"] is not JsonValue))
-            throw Foreign("un account è senza identificativo o senza indirizzo");
+            throw Foreign(T("un account è senza identificativo o senza indirizzo"));
         ProtectedTextConverter.Portable = true;
         try { return node.Deserialize(SettingsJson.Default.Settings) ?? throw new JsonException("impostazioni vuote"); }
         finally { ProtectedTextConverter.Portable = false; }
@@ -817,8 +840,9 @@ public static class Backup
             // il file in attesa ancora lì succederebbe a ogni avvio (audit dell'11 ottobre, T-16). Il file va da parte.
             Log.Error("importazione della copia di sicurezza", ex);
             SafeFile.SetAside(pending);
-            return new BackupOutcome(false, default, [], [], $"l'importazione si è fermata per un errore che Missiva non si aspettava ({ex.GetType().Name}). Controlla account e impostazioni: " +
-                $"se qualcosa era già stato sostituito, i file di prima sono nella cartella dei dati di Missiva, con \"{AsideLabel}\" nel nome.");
+            var type = ex.GetType().Name;
+            return new BackupOutcome(false, default, [], [], () => T("l'importazione si è fermata per un errore che Missiva non si aspettava ({0}). Controlla account e impostazioni: se qualcosa era già stato sostituito, i file di prima sono nella cartella dei dati di Missiva, con \"{1}\" nel nome.",
+                                                                     type, AsideLabel));
         }
     }
 
@@ -828,7 +852,7 @@ public static class Backup
         BackupData data;
         Settings incoming;
         List<MailAccount> needAccess;
-        var notes = new List<string>();
+        var notes = new List<Func<string>>(); // calcolate quando si leggono: qui la lingua non è ancora scelta
         var files = new List<(string Path, byte[]? Bytes)>();
         try
         {
@@ -841,11 +865,12 @@ public static class Backup
             incoming = ParseSettings(data.Settings);
             int broad = incoming.DropBroadImageSenders();
             if (broad > 0)
-                notes.Add((broad == 1 ? "Una voce dell'elenco dei mittenti di cui mostrare sempre le immagini non è stata importata: valeva" : $"{broad} voci dell'elenco dei mittenti di cui mostrare sempre le immagini non sono state importate: valevano") +
-                          " per chiunque scriva da un intero servizio di posta o da un intero suffisso (come \"co.uk\"), e Missiva non ne scrive di così.");
+                notes.Add(() => broad == 1
+                    ? T("Una voce dell'elenco dei mittenti di cui mostrare sempre le immagini non è stata importata: valeva per chiunque scriva da un intero servizio di posta o da un intero suffisso (come \"co.uk\"), e Missiva non ne scrive di così.")
+                    : T("{0} voci dell'elenco dei mittenti di cui mostrare sempre le immagini non sono state importate: valevano per chiunque scriva da un intero servizio di posta o da un intero suffisso (come \"co.uk\"), e Missiva non ne scrive di così.", broad));
             if (incoming.Rules.Count(r => r.Enabled) is > 0 and var active)
-                notes.Add(active == 1 ? "La copia aveva una regola di Missiva accesa: vale da subito per i messaggi che arrivano. È in Impostazioni, Posta, Regole."
-                    : $"La copia aveva {active} regole di Missiva accese: valgono da subito per i messaggi che arrivano. Sono in Impostazioni, Posta, Regole.");
+                notes.Add(() => active == 1 ? T("La copia aveva una regola di Missiva accesa: vale da subito per i messaggi che arrivano. È in Impostazioni, Posta, Regole.")
+                    : T("La copia aveva {0} regole di Missiva accese: valgono da subito per i messaggi che arrivano. Sono in Impostazioni, Posta, Regole.", active));
             var current = File.Exists(settingsPath) && Store.TryParse(settingsPath, out var now, out _) ? now : null;
             needAccess = Merge(incoming, data, current);
             static byte[] Utf8(string text) => Encoding.UTF8.GetBytes(text);
@@ -863,8 +888,10 @@ public static class Backup
         {
             SafeFile.SetAside(pending);
             Log.Write($"copia di sicurezza: importazione in attesa non applicata ({(ex as BackupException)?.Problem.ToString() ?? ex.GetType().Name}), file messo da parte");
-            return new BackupOutcome(false, default, [], [], $"il file dell'importazione in attesa non si leggeva ({(ex is BackupException ? "il contenuto non è valido" : ex.GetType().Name)}). " +
-                "Non è cambiato nulla: rifai l'importazione da Impostazioni, Generali, Copia di sicurezza.");
+            bool invalid = ex is BackupException;
+            var type = ex.GetType().Name;
+            return new BackupOutcome(false, default, [], [], () => T("il file dell'importazione in attesa non si leggeva ({0}). Non è cambiato nulla: rifai l'importazione da Impostazioni, Generali, Copia di sicurezza.",
+                                                                     invalid ? T("il contenuto non è valido") : type));
         }
 
         var staged = new List<string>();
@@ -884,18 +911,19 @@ public static class Backup
         {
             foreach (var path in staged) try { File.Delete(path); } catch { }
             CancelPending(dir);
-            return new BackupOutcome(false, data.Created, [], [], $"i file nuovi non si sono potuti scrivere ({ex.Message}). Non è cambiato nulla: rifai l'importazione da Impostazioni, Generali, Copia di sicurezza.");
+            var message = ex.Message;
+            return new BackupOutcome(false, data.Created, [], [], () => T("i file nuovi non si sono potuti scrivere ({0}). Non è cambiato nulla: rifai l'importazione da Impostazioni, Generali, Copia di sicurezza.", message));
         }
 
         var aside = new List<string>();
-        string? trouble = null;
+        var troubles = new List<(string File, string Message)>(); // i file che non si sono lasciati sostituire
         foreach (var (path, bytes) in files)
         {
             string? moved = null;
             try
             {
                 if (File.Exists(path))
-                    moved = Retry(() => SafeFile.SetAside(path, AsideLabel)) ?? throw new IOException("non si lascia spostare, forse è in uso da un altro programma");
+                    moved = Retry(() => SafeFile.SetAside(path, AsideLabel)) ?? throw new IOException(Locked);
                 if (bytes != null) Retry(() => { File.Move(path + ".importato", path); return path; });
                 if (moved != null) aside.Add(Path.GetFileName(moved));
             }
@@ -909,16 +937,19 @@ public static class Backup
                     // Le impostazioni non si sostituiscono: ci si ferma prima di toccare il resto.
                     foreach (var other in staged) try { File.Delete(other); } catch { }
                     CancelPending(dir);
-                    return new BackupOutcome(false, data.Created, [], [], $"il file delle impostazioni di adesso non si è potuto sostituire ({ex.Message}). Non è cambiato nulla: chiudi Missiva, riaprila e rifai l'importazione.");
+                    var message = ex.Message;
+                    return new BackupOutcome(false, data.Created, [], [], () => T("il file delle impostazioni di adesso non si è potuto sostituire ({0}). Non è cambiato nulla: chiudi Missiva, riaprila e rifai l'importazione.", Shown(message)));
                 }
-                trouble = (trouble == null ? "Attenzione: " : trouble + " ") + $"{Path.GetFileName(path)} non è stato sostituito ({ex.Message}).";
+                troubles.Add((Path.GetFileName(path), ex.Message));
             }
         }
         // La copia di riserva delle impostazioni di prima non deve tornare al posto di quelle importate (Store.Read): da parte anche lei.
         if (File.Exists(backupPath) && SafeFile.SetAside(backupPath, AsideLabel) is { } oldBackup) aside.Add(Path.GetFileName(oldBackup));
         CancelPending(dir);
-        Log.Write($"copia di sicurezza importata: {incoming.Accounts.Count} account, {needAccess.Count} chiedono di nuovo l'accesso; messi da parte: {string.Join(", ", aside)}{(trouble != null ? "; " + trouble : "")}");
-        return new BackupOutcome(true, data.Created, needAccess, aside, trouble) { Notes = notes };
+        Func<string>? trouble = troubles.Count == 0 ? null
+            : () => T("Attenzione: {0}", string.Join(" ", troubles.Select(t => T("{0} non è stato sostituito ({1}).", t.File, Shown(t.Message)))));
+        Log.Write($"copia di sicurezza importata: {incoming.Accounts.Count} account, {needAccess.Count} chiedono di nuovo l'accesso; messi da parte: {string.Join(", ", aside)}{(trouble != null ? "; " + trouble() : "")}");
+        return new BackupOutcome(true, data.Created, needAccess, aside, trouble) { NoteTexts = notes };
     }
 
     /// <summary>Un antivirus o l'indicizzazione che tengono un file aperto per un attimo: qualche tentativo.</summary>

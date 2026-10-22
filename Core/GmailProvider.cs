@@ -160,9 +160,9 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         (text.Contains("disabled", StringComparison.OrdinalIgnoreCase) || text.Contains("not enabled", StringComparison.OrdinalIgnoreCase));
 
     internal static string ImapOff(string email) => AccountTypes.IsGmailDomain(email)
-        ? "Gmail non accetta l'accesso IMAP per questo account: attivalo nelle impostazioni di Gmail sul web (Inoltro e POP/IMAP), poi riprova."
-        : $"L'amministratore di Google Workspace ha spento l'accesso IMAP per {AccountTypes.DomainOf(email)}: può riattivarlo nella Console di " +
-          "amministrazione (App, Google Workspace, Gmail, Accesso utente finale, Accesso POP e IMAP). Senza IMAP Missiva non legge la posta.";
+        ? T("Gmail non accetta l'accesso IMAP per questo account: attivalo nelle impostazioni di Gmail sul web (Inoltro e POP/IMAP), poi riprova.")
+        : T("L'amministratore di Google Workspace ha spento l'accesso IMAP per {0}: può riattivarlo nella Console di amministrazione (App, Google Workspace, Gmail, Accesso utente finale, Accesso POP e IMAP). Senza IMAP Missiva non legge la posta.",
+            AccountTypes.DomainOf(email));
 
     /// <param name="cancel">
     /// Si guarda solo prima di cominciare: una richiesta superata mentre aspettava la connessione non parte. Ai comandi di
@@ -219,7 +219,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
                 }
                 catch (AuthenticationException ex)
                 {
-                    throw new MailException($"Gmail ha rifiutato l'accesso di {Account.Email}: rifallo con Accedi di nuovo (Impostazioni, Account, Gestisci).", ex) { Fix = AccountFix.SignIn };
+                    throw new MailException(Lingua.T("Gmail ha rifiutato l'accesso di {0}: rifallo con Accedi di nuovo (Impostazioni, Account, Gestisci).", Account.Email), ex) { Fix = AccountFix.SignIn };
                 }
                 catch (Exception ex) when (attempt == 0 && ex is IOException or ServiceNotConnectedException or ImapProtocolException)
                 {
@@ -274,13 +274,15 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
 
         IMailFolder? Special(FolderAttributes a) => all.FirstOrDefault(f => f.Attributes.HasFlag(a));
 
-        Add(all.FirstOrDefault(f => f.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase)) ?? client.Inbox, FolderKind.Inbox, "Posta in arrivo");
-        Add(Special(FolderAttributes.Drafts), FolderKind.Drafts, "Bozze");
-        Add(Special(FolderAttributes.Sent), FolderKind.Sent, "Posta inviata");
-        Add(Special(FolderAttributes.Trash), FolderKind.Deleted, "Cestino");
-        Add(Special(FolderAttributes.All), FolderKind.Archive, "Tutti i messaggi");
-        Add(Special(FolderAttributes.Junk), FolderKind.Junk, "Spam");
-        Add(Special(FolderAttributes.Flagged), FolderKind.Other, "Speciali");
+        // I nomi delle cartelle speciali li dà Missiva, nella sua lingua (MailFolder.SpecialName), non quelli del server.
+        static string Named(FolderKind kind) => MailFolder.SpecialShown(AccountKind.Gmail, kind);
+        Add(all.FirstOrDefault(f => f.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase)) ?? client.Inbox, FolderKind.Inbox, Named(FolderKind.Inbox));
+        Add(Special(FolderAttributes.Drafts), FolderKind.Drafts, Named(FolderKind.Drafts));
+        Add(Special(FolderAttributes.Sent), FolderKind.Sent, Named(FolderKind.Sent));
+        Add(Special(FolderAttributes.Trash), FolderKind.Deleted, Named(FolderKind.Deleted));
+        Add(Special(FolderAttributes.All), FolderKind.Archive, Named(FolderKind.Archive));
+        Add(Special(FolderAttributes.Junk), FolderKind.Junk, Named(FolderKind.Junk));
+        Add(Special(FolderAttributes.Flagged), FolderKind.Other, T("Speciali"));
 
         // Le altre (etichette e sottocartelle) in ordine alfabetico, con il solo nome: l'albero lo costruisce l'elenco.
         var used = result.Select(r => r.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -309,7 +311,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         var root = client.GetFolder(client.PersonalNamespaces[0]);
         // MailKit restituisce null se, creata l'etichetta, il server non la elenca: prima ne usciva un errore di .NET senza
         // spiegazione (audit dell'11 ottobre, C-37). Come ImapProvider.CreateFolderAsync.
-        var created = await root.CreateAsync(name.Trim(), true) ?? throw new MailException($"Gmail non ha creato l'etichetta {name.Trim()}.");
+        var created = await root.CreateAsync(name.Trim(), true) ?? throw new MailException(T("Gmail non ha creato l'etichetta {0}.", name.Trim()));
         Store.Settings.CategoryColors[Account.Id + "|" + created.FullName] = preset;
         Store.Save();
         userLabels ??= new();
@@ -334,7 +336,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     public Task<MailFolder> CreateFolderAsync(string name, MailFolder? parent) => RunAsync(async client =>
     {
         var container = parent == null || IsSystem(parent) ? client.GetFolder(client.PersonalNamespaces[0]) : await client.GetFolderAsync(parent.Id);
-        var created = await container.CreateAsync(name.Trim(), true) ?? throw new MailException($"Gmail non ha creato la cartella {name.Trim()}.");
+        var created = await container.CreateAsync(name.Trim(), true) ?? throw new MailException(T("Gmail non ha creato la cartella {0}.", name.Trim()));
         return new MailFolder { Id = created.FullName, Name = created.Name, Kind = FolderKind.Other, ParentId = container.FullName.Length > 0 ? container.FullName : null };
     });
 
@@ -367,7 +369,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     {
         var f = await OpenAsync(client, folder.Id);
         if (folder.Kind == FolderKind.Archive || f.Attributes.HasFlag(FolderAttributes.All) || f.Attributes.HasFlag(FolderAttributes.Flagged))
-            throw new MailException($"In Gmail \"{folder.Name}\" non si svuota: contiene anche i messaggi delle altre cartelle.");
+            throw new MailException(T("In Gmail \"{0}\" non si svuota: contiene anche i messaggi delle altre cartelle.", folder.Name));
         if (f.Count == 0) return;
         var all = await f.SearchAsync(SearchQuery.All);
         if (folder.Kind is FolderKind.Deleted or FolderKind.Junk || trash == null)
@@ -556,11 +558,10 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     static (string Name, FolderKind? Kind) FolderOf(IList<string>? labels)
     {
         labels ??= [];
-        foreach (var (label, name, kind) in new[] { (@"\Inbox", "Posta in arrivo", FolderKind.Inbox), (@"\Sent", "Posta inviata", FolderKind.Sent),
-                                                    (@"\Draft", "Bozze", FolderKind.Drafts), (@"\Trash", "Cestino", FolderKind.Deleted), (@"\Spam", "Spam", FolderKind.Junk) })
-            if (labels.Contains(label, StringComparer.OrdinalIgnoreCase)) return (name, kind);
+        foreach (var (label, kind) in new[] { (@"\Inbox", FolderKind.Inbox), (@"\Sent", FolderKind.Sent), (@"\Draft", FolderKind.Drafts), (@"\Trash", FolderKind.Deleted), (@"\Spam", FolderKind.Junk) })
+            if (labels.Contains(label, StringComparer.OrdinalIgnoreCase)) return (MailFolder.SpecialShown(AccountKind.Gmail, kind), kind);
         var mine = labels.FirstOrDefault(l => !l.StartsWith('\\'));
-        return mine != null ? (mine[(mine.LastIndexOf('/') + 1)..], FolderKind.Other) : ("Tutti i messaggi", FolderKind.Archive);
+        return mine != null ? (mine[(mine.LastIndexOf('/') + 1)..], FolderKind.Other) : (MailFolder.SpecialShown(AccountKind.Gmail, FolderKind.Archive), FolderKind.Archive);
     }
 
     /// <summary>
@@ -906,7 +907,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         if (!known.TryGetValue(key, out var s))
             s = (await f.FetchAsync(new[] { uid }, MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope |
                                                    MessageSummaryItems.BodyStructure | MessageSummaryItems.Size)).FirstOrDefault()
-                ?? throw new MailException("Il messaggio non c'è più: forse è stato spostato o eliminato.");
+                ?? throw new MailException(T("Il messaggio non c'è più: forse è stato spostato o eliminato."));
 
         // Busta PEC o messaggio firmato: i byte com'è sul server, così Pec verifica la firma senza scaricarlo di nuovo.
         byte[]? raw = null;
@@ -1004,7 +1005,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
             var f = await ExamineOrOpenAsync(client, message.FolderId, on);
             var uid = Uid(message);
             var s = (await f.FetchAsync(new[] { uid }, MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure, cancel)).FirstOrDefault();
-            var part = s?.BodyParts.FirstOrDefault(p => p.PartSpecifier == attachment.Id) ?? throw new MailException("Allegato non trovato.");
+            var part = s?.BodyParts.FirstOrDefault(p => p.PartSpecifier == attachment.Id) ?? throw new MailException(T("Allegato non trovato."));
             return await ContentOf(f, uid, part, cancel, progress);
         }, on, cancel);
     }
@@ -1075,7 +1076,9 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
                 catch (ImapCommandException ex)
                 {
                     // Il motivo del rifiuto lo dà Gmail nel testo del NO: senza, l'avviso non dice nulla.
-                    throw new MailException($"Gmail non ha spostato {(uids.Count == 1 ? "il messaggio" : $"{uids.Count} messaggi")} da \"{folderId}\" a \"{destination.Id}\": {ex.ResponseText}", ex)
+                    throw new MailException(uids.Count == 1
+                            ? T("Gmail non ha spostato il messaggio da \"{0}\" a \"{1}\": {2}", folderId, destination.Id, ex.ResponseText)
+                            : T("Gmail non ha spostato {0} messaggi da \"{1}\" a \"{2}\": {3}", uids.Count, folderId, destination.Id, ex.ResponseText), ex)
                         { Repeatable = client.Capabilities.HasFlag(ImapCapabilities.Move) }; // un UID MOVE rifiutato per intero (MailException.Repeatable)
                 }
                 foreach (var m in here)
@@ -1225,7 +1228,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         var root = client.GetFolder(client.PersonalNamespaces[0]);
         var existing = (await client.GetFoldersAsync(client.PersonalNamespaces[0]))
             .FirstOrDefault(f => f.FullName.Equals(name, StringComparison.OrdinalIgnoreCase));
-        var folder = existing ?? await root.CreateAsync(name, true) ?? throw new MailException($"Gmail non ha creato la cartella {name}.");
+        var folder = existing ?? await root.CreateAsync(name, true) ?? throw new MailException(T("Gmail non ha creato la cartella {0}.", name));
         return new MailFolder { Id = folder.FullName, Name = folder.Name, Kind = FolderKind.Other };
     });
 
@@ -1236,7 +1239,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         var key = message.StableId;
         if (key.Length == 0)
             key = (await f.FetchAsync(new[] { Uid(message) }, MessageSummaryItems.GMailMessageId)).FirstOrDefault()?.GMailMessageId?.ToString()
-                  ?? throw new MailException("Gmail non ha dato l'identificativo del messaggio.");
+                  ?? throw new MailException(T("Gmail non ha dato l'identificativo del messaggio."));
         var target = await client.GetFolderAsync(snoozeFolder.Id);
         if (message.FolderId == allMailFolder) await LeaveInboxAsync(f, new[] { Uid(message) }, snoozeFolder, target);
         else await f.MoveToAsync(Uid(message), target);
@@ -1392,7 +1395,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         bool retried = false;
         return await RunAsync(async client =>
         {
-            var folder = await DraftsAsync(client) ?? throw new MailException("Non trovo la cartella Bozze di Gmail.");
+            var folder = await DraftsAsync(client) ?? throw new MailException(T("Non trovo la cartella Bozze di Gmail."));
             var f = await OpenAsync(client, folder);
             var clock = System.Diagnostics.Stopwatch.StartNew();
             // Ripresa dopo una connessione caduta (RunAsync riprova da capo): la bozza forse è già scritta, e due APPEND ne
@@ -1401,8 +1404,8 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
             retried = true;
             uid ??= await f.AppendAsync(new AppendRequest(message, MessageFlags.Draft | MessageFlags.Seen))
                     ?? await FindAsync(f, messageId)
-                    ?? throw new MailException("Gmail non ha restituito la bozza salvata.");
-            var s = (await f.FetchAsync(new[] { uid.Value }, ListItems)).FirstOrDefault() ?? throw new MailException("Gmail non ha restituito la bozza salvata.");
+                    ?? throw new MailException(T("Gmail non ha restituito la bozza salvata."));
+            var s = (await f.FetchAsync(new[] { uid.Value }, ListItems)).FirstOrDefault() ?? throw new MailException(T("Gmail non ha restituito la bozza salvata."));
             if (mail.Draft is { } old) await DeleteDraftAsync(f, old.Message.StableId, keep: uid);
             Log.Time($"bozza salvata ({s.Size / 1024} KB){(mail.Draft != null ? ", sostituita quella di prima" : "")}", clock);
             var parts = (s.Attachments ?? []).ToList();
@@ -1430,7 +1433,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// <summary>La bozza scartata esce dalle Bozze, sulla connessione delle bozze; se non c'è già più, niente.</summary>
     public Task DiscardDraftAsync(SavedDraft draft) => RunAsync(async client =>
     {
-        var folder = await DraftsAsync(client) ?? throw new MailException("Non trovo la cartella Bozze di Gmail.");
+        var folder = await DraftsAsync(client) ?? throw new MailException(T("Non trovo la cartella Bozze di Gmail."));
         await DeleteDraftAsync(await OpenAsync(client, folder), draft.Message.StableId);
     }, drafts);
 

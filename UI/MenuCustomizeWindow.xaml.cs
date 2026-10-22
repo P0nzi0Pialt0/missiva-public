@@ -52,8 +52,8 @@ public partial class MenuCustomizeWindow : Window
     {
         this.menu = menu;
         InitializeComponent();
-        Heading.Text = menu.Title;
-        Explanation.Text = menu.Description;
+        Heading.Text = T(menu.Title);
+        Explanation.Text = T(menu.Description);
         Entries.ItemsSource = rows;
         Load();
         // Le icone colorate hanno i colori del tema: al cambio di tema di Windows si rifanno.
@@ -73,7 +73,7 @@ public partial class MenuCustomizeWindow : Window
                 continue;
             }
             var entry = menu.Find(key)!;
-            rows.Add(new Row { Key = key, Name = entry.Name, Icon = ContextMenus.Icon(entry.Glyph, ContextMenus.Brush(entry.Tone)), Shown = !hidden.Contains(key) });
+            rows.Add(new Row { Key = key, Name = T(entry.Name), Icon = ContextMenus.Icon(entry.Glyph, ContextMenus.Brush(entry.Tone)), Shown = !hidden.Contains(key) });
         }
         UpdateButtons();
     }

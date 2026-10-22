@@ -5077,13 +5077,14 @@ static partial class ProvaBozze
     /// --imap-finto porta foto studio|personale|pec: al posto dei messaggi di prova una delle caselle finte delle foto della
     /// pagina GitHub (ProvaBozze.Foto.cs).
     /// </param>
-    public static void ServeImap(int port, bool noTrash = false, string? password = null, bool old = false, string? photo = null)
+    /// <param name="photoEnglish">--imap-finto porta foto studio en: la casella delle foto inglesi.</param>
+    public static void ServeImap(int port, bool noTrash = false, string? password = null, bool old = false, string? photo = null, bool photoEnglish = false)
     {
         var fake = new FakeImap(new Flavor(Gmail: false), port) { LogCommands = true, ExpectedPassword = password, EchoToIdlers = true, AnnounceOnNoop = true };
         var smtp = new FakeSmtp(port + 1) { ExpectedPassword = password };
         GC.KeepAlive(smtp);
         if (noTrash) fake.Folders.Remove(fake.TrashFolder);
-        if (photo != null) FillFoto(fake, photo);
+        if (photo != null) FillFoto(fake, photo, photoEnglish);
         else foreach (var (from, name, subject, html, flags) in new[]
         {
             ("preventivi@fornitore-prova.it", "Fornitore di prova", "Preventivo per la ristrutturazione dello studio", "<p>Buongiorno,</p><p>in allegato trova il preventivo richiesto.</p><p>Cordiali saluti</p>", ""),

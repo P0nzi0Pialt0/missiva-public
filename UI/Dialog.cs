@@ -46,10 +46,9 @@ public static class Dialog
     /// testo di prima. Vero se si può aprire.
     /// </summary>
     public static bool ConfirmOpenDangerous(Window? owner, string fileName) =>
-        Ask(owner, "Aprire un file che può avviare programmi?",
-            $"\"{fileName}\" è un tipo di file che può eseguire codice sul PC: è il modo più comune con cui le email infettano un computer. " +
-            "Aprilo solo se lo aspettavi e ti fidi di chi lo ha mandato. Windows lo controllerà comunque prima di avviarlo.",
-            "Apri comunque") == Choice.Primary;
+        Ask(owner, T("Aprire un file che può avviare programmi?"),
+            T("\"{0}\" è un tipo di file che può eseguire codice sul PC: è il modo più comune con cui le email infettano un computer. Aprilo solo se lo aspettavi e ti fidi di chi lo ha mandato. Windows lo controllerà comunque prima di avviarlo.", fileName),
+            T("Apri comunque")) == Choice.Primary;
 
     /// <summary>
     /// Il marchio web non si è potuto scrivere (Safety.MarkFromInternet falso): un documento di Office o un tipo pericoloso
@@ -58,10 +57,9 @@ public static class Dialog
     /// </summary>
     public static bool ConfirmOpenUnmarked(Window? owner, string fileName) =>
         !Safety.NeedsWebMark(fileName) ||
-        Ask(owner, "Aprire un file senza il controllo di Windows?",
-            $"\"{fileName}\" non si è potuto contrassegnare come scaricato da Internet (la cartella temporanea di Windows non lo permette), " +
-            "quindi Office e SmartScreen non lo controllerebbero come fanno di solito. Aprilo solo se ti fidi di chi lo ha mandato.",
-            "Apri comunque") == Choice.Primary;
+        Ask(owner, T("Aprire un file senza il controllo di Windows?"),
+            T("\"{0}\" non si è potuto contrassegnare come scaricato da Internet (la cartella temporanea di Windows non lo permette), quindi Office e SmartScreen non lo controllerebbero come fanno di solito. Aprilo solo se ti fidi di chi lo ha mandato.", fileName),
+            T("Apri comunque")) == Choice.Primary;
 
     /// <summary>
     /// Una pagina web allegata (Safety.IsWebPage: .html, .svg, .mht...) si apre nel browser solo dopo una conferma con il
@@ -92,8 +90,9 @@ public static class Dialog
     public static Choice Ask(Window? owner, string heading, string body, string primary, string? secondary, string cancel) =>
         Build(owner, heading, body, primary, true, secondary, cancelText: cancel);
 
-    static Choice Build(Window? owner, string heading, string body, string primary, bool cancel, string? secondary = null, bool cancelFirst = false, string cancelText = "Annulla")
+    static Choice Build(Window? owner, string heading, string body, string primary, bool cancel, string? secondary = null, bool cancelFirst = false, string? cancelText = null)
     {
+        cancelText ??= T("Annulla");
         var result = Choice.Cancel;
         var window = new Window
         {

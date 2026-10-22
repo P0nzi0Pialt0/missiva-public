@@ -116,9 +116,9 @@ public partial class MainWindow
     internal static string DownloadsTip(IReadOnlyList<DownloadItem> items)
     {
         var active = items.Where(i => i.Active).ToList();
-        if (active.Count == 1) return $"Scaricamenti: {active[0].Name}, {active[0].Status}";
-        if (active.Count > 1) return $"Scaricamenti: {active.Count} in corso";
-        return items.Count > 0 ? $"Scaricamenti: {items[0].Name}, {items[0].Status}" : "Scaricamenti";
+        if (active.Count == 1) return T("Scaricamenti: {0}, {1}", active[0].Name, active[0].Status);
+        if (active.Count > 1) return T("Scaricamenti: {0} in corso", active.Count);
+        return items.Count > 0 ? T("Scaricamenti: {0}, {1}", items[0].Name, items[0].Status) : T("Scaricamenti");
     }
 
     /// <summary>L'anello attorno all'icona: la parte fatta, da mezzogiorno in senso orario; null, un quarto che gira.</summary>
@@ -154,7 +154,7 @@ public partial class MainWindow
     void OnDownloadsButton(object sender, RoutedEventArgs e)
     {
         foreach (var item in DownloadList.Session.Items.Where(i => i.State == DownloadState.Failed)) item.Seen = true;
-        downloadsFlyout ??= new TitleFlyout(this, DownloadsButton, "Scaricamenti", 420);
+        downloadsFlyout ??= new TitleFlyout(this, DownloadsButton, T("Scaricamenti"), 420);
         downloadsFlyout.Toggle(DownloadsPanel);
         RefreshDownloads(rebuild: false);
     }
@@ -165,16 +165,16 @@ public partial class MainWindow
         downloadRows.Clear();
         var items = DownloadList.Session.Items;
         var panel = new DockPanel();
-        var title = new TextBlock { Text = "Scaricamenti", FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) };
+        var title = new TextBlock { Text = T("Scaricamenti"), FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(title, Dock.Top);
         panel.Children.Add(title);
-        var clear = new Button { Content = "Cancella l'elenco", HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0), MinWidth = 120,
-                                 IsEnabled = items.Any(i => !i.Active), ToolTip = "Toglie dall'elenco gli scaricamenti finiti, non riusciti e annullati: i file restano dove sono" };
+        var clear = new Button { Content = T("Cancella l'elenco"), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0), MinWidth = 120,
+                                 IsEnabled = items.Any(i => !i.Active), ToolTip = T("Toglie dall'elenco gli scaricamenti finiti, non riusciti e annullati: i file restano dove sono") };
         clear.Click += (_, _) => DownloadList.Session.Clear();
         DockPanel.SetDock(clear, Dock.Bottom);
         panel.Children.Add(clear);
         var rows = new StackPanel();
-        AutomationProperties.SetName(rows, "Elenco degli scaricamenti");
+        AutomationProperties.SetName(rows, T("Elenco degli scaricamenti"));
         foreach (var item in items) rows.Children.Add(DownloadRow(item));
         panel.Children.Add(new ScrollViewer { Content = rows, MaxHeight = 460, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 12, 0) });
         return panel;
@@ -205,7 +205,7 @@ public partial class MainWindow
             // In coda solo il testo; in corso la barra, che gira se non si sa quanto manca.
             var bar = new ProgressBar { Height = 4, Maximum = 100, Margin = new Thickness(0, 5, 0, 2), IsIndeterminate = item.Percent == null, Value = item.Percent ?? 0,
                                         Visibility = item.State == DownloadState.Running ? Visibility.Visible : Visibility.Collapsed };
-            AutomationProperties.SetName(bar, "Avanzamento di " + item.Name);
+            AutomationProperties.SetName(bar, T("Avanzamento di {0}", item.Name));
             text.Children.Add(bar);
             downloadRows[item] = (status, bar);
         }
@@ -223,11 +223,11 @@ public partial class MainWindow
             actions.Children.Add(button);
             return button;
         }
-        if (item.Active) Action("Annulla", "Ferma lo scaricamento: nessun file resta a metà", item.Cancel);
+        if (item.Active) Action(T("Annulla"), T("Ferma lo scaricamento: nessun file resta a metà"), item.Cancel);
         else if (item.State == DownloadState.Done && !item.Gone)
         {
-            Action("Apri", "Apre il file, con le stesse domande del riquadro per i tipi che possono avviare programmi e per le pagine web", () => OpenDownloaded(item));
-            if (!item.Temporary) Action("Mostra nella cartella", "Apre Esplora file sulla cartella del file, con il file scelto", () => ShowDownloaded(item));
+            Action(T("Apri"), T("Apre il file, con le stesse domande del riquadro per i tipi che possono avviare programmi e per le pagine web"), () => OpenDownloaded(item));
+            if (!item.Temporary) Action(T("Mostra nella cartella"), T("Apre Esplora file sulla cartella del file, con il file scelto"), () => ShowDownloaded(item));
         }
         if (actions.Children.Count > 0) text.Children.Add(actions);
         AutomationProperties.SetName(grid, $"{item.Name}, {item.Status}");
@@ -284,7 +284,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("scaricamenti, Apri", ex);
-            Dialog.Show(this, "File non aperto", ex.Message);
+            Dialog.Show(this, T("File non aperto"), ex.Message);
         }
     }
 
@@ -315,7 +315,7 @@ public partial class MainWindow
                 // Dal più vecchio al più recente: in cima finiscono quelli in corso. I file stanno in una cartella della prova.
                 var folder = Path.Combine(Store.Dir, "scaricamenti-di-prova");
                 Directory.CreateDirectory(folder);
-                list.Add("Preventivo cucina.xlsx", 48_000, temporary: false).Fail("Non riesco a scaricare l'allegato (il server ha risposto 503).");
+                list.Add("Preventivo cucina.xlsx", 48_000, temporary: false).Fail(DownloadList.Reason(new MailException(T("Non riesco a scaricare l'allegato."), status: 503))); // come da GraphProvider, nella lingua di Missiva
                 list.Add("Foto sopralluogo.zip", 24_000_000, temporary: false).Stop();
                 _ = list.SaveAsync(Path.Combine(folder, "Capitolato.docx"), 412_000, (_, _) => Task.FromResult(new byte[412_000]));
                 _ = TestTempAsync(list, folder);
@@ -328,7 +328,7 @@ public partial class MainWindow
                 _ = list.SaveAsync(Path.Combine(done, "Verbale.pdf"), 64_000, (_, _) => Task.FromResult(new byte[64_000]));
                 break;
             case "errore": // uno non riuscito, non ancora visto nel pannello
-                list.Add("Preventivo cucina.xlsx", 48_000, temporary: false).Fail("la connessione si è interrotta.");
+                list.Add("Preventivo cucina.xlsx", 48_000, temporary: false).Fail(T("la connessione si è interrotta."));
                 break;
             case "pannello":
                 OnDownloadsButton(this, new RoutedEventArgs());

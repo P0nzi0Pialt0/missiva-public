@@ -2,7 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Missiva.UI"
-        Title="Nuovo messaggio" Width="820" Height="700" MinWidth="560" MinHeight="420"
+        xmlns:missiva="clr-namespace:Missiva"
+        Title="{local:T 'Nuovo messaggio'}" Width="820" Height="700" MinWidth="560" MinHeight="420"
         WindowStartupLocation="CenterOwner" AllowDrop="True" PreviewDragEnter="OnFileDragOver" PreviewDragOver="OnFileDragOver" PreviewDrop="OnFileDrop"
         Icon="pack://application:,,,/Assets/missiva.ico">
     <Window.Resources>
@@ -34,39 +35,39 @@
     <DockPanel Margin="20,14,20,16">
         <!-- Invia / Scarta -->
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10" LastChildFill="False">
-            <Button x:Name="SendButton" Style="{DynamicResource AccentButtonStyle}" Padding="16,6" Click="OnSend" ToolTip="Invia (Ctrl+Invio)" AutomationProperties.Name="Invia">
+            <Button x:Name="SendButton" Style="{DynamicResource AccentButtonStyle}" Padding="16,6" Click="OnSend" ToolTip="{local:T 'Invia (Ctrl+Invio)'}" AutomationProperties.Name="{local:T 'Invia'}">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="&#xE724;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBlock Text="Invia" />
+                    <TextBlock Text="{local:T 'Invia'}" />
                 </StackPanel>
             </Button>
             <!-- La freccia accanto a Invia, come nel nuovo Outlook: Pianifica invio -->
             <Button x:Name="SendMenuButton" Style="{DynamicResource AccentButtonStyle}" Padding="8,6" Margin="2,0,0,0" Click="OnSendMenu"
-                    ToolTip="Pianifica invio" AutomationProperties.Name="Pianifica invio">
+                    ToolTip="{local:T 'Pianifica invio'}" AutomationProperties.Name="{local:T 'Pianifica invio'}">
                 <TextBlock Text="&#xE70D;" FontFamily="{StaticResource Icons}" FontSize="12" VerticalAlignment="Center" />
             </Button>
-            <Button Content="Scarta" Margin="8,0,0,0" Padding="14,6" Click="OnDiscard" ToolTip="Scarta (Esc)" />
-            <Button x:Name="AttachButton" Margin="8,0,0,0" Padding="12,6" Click="OnAttach" AutomationProperties.Name="Allega">
+            <Button Content="{local:T 'Scarta'}" Margin="8,0,0,0" Padding="14,6" Click="OnDiscard" ToolTip="{local:T 'Scarta (Esc)'}" />
+            <Button x:Name="AttachButton" Margin="8,0,0,0" Padding="12,6" Click="OnAttach" AutomationProperties.Name="{local:T 'Allega'}">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="&#xE723;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBlock Text="Allega" />
+                    <TextBlock Text="{local:T 'Allega'}" />
                 </StackPanel>
             </Button>
             <!-- Modelli, come I miei modelli del nuovo Outlook: si cercano e si inseriscono al cursore (ComposeWindow.ShowTemplates) -->
-            <Button x:Name="TemplatesButton" Margin="8,0,0,0" Padding="12,6" Click="OnTemplates" AutomationProperties.Name="Modelli" ToolTip="Modelli">
+            <Button x:Name="TemplatesButton" Margin="8,0,0,0" Padding="12,6" Click="OnTemplates" AutomationProperties.Name="{local:T 'Modelli'}" ToolTip="{local:T 'Modelli'}">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="&#xE8A5;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBlock Text="Modelli" />
+                    <TextBlock Text="{local:T 'Modelli'}" />
                 </StackPanel>
             </Button>
             <Popup x:Name="TemplatesPopup" PlacementTarget="{Binding ElementName=TemplatesButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
                 <Border CornerRadius="8" BorderThickness="1" Padding="8" Margin="0,2,0,0" Width="320"
                         Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
                     <StackPanel>
-                        <TextBox x:Name="TemplateSearch" AutomationProperties.Name="Cerca nei modelli" TextChanged="OnTemplateSearch" PreviewKeyDown="OnTemplateSearchKey" />
+                        <TextBox x:Name="TemplateSearch" AutomationProperties.Name="{local:T 'Cerca nei modelli'}" TextChanged="OnTemplateSearch" PreviewKeyDown="OnTemplateSearchKey" />
                         <TextBlock x:Name="TemplatesNote" Margin="4,8,4,4" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}" Visibility="Collapsed" />
                         <ListBox x:Name="TemplateList" Margin="0,6,0,0" MaxHeight="260" BorderThickness="0" Background="Transparent" DisplayMemberPath="Name"
-                                 AutomationProperties.Name="Modelli" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                 AutomationProperties.Name="{local:T 'Modelli'}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource NavItem}">
                                     <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
@@ -75,15 +76,15 @@
                                 </Style>
                             </ListBox.ItemContainerStyle>
                         </ListBox>
-                        <Button Content="Salva come modello…" Margin="0,8,0,0" HorizontalAlignment="Left" Click="OnSaveTemplate" AutomationProperties.Name="Salva come modello" />
+                        <Button Content="{local:T 'Salva come modello…'}" Margin="0,8,0,0" HorizontalAlignment="Left" Click="OnSaveTemplate" AutomationProperties.Name="{local:T 'Salva come modello'}" />
                     </StackPanel>
                 </Border>
             </Popup>
             <!-- Opzioni del messaggio: importanza e conferme, come Opzioni nel nuovo Outlook -->
-            <Button x:Name="OptionsButton" Margin="8,0,0,0" Padding="12,6" Click="OnOptions" AutomationProperties.Name="Opzioni">
+            <Button x:Name="OptionsButton" Margin="8,0,0,0" Padding="12,6" Click="OnOptions" AutomationProperties.Name="{local:T 'Opzioni'}">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock x:Name="OptionsGlyph" Text="&#xE713;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBlock x:Name="OptionsText" Text="Opzioni" />
+                    <TextBlock x:Name="OptionsText" Text="{local:T 'Opzioni'}" />
                 </StackPanel>
             </Button>
             <TextBlock x:Name="Status" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -103,21 +104,21 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <TextBlock Text="Da" Style="{StaticResource Label}" />
-            <ComboBox x:Name="FromBox" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,6" DisplayMemberPath="Display" AutomationProperties.Name="Da" />
-            <TextBlock Grid.Row="1" Text="A" Style="{StaticResource Label}" />
-            <TextBox x:Name="ToBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" AutomationProperties.Name="A" TextChanged="OnRecipientChanged" PreviewKeyDown="OnRecipientKey" LostKeyboardFocus="OnRecipientLostFocus" />
-            <Button x:Name="CcBccButton" Grid.Row="1" Grid.Column="2" Content="Cc e Ccn" Margin="8,0,0,6" Click="OnShowCcBcc" />
+            <TextBlock Text="{local:T 'Da'}" Style="{StaticResource Label}" />
+            <ComboBox x:Name="FromBox" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,6" DisplayMemberPath="Display" AutomationProperties.Name="{local:T 'Da'}" />
+            <TextBlock Grid.Row="1" Text="{local:T 'A'}" Style="{StaticResource Label}" />
+            <TextBox x:Name="ToBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" AutomationProperties.Name="{local:T 'A'}" TextChanged="OnRecipientChanged" PreviewKeyDown="OnRecipientKey" LostKeyboardFocus="OnRecipientLostFocus" />
+            <Button x:Name="CcBccButton" Grid.Row="1" Grid.Column="2" Content="{local:T 'Cc e Ccn'}" Margin="8,0,0,6" Click="OnShowCcBcc" />
             <TextBlock x:Name="CcLabel" Grid.Row="2" Text="Cc" Style="{StaticResource Label}" Visibility="Collapsed" />
             <TextBox x:Name="CcBox" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,6" Visibility="Collapsed" AutomationProperties.Name="Cc" TextChanged="OnRecipientChanged" PreviewKeyDown="OnRecipientKey" LostKeyboardFocus="OnRecipientLostFocus" />
-            <TextBlock x:Name="BccLabel" Grid.Row="3" Text="Ccn" Style="{StaticResource Label}" Visibility="Collapsed" />
-            <TextBox x:Name="BccBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,6" Visibility="Collapsed" AutomationProperties.Name="Ccn" TextChanged="OnRecipientChanged" PreviewKeyDown="OnRecipientKey" LostKeyboardFocus="OnRecipientLostFocus" />
+            <TextBlock x:Name="BccLabel" Grid.Row="3" Text="{local:T 'Ccn'}" Style="{StaticResource Label}" Visibility="Collapsed" />
+            <TextBox x:Name="BccBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,6" Visibility="Collapsed" AutomationProperties.Name="{local:T 'Ccn'}" TextChanged="OnRecipientChanged" PreviewKeyDown="OnRecipientKey" LostKeyboardFocus="OnRecipientLostFocus" />
             <!-- Suggerimenti dei destinatari, come nel nuovo Outlook: sotto il campo che si sta scrivendo (ComposeWindow.ShowSuggestions) -->
             <Popup x:Name="SuggestPopup" Placement="Bottom" AllowsTransparency="True" StaysOpen="True" Focusable="False">
                 <Border CornerRadius="8" BorderThickness="1" Padding="4" Margin="0,2,0,0"
                         Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
                     <ListBox x:Name="SuggestList" Focusable="False" BorderThickness="0" Background="Transparent" SelectionChanged="OnSuggestionChosen"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Suggerimenti">
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="{local:T 'Suggerimenti'}">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem" BasedOn="{StaticResource NavItem}">
                                 <Setter Property="Focusable" Value="False" />
@@ -143,8 +144,8 @@
                     </ListBox>
                 </Border>
             </Popup>
-            <TextBlock Grid.Row="4" Text="Oggetto" Style="{StaticResource Label}" Margin="0,0,12,8" />
-            <TextBox x:Name="SubjectBox" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,8" TextChanged="OnSubjectChanged" AutomationProperties.Name="Oggetto" />
+            <TextBlock Grid.Row="4" Text="{local:T 'Oggetto'}" Style="{StaticResource Label}" Margin="0,0,12,8" />
+            <TextBox x:Name="SubjectBox" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,8" TextChanged="OnSubjectChanged" AutomationProperties.Name="{local:T 'Oggetto'}" />
         </Grid>
 
         <!-- Account di lavoro: destinatari fuori dall'organizzazione, come il suggerimento di Outlook (ComposeWindow.UpdateExternal) -->
@@ -158,76 +159,76 @@
              evidenziatore, elenchi, allineamento, rientro, tabella, immagine, collegamento, cancella formattazione, firma.
              Va a capo nella finestra stretta. -->
         <WrapPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
-            <ComboBox x:Name="FontBox" Width="150" Height="32" Margin="0,0,4,4" AutomationProperties.Name="Carattere" ToolTip="Carattere"
+            <ComboBox x:Name="FontBox" Width="150" Height="32" Margin="0,0,4,4" AutomationProperties.Name="{local:T 'Carattere'}" ToolTip="{local:T 'Carattere'}"
                       SelectionChanged="OnFontPick" />
-            <ComboBox x:Name="SizeBox" Width="72" Height="32" Margin="0,0,8,4" AutomationProperties.Name="Dimensione del carattere"
-                      ToolTip="Dimensione del carattere" SelectionChanged="OnSizePick" />
-            <ToggleButton x:Name="BoldButton" Style="{StaticResource Tool}" ToolTip="Grassetto (Ctrl+B)" Click="OnBold" AutomationProperties.Name="Grassetto">
+            <ComboBox x:Name="SizeBox" Width="72" Height="32" Margin="0,0,8,4" AutomationProperties.Name="{local:T 'Dimensione del carattere'}"
+                      ToolTip="{local:T 'Dimensione del carattere'}" SelectionChanged="OnSizePick" />
+            <ToggleButton x:Name="BoldButton" Style="{StaticResource Tool}" ToolTip="{local:T 'Grassetto (Ctrl+B)'}" Click="OnBold" AutomationProperties.Name="{local:T 'Grassetto'}">
                 <TextBlock Text="&#xE8DD;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
-            <ToggleButton x:Name="ItalicButton" Style="{StaticResource Tool}" ToolTip="Corsivo (Ctrl+I)" Click="OnItalic" AutomationProperties.Name="Corsivo">
+            <ToggleButton x:Name="ItalicButton" Style="{StaticResource Tool}" ToolTip="{local:T 'Corsivo (Ctrl+I)'}" Click="OnItalic" AutomationProperties.Name="{local:T 'Corsivo'}">
                 <TextBlock Text="&#xE8DB;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
-            <ToggleButton x:Name="UnderlineButton" Style="{StaticResource Tool}" ToolTip="Sottolineato (Ctrl+U)" Click="OnUnderline" AutomationProperties.Name="Sottolineato">
+            <ToggleButton x:Name="UnderlineButton" Style="{StaticResource Tool}" ToolTip="{local:T 'Sottolineato (Ctrl+U)'}" Click="OnUnderline" AutomationProperties.Name="{local:T 'Sottolineato'}">
                 <TextBlock Text="&#xE8DC;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
             <Button x:Name="ColorButton" Width="34" Height="32" Padding="0" Margin="0,0,4,0" Background="Transparent" BorderThickness="0"
-                    ToolTip="Colore del testo" AutomationProperties.Name="Colore del testo" Click="OnTextColor">
+                    ToolTip="{local:T 'Colore del testo'}" AutomationProperties.Name="{local:T 'Colore del testo'}" Click="OnTextColor">
                 <Grid>
                     <TextBlock Text="&#xE8D3;" FontFamily="{StaticResource Icons}" />
                     <Border x:Name="ColorMark" Height="3" Width="16" VerticalAlignment="Bottom" Margin="0,0,0,-4" Background="#C42B1C" />
                 </Grid>
             </Button>
             <Button x:Name="HighlightButton" Width="34" Height="32" Padding="0" Margin="0,0,4,0" Background="Transparent" BorderThickness="0"
-                    ToolTip="Colore evidenziatore" AutomationProperties.Name="Colore evidenziatore" Click="OnHighlight">
+                    ToolTip="{local:T 'Colore evidenziatore'}" AutomationProperties.Name="{local:T 'Colore evidenziatore'}" Click="OnHighlight">
                 <Grid>
                     <TextBlock Text="&#xE7E6;" FontFamily="{StaticResource Icons}" />
                     <Border x:Name="HighlightMark" Height="3" Width="16" VerticalAlignment="Bottom" Margin="0,0,0,-4" Background="#FFF100" />
                 </Grid>
             </Button>
             <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
-            <ToggleButton Style="{StaticResource Tool}" ToolTip="Elenco puntato" Click="OnBullets" AutomationProperties.Name="Elenco puntato">
+            <ToggleButton Style="{StaticResource Tool}" ToolTip="{local:T 'Elenco puntato'}" Click="OnBullets" AutomationProperties.Name="{local:T 'Elenco puntato'}">
                 <TextBlock Text="&#xE8FD;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
-            <ToggleButton Style="{StaticResource Tool}" ToolTip="Elenco numerato" Click="OnNumbers" AutomationProperties.Name="Elenco numerato">
+            <ToggleButton Style="{StaticResource Tool}" ToolTip="{local:T 'Elenco numerato'}" Click="OnNumbers" AutomationProperties.Name="{local:T 'Elenco numerato'}">
                 <TextBlock Text="&#xE9D5;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
-            <Button Style="{StaticResource PlainTool}" ToolTip="Riduci rientro" AutomationProperties.Name="Riduci rientro" Click="OnOutdent">
+            <Button Style="{StaticResource PlainTool}" ToolTip="{local:T 'Riduci rientro'}" AutomationProperties.Name="{local:T 'Riduci rientro'}" Click="OnOutdent">
                 <TextBlock Text="&#xE290;" FontFamily="{StaticResource Icons}" />
             </Button>
-            <Button Style="{StaticResource PlainTool}" ToolTip="Aumenta rientro" AutomationProperties.Name="Aumenta rientro" Click="OnIndent">
+            <Button Style="{StaticResource PlainTool}" ToolTip="{local:T 'Aumenta rientro'}" AutomationProperties.Name="{local:T 'Aumenta rientro'}" Click="OnIndent">
                 <TextBlock Text="&#xE291;" FontFamily="{StaticResource Icons}" />
             </Button>
             <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
-            <ToggleButton x:Name="AlignLeftButton" Style="{StaticResource Tool}" ToolTip="Allinea a sinistra" Click="OnAlignLeft" AutomationProperties.Name="Allinea a sinistra">
+            <ToggleButton x:Name="AlignLeftButton" Style="{StaticResource Tool}" ToolTip="{local:T 'Allinea a sinistra'}" Click="OnAlignLeft" AutomationProperties.Name="{local:T 'Allinea a sinistra'}">
                 <TextBlock Text="&#xE8E4;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
-            <ToggleButton x:Name="AlignCenterButton" Style="{StaticResource Tool}" ToolTip="Al centro" Click="OnAlignCenter" AutomationProperties.Name="Al centro">
+            <ToggleButton x:Name="AlignCenterButton" Style="{StaticResource Tool}" ToolTip="{local:T 'Al centro'}" Click="OnAlignCenter" AutomationProperties.Name="{local:T 'Al centro'}">
                 <TextBlock Text="&#xE8E3;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
-            <ToggleButton x:Name="AlignRightButton" Style="{StaticResource Tool}" ToolTip="Allinea a destra" Click="OnAlignRight" AutomationProperties.Name="Allinea a destra">
+            <ToggleButton x:Name="AlignRightButton" Style="{StaticResource Tool}" ToolTip="{local:T 'Allinea a destra'}" Click="OnAlignRight" AutomationProperties.Name="{local:T 'Allinea a destra'}">
                 <TextBlock Text="&#xE8E2;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
             <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
-            <Button x:Name="TableButton" Style="{StaticResource PlainTool}" ToolTip="Inserisci tabella" AutomationProperties.Name="Inserisci tabella" Click="OnTable">
+            <Button x:Name="TableButton" Style="{StaticResource PlainTool}" ToolTip="{local:T 'Inserisci tabella'}" AutomationProperties.Name="{local:T 'Inserisci tabella'}" Click="OnTable">
                 <TextBlock Text="&#xE80A;" FontFamily="{StaticResource Icons}" />
             </Button>
-            <Button Style="{StaticResource PlainTool}" ToolTip="Inserisci immagine da un file" AutomationProperties.Name="Inserisci immagine" Click="OnPicture">
+            <Button Style="{StaticResource PlainTool}" ToolTip="{local:T 'Inserisci immagine da un file'}" AutomationProperties.Name="{local:T 'Inserisci immagine'}" Click="OnPicture">
                 <TextBlock Text="&#xE8B9;" FontFamily="{StaticResource Icons}" />
             </Button>
-            <Button Style="{StaticResource PlainTool}" ToolTip="Inserisci collegamento (Ctrl+K)" AutomationProperties.Name="Inserisci collegamento" Click="OnLink">
+            <Button Style="{StaticResource PlainTool}" ToolTip="{local:T 'Inserisci collegamento (Ctrl+K)'}" AutomationProperties.Name="{local:T 'Inserisci collegamento'}" Click="OnLink">
                 <TextBlock Text="&#xE71B;" FontFamily="{StaticResource Icons}" />
             </Button>
-            <Button Style="{StaticResource PlainTool}" ToolTip="Cancella formattazione" AutomationProperties.Name="Cancella formattazione" Click="OnClearFormat">
+            <Button Style="{StaticResource PlainTool}" ToolTip="{local:T 'Cancella formattazione'}" AutomationProperties.Name="{local:T 'Cancella formattazione'}" Click="OnClearFormat">
                 <TextBlock Text="&#xE75C;" FontFamily="{StaticResource Icons}" />
             </Button>
             <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
             <!-- Firma, come nel nuovo Outlook: le firme dell'indirizzo del Da, per cambiare quella messa da Missiva -->
             <Button x:Name="SignatureButton" Height="32" Padding="8,0" Margin="0,0,4,0" Background="Transparent" BorderThickness="0"
-                    ToolTip="Firma" AutomationProperties.Name="Firma" Click="OnSignatureMenu">
+                    ToolTip="{local:T 'Firma'}" AutomationProperties.Name="{local:T 'Firma'}" Click="OnSignatureMenu">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="&#xE8AC;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBlock Text="Firma" VerticalAlignment="Center" />
+                    <TextBlock Text="{local:T 'Firma'}" VerticalAlignment="Center" />
                     <TextBlock Text="&#xE70D;" FontFamily="{StaticResource Icons}" FontSize="9" VerticalAlignment="Center" Margin="6,0,0,0" />
                 </StackPanel>
             </Button>
@@ -237,10 +238,10 @@
              citerà sotto il testo (ComposeWindow.ShowOriginalAsync). Compresso a dieci righe, con "Mostra tutto". -->
         <Border x:Name="OriginalPanel" DockPanel.Dock="Bottom" Margin="0,10,0,0" Padding="0,10,0,0" BorderThickness="0,1,0,0"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" Visibility="Collapsed"
-                ToolTip="Il messaggio originale: verrà citato sotto il tuo testo" AutomationProperties.Name="Messaggio originale">
+                ToolTip="{local:T 'Il messaggio originale: verrà citato sotto il tuo testo'}" AutomationProperties.Name="{local:T 'Messaggio originale'}">
             <DockPanel>
                 <!-- In alto a destra: in una finestra bassa il fondo del riquadro scorre, il pulsante resta in vista -->
-                <Button x:Name="ShowAllButton" DockPanel.Dock="Right" VerticalAlignment="Top" Content="Mostra tutto" Margin="8,-3,0,0" Padding="8,3"
+                <Button x:Name="ShowAllButton" DockPanel.Dock="Right" VerticalAlignment="Top" Content="{local:T 'Mostra tutto'}" Margin="8,-3,0,0" Padding="8,3"
                         Background="Transparent" BorderThickness="0" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                         Visibility="Collapsed" Click="OnShowAll" />
                 <ScrollViewer x:Name="OriginalScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -255,7 +256,8 @@
             </DockPanel>
         </Border>
 
-        <local:RichEditor x:Name="Editor" AutomationProperties.Name="Testo del messaggio" AcceptsTab="True" Language="it-IT" Padding="8"
+        <!-- La lingua dell'editor (correttore ortografico) è quella di Missiva (Lingua.Xml): it-IT in italiano, come quando era scritta qui -->
+        <local:RichEditor x:Name="Editor" AutomationProperties.Name="{local:T 'Testo del messaggio'}" AcceptsTab="True" Language="{x:Static missiva:Lingua.Xml}" Padding="8"
                      VerticalScrollBarVisibility="Auto" SelectionChanged="OnEditorSelection" FontSize="14">
             <FlowDocument FontFamily="Segoe UI" FontSize="14">
                 <Paragraph />

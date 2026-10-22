@@ -35,20 +35,18 @@ public sealed record AutoReplies
     /// <summary>Se sono programmate per dopo (il periodo non è ancora cominciato).</summary>
     public bool PlannedAfter(DateTime now) => State == AutoReplyState.Scheduled && now < Start;
 
-    static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
-
-    /// <summary>Un istante in parole: "venerdì 2 ottobre alle 18:00" (con l'anno se non è quello di adesso).</summary>
+    /// <summary>Un istante in parole: "venerdì 2 ottobre alle 18:00" (con l'anno se non è quello di adesso), nella lingua di Missiva.</summary>
     public static string When(DateTime time, DateTime now) =>
-        time.ToString(time.Year == now.Year ? "dddd d MMMM" : "dddd d MMMM yyyy", Italian) + " alle " + time.ToString("H:mm", Italian);
+        T("{0} alle {1}", time.ToString(time.Year == now.Year ? "dddd d MMMM" : "dddd d MMMM yyyy", Lingua.Culture), time.ToString("H:mm", Lingua.Culture));
 
     /// <summary>La riga della barra sopra l'elenco: attive, fino a quando, o da quando.</summary>
     public string Describe(DateTime now) => State switch
     {
-        AutoReplyState.On => "Risposte automatiche attive",
-        AutoReplyState.Scheduled when now < Start => $"Risposte automatiche programmate da {When(Start, now)} a {When(End, now)}",
-        AutoReplyState.Scheduled when now >= End => $"Risposte automatiche spente: il periodo è finito {When(End, now)}",
-        AutoReplyState.Scheduled => $"Risposte automatiche attive fino a {When(End, now)}",
-        _ => "Risposte automatiche spente",
+        AutoReplyState.On => T("Risposte automatiche attive"),
+        AutoReplyState.Scheduled when now < Start => T("Risposte automatiche programmate da {0} a {1}", When(Start, now), When(End, now)),
+        AutoReplyState.Scheduled when now >= End => T("Risposte automatiche spente: il periodo è finito {0}", When(End, now)),
+        AutoReplyState.Scheduled => T("Risposte automatiche attive fino a {0}", When(End, now)),
+        _ => T("Risposte automatiche spente"),
     };
 
     public static AutoReplies FromGraph(JsonNode? s)

@@ -1,7 +1,10 @@
 # Missiva 0.3
 
+[English](MANUAL.md)
+
 Client di posta per Windows 11, sul modello del nuovo Outlook ma nativo: interfaccia WPF con lo stile Fluent di
-Windows, scrittura con editor nativo e controllo ortografico italiano. Solo il contenuto delle email è impaginato da
+Windows, scrittura con editor nativo e controllo ortografico nella lingua di Missiva, italiano o inglese (sotto,
+"Lingua"). Solo il contenuto delle email è impaginato da
 WebView2, chiuso: niente JavaScript, niente Internet, come un visualizzatore e non come un browser. Account supportati:
 Outlook.com, Hotmail e Live (account Microsoft personali), Microsoft 365 di lavoro o della scuola (con l'app di Missiva o
 con quella registrata dall'organizzazione), Gmail e Google Workspace, e gli altri account IMAP e SMTP (caselle su
@@ -45,6 +48,26 @@ ZIP) resta "0.3.0".
 Per aprire con Missiva i link di posta (mailto:) delle pagine web e dei PDF, dopo l'installazione sceglila in
 Impostazioni, App, App predefinite, Missiva, MAILTO: Windows non lascia farlo ai programmi.
 
+## Lingua
+
+Missiva è in italiano e in inglese. La lingua si sceglie in Impostazioni, Generali, Aspetto, "Lingua (Language)": Come
+Windows (di base: italiano se Windows è in italiano, inglese altrimenti), Italiano o English. Vale dal prossimo avvio:
+Riavvia ora la riapre subito nella lingua nuova. Con la lingua cambiano:
+
+- tutta l'interfaccia: finestre, menu, avvisi e domande, notifiche, la pagina del riquadro di lettura;
+- le date, i mesi e i giorni: in inglese con i formati di Windows se Windows usa quelli inglesi (americani,
+  britannici...), altrimenti con quelli britannici;
+- il controllo ortografico della scrittura;
+- quello che parte con i messaggi: il prefisso dell'oggetto delle risposte e degli inoltri (R: e I: in italiano, RE: e
+  FW: in inglese; un prefisso già presente, nell'una o nell'altra lingua, non si ripete) e, con gli account Gmail e IMAP,
+  la riga sopra il messaggio citato ("Il mercoledì 21 ottobre 2026 14:30, Mario Rossi <...> ha scritto:" oppure "On
+  Wednesday, 21 October 2026 14:30, Mario Rossi <...> wrote:"; con gli account Microsoft la scrive il server di Outlook);
+- le parole chiave della ricerca: in inglese valgono anche from:, to:, subject:, after:, before:, has:attachment,
+  is:unread e is:flagged, e le date si scrivono come in inglese; quelle italiane (da:, a:, oggetto:, dal:, al:...)
+  valgono sempre.
+
+Nei modelli {nome} e {data} si scrivono anche {name} e {date}, in tutte e due le lingue.
+
 ## Account Microsoft: la prima volta
 
 Aggiungi account, scrivi l'indirizzo (outlook.it, hotmail.com...), Accedi con Microsoft: si apre la finestra account di
@@ -85,7 +108,7 @@ personali continuano con l'app di Missiva. L'app dell'organizzazione deve avere 
 mobili e desktop con gli indirizzi di ritorno `ms-appx-web://microsoft.aad.brokerplugin/ID-DELL-APP` e
 `http://localhost`, e i permessi delegati User.Read, Mail.ReadWrite e Mail.Send.
 
-Se Microsoft rifiuta l'accesso, Missiva spiega il motivo in italiano. Quando serve l'approvazione di un amministratore
+Se Microsoft rifiuta l'accesso, Missiva spiega il motivo. Quando serve l'approvazione di un amministratore
 (la tua organizzazione non lascia agli utenti il consenso alle app, o solo a quelle di editori verificati), "Chiedi
 l'approvazione all'amministratore" dà il link da mandargli: lo copi, o lo metti in un nuovo messaggio da un altro tuo
 account. Con l'app di Missiva un solo consenso vale per tutti i suoi permessi: la posta, e anche calendario,
@@ -132,7 +155,8 @@ vale per tutti i propri account Gmail.
 La guida passo per passo è in [docs/gmail.md](docs/gmail.md), "Gmail: registrare la tua app su Google Cloud": i sette
 passi, la pagina di Google che avvisa dell'app non verificata, il calendario e i contatti (facoltativi), Google
 Workspace, che cosa fare se qualcosa non va, che cosa resta sul PC e come togliere l'accesso. Ci rimanda anche la
-pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel file.
+pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel file e nella sua versione inglese,
+[docs/gmail.en.md](docs/gmail.en.md).
 
 ## Cosa c'è
 
@@ -177,9 +201,9 @@ pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel 
   averle sempre così. Zoom del testo dei messaggi.
 - Impostazioni come in Outlook (Generali: Aspetto, Notifiche, Avvio e chiusura, Copia di sicurezza, Informazioni; Account: Account di
   posta e Firme; Posta: Elenco messaggi, Riquadro di lettura, Gestione messaggi, Regole, Scrittura e risposta e Modelli), aperte
-  dall'ingranaggio in fondo alla colonna a sinistra: tema, notifiche per account e suono, numero sull'icona, dimensioni del testo, conversazioni, anteprima di
+  dall'ingranaggio in fondo alla colonna a sinistra: tema, lingua, notifiche per account e suono, numero sull'icona, dimensioni del testo, conversazioni, anteprima di
   0, 1 o 2 righe, mittente o oggetto all'inizio, immagini dei mittenti, anteprima degli allegati, intestazioni per
-  data, quando segnare letti i messaggi aperti. Si applicano subito.
+  data, quando segnare letti i messaggi aperti. Si applicano subito (la lingua al prossimo avvio).
 - Messaggi segnati come letti subito, dopo alcuni secondi aperti nel riquadro, quando la selezione cambia o mai
   (Impostazioni, Posta, Gestione messaggi).
 - Lettura con allegati fra l'intestazione e il testo, come nel nuovo Outlook: icona del tipo di file e dimensione, clic

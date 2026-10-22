@@ -28,7 +28,7 @@ public sealed class RulesView : StackPanel
     readonly TextBlock result = Secondary("");
     readonly StackPanel consent = new() { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 10, 0, 0) };
     readonly StackPanel list = new() { Margin = new Thickness(0, 6, 0, 0) };
-    readonly Button add = new() { Content = "Nuova regola", Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+    readonly Button add = new() { Content = T("Nuova regola"), Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
     RuleHost? host;
     List<MailRule>? rules;
     int version;
@@ -38,12 +38,12 @@ public sealed class RulesView : StackPanel
         this.hostOf = hostOf;
         var accounts = Store.Settings.Accounts.ToList();
         accountBox.ItemsSource = accounts;
-        AutomationProperties.SetName(accountBox, "Regole di");
+        AutomationProperties.SetName(accountBox, T("Regole di"));
         var itemStyle = new Style(typeof(ComboBoxItem), (Style)Application.Current.FindResource(typeof(ComboBoxItem)));
         itemStyle.Setters.Add(new Setter(AutomationProperties.NameProperty, new System.Windows.Data.Binding(nameof(MailAccount.Email))));
         accountBox.ItemContainerStyle = itemStyle;
         var row = new WrapPanel { Margin = new Thickness(0, 4, 0, 4) };
-        row.Children.Add(new TextBlock { Text = "Regole di", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 12, 4) });
+        row.Children.Add(new TextBlock { Text = T("Regole di"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 12, 4) });
         row.Children.Add(accountBox);
         Children.Add(row);
         info.Margin = new Thickness(0, 6, 0, 0);
@@ -61,7 +61,7 @@ public sealed class RulesView : StackPanel
         accountBox.SelectionChanged += async (_, _) => await LoadAsync();
         if (accounts.Count == 0)
         {
-            info.Text = "Aggiungi un account per creare le sue regole.";
+            info.Text = T("Aggiungi un account per creare le sue regole.");
             add.Visibility = Visibility.Collapsed;
             return;
         }
@@ -85,7 +85,9 @@ public sealed class RulesView : StackPanel
     /// </summary>
     internal static List<MailRule> Sample(MailAccount account, List<MailFolder> folders)
     {
-        var target = folders.FirstOrDefault(f => f.Kind == FolderKind.Archive) ?? folders.FirstOrDefault(f => f.Kind == FolderKind.Other) ?? folders.First();
+        // Senza cartelle (l'account Microsoft senza accesso delle foto) una cartella che non c'è: la regola la mostra come sconosciuta.
+        var target = folders.FirstOrDefault(f => f.Kind == FolderKind.Archive) ?? folders.FirstOrDefault(f => f.Kind == FolderKind.Other) ?? folders.FirstOrDefault()
+                     ?? new MailFolder { Id = "archive", Name = "Archive", Kind = FolderKind.Archive };
         JsonNode Rule(string id, string name, int sequence, JsonObject conditions, JsonObject actions) =>
             new JsonObject { ["id"] = id, ["displayName"] = name, ["sequence"] = sequence, ["isEnabled"] = true, ["hasError"] = false, ["isReadOnly"] = false, ["conditions"] = conditions, ["actions"] = actions };
         return new[]
@@ -117,11 +119,10 @@ public sealed class RulesView : StackPanel
 
     void BuildConsent()
     {
-        consent.Children.Add(Secondary("Le regole di Outlook stanno nelle impostazioni della casella: per leggerle e cambiarle Missiva deve poterci accedere " +
-                                       "(il permesso MailboxSettings, lo stesso delle risposte automatiche e delle categorie, che l'accesso di base non chiede)."));
-        var allow = new Button { Content = "Consenti l'accesso alle impostazioni della casella", Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+        consent.Children.Add(Secondary(T("Le regole di Outlook stanno nelle impostazioni della casella: per leggerle e cambiarle Missiva deve poterci accedere (il permesso MailboxSettings, lo stesso delle risposte automatiche e delle categorie, che l'accesso di base non chiede).")));
+        var allow = new Button { Content = T("Consenti l'accesso alle impostazioni della casella"), Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
         allow.SetResourceReference(StyleProperty, "AccentButtonStyle");
-        AutomationProperties.SetName(allow, "Consenti l'accesso alle impostazioni della casella");
+        AutomationProperties.SetName(allow, T("Consenti l'accesso alle impostazioni della casella"));
         allow.Click += async (_, _) => await AllowAsync();
         consent.Children.Add(allow);
     }
@@ -143,22 +144,22 @@ public sealed class RulesView : StackPanel
         add.IsEnabled = false;
         if (account.SharedOf != null)
         {
-            info.Text = "Le regole di una casella condivisa le imposta l'amministratore di Microsoft 365 (o chi ha la casella), in Outlook sul web.";
+            info.Text = T("Le regole di una casella condivisa le imposta l'amministratore di Microsoft 365 (o chi ha la casella), in Outlook sul web.");
             add.Visibility = Visibility.Collapsed;
             status.Text = "";
             return;
         }
         if (host == null)
         {
-            info.Text = "L'account non è ancora pronto: riprova fra poco.";
+            info.Text = T("L'account non è ancora pronto: riprova fra poco.");
             status.Text = "";
             return;
         }
         var provider = host.Provider;
         info.Text = provider.HasServerRules
-            ? "Sono le regole di Outlook: le stesse di Outlook sul web e del telefono. Girano sul server, anche con Missiva chiusa, nell'ordine dell'elenco."
-            : "Sono regole di Missiva: girano solo quando Missiva è aperta, anche nascosta nell'area di notifica, sui nuovi messaggi della Posta in arrivo, " +
-              "nell'ordine dell'elenco. Restano su questo PC, cifrate." + (account.Kind == AccountKind.Gmail ? " I filtri fatti sul sito di Gmail continuano a valere." : "");
+            ? T("Sono le regole di Outlook: le stesse di Outlook sul web e del telefono. Girano sul server, anche con Missiva chiusa, nell'ordine dell'elenco.")
+            : T("Sono regole di Missiva: girano solo quando Missiva è aperta, anche nascosta nell'area di notifica, sui nuovi messaggi della Posta in arrivo, nell'ordine dell'elenco. Restano su questo PC, cifrate.") +
+              (account.Kind == AccountKind.Gmail ? " " + T("I filtri fatti sul sito di Gmail continuano a valere.") : "");
         if (!provider.HasServerRules)
         {
             status.Text = "";
@@ -166,7 +167,7 @@ public sealed class RulesView : StackPanel
             Show();
             return;
         }
-        status.Text = "Caricamento delle regole di Outlook…";
+        status.Text = T("Caricamento delle regole di Outlook…");
         List<MailRule>? found;
         try
         {
@@ -179,7 +180,7 @@ public sealed class RulesView : StackPanel
         catch (Exception ex)
         {
             Log.Error("regole di Outlook", ex);
-            if (mine == version) status.Text = "Le regole di Outlook non si leggono: " + ex.Message;
+            if (mine == version) status.Text = T("Le regole di Outlook non si leggono: {0}", ex.Message);
             return;
         }
         if (mine != version) return; // intanto si è scelto un altro account
@@ -200,7 +201,7 @@ public sealed class RulesView : StackPanel
         list.Children.Clear();
         add.IsEnabled = true;
         if (rules == null || Account is not { } account) return;
-        if (rules.Count == 0) list.Children.Add(Secondary("Nessuna regola."));
+        if (rules.Count == 0) list.Children.Add(Secondary(T("Nessuna regola.")));
         for (int i = 0; i < rules.Count; i++) list.Children.Add(Card(rules[i], i, account));
     }
 
@@ -225,17 +226,17 @@ public sealed class RulesView : StackPanel
         var top = new DockPanel();
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
         bool editable = !rule.IsReadOnly;
-        buttons.Children.Add(Small("", $"Modifica la regola {rule.Name}", () => EditAsync(rule), editable));
-        buttons.Children.Add(Small("", $"Elimina la regola {rule.Name}", () => DeleteAsync(rule), editable));
-        buttons.Children.Add(Small("", $"Sposta su la regola {rule.Name}", () => MoveAsync(index, -1), editable && index > 0));
-        buttons.Children.Add(Small("", $"Sposta giù la regola {rule.Name}", () => MoveAsync(index, +1), editable && index < rules!.Count - 1));
+        buttons.Children.Add(Small("", T("Modifica la regola {0}", rule.Name), () => EditAsync(rule), editable));
+        buttons.Children.Add(Small("", T("Elimina la regola {0}", rule.Name), () => DeleteAsync(rule), editable));
+        buttons.Children.Add(Small("", T("Sposta su la regola {0}", rule.Name), () => MoveAsync(index, -1), editable && index > 0));
+        buttons.Children.Add(Small("", T("Sposta giù la regola {0}", rule.Name), () => MoveAsync(index, +1), editable && index < rules!.Count - 1));
         // Con condizioni o eccezioni che solo Outlook controlla, Esegui ora non c'è: Missiva le tratterebbe come assenti.
         bool runnable = rule.HiddenConditions.Count == 0;
-        var run = new Button { Content = "Esegui ora", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(10, 3, 10, 3), IsEnabled = runnable };
-        AutomationProperties.SetName(run, $"Esegui ora la regola {rule.Name}");
+        var run = new Button { Content = T("Esegui ora"), Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(10, 3, 10, 3), IsEnabled = runnable };
+        AutomationProperties.SetName(run, T("Esegui ora la regola {0}", rule.Name));
         if (!runnable)
         {
-            run.ToolTip = "La regola ha condizioni che solo Outlook controlla: la applica Outlook ai messaggi che arrivano.";
+            run.ToolTip = T("La regola ha condizioni che solo Outlook controlla: la applica Outlook ai messaggi che arrivano.");
             ToolTipService.SetShowOnDisabled(run, true);
         }
         run.Click += (_, _) => ShowRunMenu(run, rule);
@@ -243,7 +244,7 @@ public sealed class RulesView : StackPanel
         DockPanel.SetDock(buttons, Dock.Right);
         top.Children.Add(buttons);
         var enabled = new CheckBox { Content = rule.Name, IsChecked = rule.Enabled, FontWeight = FontWeights.SemiBold, IsEnabled = editable, VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetName(enabled, $"Regola {rule.Name} accesa");
+        AutomationProperties.SetName(enabled, T("Regola {0} accesa", rule.Name));
         // Checked e Unchecked, non Click: UI Automation (Toggle) e Assistente vocale non generano Click.
         async void Toggled(object sender, RoutedEventArgs e)
         {
@@ -263,8 +264,8 @@ public sealed class RulesView : StackPanel
             var warning = new DockPanel { Margin = new Thickness(26, 6, 0, 0) };
             if (rule.Enabled)
             {
-                var off = new Button { Content = "Spegni", Padding = new Thickness(10, 3, 10, 3), IsEnabled = editable };
-                AutomationProperties.SetName(off, $"Spegni la regola {rule.Name}");
+                var off = new Button { Content = T("Spegni"), Padding = new Thickness(10, 3, 10, 3), IsEnabled = editable };
+                AutomationProperties.SetName(off, T("Spegni la regola {0}", rule.Name));
                 off.Click += async (_, _) => await SetEnabledAsync(rule, false);
                 DockPanel.SetDock(off, Dock.Right);
                 warning.Children.Add(off);
@@ -272,8 +273,8 @@ public sealed class RulesView : StackPanel
             var danger = new TextBlock
             {
                 Text = rule.Enabled
-                    ? $"Inoltra la tua posta a {string.Join(", ", outside)}, fuori dalla tua casella. Se non l'hai creata tu, spegnila e cambia la password."
-                    : $"Inoltrerebbe la tua posta a {string.Join(", ", outside)}, fuori dalla tua casella (ora è spenta). Se non l'hai creata tu, eliminala e cambia la password.",
+                    ? T("Inoltra la tua posta a {0}, fuori dalla tua casella. Se non l'hai creata tu, spegnila e cambia la password.", string.Join(", ", outside))
+                    : T("Inoltrerebbe la tua posta a {0}, fuori dalla tua casella (ora è spenta). Se non l'hai creata tu, eliminala e cambia la password.", string.Join(", ", outside)),
                 FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
             };
             Dialog.Critical(danger); // il rosso del tema (C-16): quello fisso di prima nello scuro si leggeva male
@@ -283,19 +284,19 @@ public sealed class RulesView : StackPanel
         }
         if (rule.HasError)
         {
-            var problem = new TextBlock { Text = "Outlook segnala un errore in questa regola (per esempio una cartella che non c'è più): aprila con Modifica e controllala.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(26, 4, 0, 0) };
+            var problem = new TextBlock { Text = T("Outlook segnala un errore in questa regola (per esempio una cartella che non c'è più): aprila con Modifica e controllala."), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(26, 4, 0, 0) };
             Dialog.Critical(problem);
             panel.Children.Add(problem);
         }
         if (rule.IsReadOnly)
         {
-            var locked = Secondary("Questa regola si cambia solo in Outlook classico.");
+            var locked = Secondary(T("Questa regola si cambia solo in Outlook classico."));
             locked.Margin = new Thickness(26, 4, 0, 0);
             panel.Children.Add(locked);
         }
         if (!runnable)
         {
-            var only = Secondary("Esegui ora non c'è per questa regola: ha condizioni che solo Outlook sa controllare. Outlook la applica da sé ai messaggi che arrivano.");
+            var only = Secondary(T("Esegui ora non c'è per questa regola: ha condizioni che solo Outlook sa controllare. Outlook la applica da sé ai messaggi che arrivano."));
             only.Margin = new Thickness(26, 4, 0, 0);
             panel.Children.Add(only);
         }
@@ -314,7 +315,7 @@ public sealed class RulesView : StackPanel
         if (MainWindow.Testing)
         {
             await host.Provider.AllowMailboxSettingsAsync(); // TestingProvider: solo "prova: chiederei il consenso ..." nel registro
-            status.Text = "Nella versione di prova la finestra di Microsoft non si apre.";
+            status.Text = T("Nella versione di prova la finestra di Microsoft non si apre.");
             return;
         }
         consent.IsEnabled = false;
@@ -331,7 +332,7 @@ public sealed class RulesView : StackPanel
         catch (Exception ex)
         {
             Log.Error("consenso alle impostazioni della casella (regole)", ex);
-            ReadingView.ShowConsentError(Owner, "Accesso alle impostazioni non consentito", ex, host.Provider.Account, "leggere e cambiare le regole di Outlook");
+            ReadingView.ShowConsentError(Owner, T("Accesso alle impostazioni non consentito"), ex, host.Provider.Account, T("leggere e cambiare le regole di Outlook"));
         }
         finally
         {
@@ -358,9 +359,9 @@ public sealed class RulesView : StackPanel
     async Task DeleteAsync(MailRule rule)
     {
         if (host == null) return;
-        if (Dialog.Ask(Owner, $"Eliminare la regola \"{rule.Name}\"?", host.Provider.HasServerRules
-                ? "La regola esce da Outlook: non agirà più sui messaggi che arrivano, nemmeno su Outlook sul web e sul telefono."
-                : "La regola esce da Missiva. I messaggi già spostati restano dove sono.", "Elimina") != Choice.Primary) return;
+        if (Dialog.Ask(Owner, T("Eliminare la regola \"{0}\"?", rule.Name), host.Provider.HasServerRules
+                ? T("La regola esce da Outlook: non agirà più sui messaggi che arrivano, nemmeno su Outlook sul web e sul telefono.")
+                : T("La regola esce da Missiva. I messaggi già spostati restano dove sono."), T("Elimina")) != Choice.Primary) return;
         try
         {
             if (host.Provider.HasServerRules) await host.Provider.DeleteRuleAsync(rule);
@@ -371,7 +372,7 @@ public sealed class RulesView : StackPanel
         catch (Exception ex)
         {
             Log.Error("regola non eliminata", ex);
-            Dialog.Show(Owner, "Regola non eliminata", ex.Message);
+            Dialog.Show(Owner, T("Regola non eliminata"), ex.Message);
         }
     }
 
@@ -387,7 +388,7 @@ public sealed class RulesView : StackPanel
         catch (Exception ex)
         {
             Log.Error("regola non cambiata", ex);
-            Dialog.Show(Owner, on ? "Regola non accesa" : "Regola non spenta", ex.Message);
+            Dialog.Show(Owner, on ? T("Regola non accesa") : T("Regola non spenta"), ex.Message);
         }
         Show(); // anche dopo un no: la casella torna com'era
     }
@@ -433,7 +434,7 @@ public sealed class RulesView : StackPanel
         catch (Exception ex)
         {
             Log.Error("regole non riordinate", ex);
-            Dialog.Show(Owner, "Ordine delle regole non cambiato", ex.Message);
+            Dialog.Show(Owner, T("Ordine delle regole non cambiato"), ex.Message);
         }
         Show();
     }
@@ -466,13 +467,15 @@ public sealed class RulesView : StackPanel
         catch (Exception ex)
         {
             Log.Error($"regole non riordinate ({done} di {total} richieste riuscite)", ex);
-            var partly = done > 0 ? $"L'ordine è cambiato solo in parte: {done} di {total} regole hanno preso il numero nuovo, poi Outlook ha risposto con un errore. " : "";
+            // Se una parte è cambiata, una frase lo dice prima dell'altra.
+            string Partly(string then) =>
+                done > 0 ? T("L'ordine è cambiato solo in parte: {0} di {1} regole hanno preso il numero nuovo, poi Outlook ha risposto con un errore.", done, total) + " " + then : then;
             try
             {
                 if (await provider.GetRulesAsync() is { } fresh)
                     return (fresh, done > 0
-                        ? ("Ordine delle regole cambiato solo in parte", partly + "Qui sotto c'è l'ordine che Outlook ha adesso: controllalo e sposta di nuovo la regola.\n\n" + ex.Message)
-                        : ("Ordine delle regole non cambiato", "Outlook non ha cambiato nulla: l'ordine è quello di prima.\n\n" + ex.Message));
+                        ? (T("Ordine delle regole cambiato solo in parte"), Partly(T("Qui sotto c'è l'ordine che Outlook ha adesso: controllalo e sposta di nuovo la regola.")) + "\n\n" + ex.Message)
+                        : (T("Ordine delle regole non cambiato"), T("Outlook non ha cambiato nulla: l'ordine è quello di prima.") + "\n\n" + ex.Message));
             }
             catch (Exception again)
             {
@@ -480,8 +483,8 @@ public sealed class RulesView : StackPanel
             }
             // Senza rilettura: l'ordine che risulta dalle richieste riuscite (le altre regole hanno ancora il numero di prima).
             return (done > 0 ? ordered.OrderBy(r => r.Sequence).ToList() : rules,
-                    (done > 0 ? "Ordine delle regole cambiato solo in parte" : "Ordine delle regole non cambiato",
-                     partly + "Missiva non è riuscita a rileggere le regole da Outlook: l'ordine qui sotto può non essere quello vero. Chiudi e riapri la pagina Regole.\n\n" + ex.Message));
+                    (done > 0 ? T("Ordine delle regole cambiato solo in parte") : T("Ordine delle regole non cambiato"),
+                     Partly(T("Missiva non è riuscita a rileggere le regole da Outlook: l'ordine qui sotto può non essere quello vero. Chiudi e riapri la pagina Regole.")) + "\n\n" + ex.Message));
         }
     }
 
@@ -511,10 +514,10 @@ public sealed class RulesView : StackPanel
         var provider = host.Provider;
         if (rule.HiddenConditions.Count > 0)
         {
-            result.Text = $"Esegui ora \"{rule.Name}\": la regola ha condizioni che solo Outlook sa controllare, quindi Missiva non la applica.";
+            result.Text = T("Esegui ora \"{0}\": la regola ha condizioni che solo Outlook sa controllare, quindi Missiva non la applica.", rule.Name);
             return;
         }
-        result.Text = $"Esegui ora \"{rule.Name}\" su {folder.Name}…";
+        result.Text = T("Esegui ora \"{0}\" su {1}…", rule.Name, folder.Name);
         try
         {
             var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -530,12 +533,12 @@ public sealed class RulesView : StackPanel
             active.Enabled = true;
             // Prima di agire la conferma, con quanti messaggi cambiano: una regola senza condizioni vale per tutti i 500.
             Task<bool> ConfirmAsync(int touched) => Dispatcher.InvokeAsync(() =>
-                Dialog.Ask(Owner, $"Eseguire ora \"{rule.Name}\"?", RunQuestion(active, folder, touched, messages.Count, Rules.Describe(active, FolderName)), "Esegui") == Choice.Primary).Task;
+                Dialog.Ask(Owner, T("Eseguire ora \"{0}\"?", rule.Name), RunQuestion(active, folder, touched, messages.Count, Rules.Describe(active, FolderName)), T("Esegui")) == Choice.Primary).Task;
             var outcome = await Rules.RunAsync(provider, messages, [active], () => Task.FromResult(host.Folders), confirm: ConfirmAsync);
             Log.Time($"regole: Esegui ora su {messages.Count} messaggi, {outcome.Matched} corrispondono, {outcome.Touched} da cambiare{(outcome.Canceled ? ", annullato" : "")}", clock);
             if (outcome.Canceled)
             {
-                result.Text = $"Esegui ora \"{rule.Name}\" annullato: nessun messaggio cambiato.";
+                result.Text = T("Esegui ora \"{0}\" annullato: nessun messaggio cambiato.", rule.Name);
                 return;
             }
             if (outcome.Errors.Count > 0) Log.Write($"regole: Esegui ora, non riuscito ({outcome.Errors.Count}): {Log.Private(string.Join("; ", outcome.Errors))}");
@@ -545,7 +548,7 @@ public sealed class RulesView : StackPanel
         catch (Exception ex)
         {
             Log.Error("Esegui ora", ex);
-            result.Text = $"Esegui ora \"{rule.Name}\" non riuscito: {ex.Message}";
+            result.Text = T("Esegui ora \"{0}\" non riuscito: {1}", rule.Name, ex.Message);
         }
     }
 
@@ -558,9 +561,13 @@ public sealed class RulesView : StackPanel
     internal static string RunQuestion(MailRule rule, MailFolder folder, int touched, int total, string description)
     {
         bool toTrash = rule.Delete && rule.MoveTo.Length == 0 && folder.Kind != FolderKind.Deleted;
-        var what = toTrash ? $"La regola mette nel Cestino {touched} dei {total} messaggi di {folder.Name}: nel Cestino, non per sempre, da lì si riprendono."
-                           : $"La regola cambia {touched} dei {total} messaggi di {folder.Name}.";
-        return what + (rule.HasConditions ? "" : " La regola non ha condizioni: vale per ogni messaggio.") + "\n\n" + description;
+        // In inglese con un messaggio solo nella cartella una frase al singolare ("1 of the 1 messages" non va); l'italiano resta com'era.
+        bool one = Lingua.English && total == 1;
+        var what = toTrash ? one ? string.Format(Lingua.Culture, "The rule moves the only message in {0} to Deleted Items: not permanently, you can get it back from there.", folder.Name)
+                                 : T("La regola mette nel Cestino {0} dei {1} messaggi di {2}: nel Cestino, non per sempre, da lì si riprendono.", touched, total, folder.Name)
+                   : one ? string.Format(Lingua.Culture, "The rule changes the only message in {0}.", folder.Name)
+                         : T("La regola cambia {0} dei {1} messaggi di {2}.", touched, total, folder.Name);
+        return what + (rule.HasConditions ? "" : " " + T("La regola non ha condizioni: vale per ogni messaggio.")) + "\n\n" + description;
     }
 
     /// <summary>
@@ -570,9 +577,14 @@ public sealed class RulesView : StackPanel
     /// </summary>
     internal static string RunResult(string rule, string folder, int messages, Rules.Outcome outcome)
     {
-        if (outcome.Matched == 0) return $"Esegui ora \"{rule}\" su {folder}: nessuno dei {messages} messaggi corrisponde.";
-        return $"Esegui ora \"{rule}\" su {folder}: {outcome.Matched} dei {messages} messaggi corrispondono" + (outcome.Done.Count > 0 ? "; " + string.Join(", ", outcome.Done) : "") + "." +
-               (outcome.Errors.Count > 0 ? " Non riuscito: " + string.Join("; ", outcome.Errors) + "." : "") +
-               (outcome.SkippedForwards ? " L'inoltro lo fa solo Outlook, sui messaggi che arrivano." : "");
+        // In inglese con un messaggio solo una frase al singolare ("none of the 1 messages" non va); l'italiano resta com'era.
+        bool one = Lingua.English && messages == 1;
+        if (outcome.Matched == 0)
+            return one ? string.Format(Lingua.Culture, "Run now \"{0}\" on {1}: the only message doesn't match.", rule, folder)
+                       : T("Esegui ora \"{0}\" su {1}: nessuno dei {2} messaggi corrisponde.", rule, folder, messages);
+        return (one ? string.Format(Lingua.Culture, "Run now \"{0}\" on {1}: the only message matches", rule, folder)
+                    : T("Esegui ora \"{0}\" su {1}: {2} dei {3} messaggi corrispondono", rule, folder, outcome.Matched, messages)) + (outcome.Done.Count > 0 ? "; " + string.Join(", ", outcome.Done) : "") + "." +
+               (outcome.Errors.Count > 0 ? " " + T("Non riuscito: {0}.", string.Join("; ", outcome.Errors)) : "") +
+               (outcome.SkippedForwards ? " " + T("L'inoltro lo fa solo Outlook, sui messaggi che arrivano.") : "");
     }
 }

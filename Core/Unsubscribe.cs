@@ -135,14 +135,14 @@ public static class Unsubscribe
         var shown = action.Shown;
         return action.Kind switch
         {
-            UnsubscribeKind.OneClick => ("Annullare l'iscrizione?",
-                $"Missiva chiede al sito {action.Where} di non mandare più a {account} i messaggi di {sender}. La richiesta va all'indirizzo indicato dal mittente:\n{shown}\n\n" +
-                "Non si apre nessuna pagina, e i messaggi già arrivati restano dove sono.", "Annulla iscrizione"),
-            UnsubscribeKind.Mailto => ("Annullare l'iscrizione?",
-                $"{sender} chiede di annullare l'iscrizione con un messaggio a {action.Where}. Missiva lo prepara con destinatario, oggetto e testo: " +
-                "parte solo quando premi Invia.", "Prepara il messaggio"),
-            _ => ("Annullare l'iscrizione?",
-                $"{sender} chiede di annullare l'iscrizione da una pagina del sito {action.Where}. Missiva la apre nel browser:\n{shown}", "Apri nel browser"),
+            UnsubscribeKind.OneClick => (T("Annullare l'iscrizione?"),
+                T("Missiva chiede al sito {0} di non mandare più a {1} i messaggi di {2}. La richiesta va all'indirizzo indicato dal mittente:\n{3}\n\nNon si apre nessuna pagina, e i messaggi già arrivati restano dove sono.",
+                  action.Where, account, sender, shown), T("Annulla iscrizione")),
+            UnsubscribeKind.Mailto => (T("Annullare l'iscrizione?"),
+                T("{0} chiede di annullare l'iscrizione con un messaggio a {1}. Missiva lo prepara con destinatario, oggetto e testo: parte solo quando premi Invia.", sender, action.Where),
+                T("Prepara il messaggio")),
+            _ => (T("Annullare l'iscrizione?"),
+                T("{0} chiede di annullare l'iscrizione da una pagina del sito {1}. Missiva la apre nel browser:\n{2}", sender, action.Where, shown), T("Apri nel browser")),
         };
     }
 
@@ -185,7 +185,7 @@ public static class Unsubscribe
                                                     bool dryRun = false, CancellationToken cancel = default)
     {
         if (action.Kind != UnsubscribeKind.OneClick || !Uri.TryCreate(action.Target, UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps)
-            return new(false, "Questo messaggio non ha un indirizzo per annullare l'iscrizione con un clic.");
+            return new(false, T("Questo messaggio non ha un indirizzo per annullare l'iscrizione con un clic."));
         var (heading, body, primary) = Confirmation(action, sender, account);
         if (!confirm(heading, body, primary)) return new(false, null);
         var host = url.IdnHost;
@@ -203,17 +203,17 @@ public static class Unsubscribe
             Log.Write($"annulla iscrizione: POST a {host}, risposta {status}");
             if (status is >= 200 and < 300) return new(true, null);
             return new(true, status is >= 300 and < 400
-                ? $"Il sito {host} ha risposto rimandando a un'altra pagina (risposta {status}), che Missiva non segue: non si sa se l'iscrizione è stata annullata."
-                : $"Il sito {host} non ha accettato la richiesta (risposta {status}).");
+                ? T("Il sito {0} ha risposto rimandando a un'altra pagina (risposta {1}), che Missiva non segue: non si sa se l'iscrizione è stata annullata.", host, status)
+                : T("Il sito {0} non ha accettato la richiesta (risposta {1}).", host, status));
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {
-            return new(true, $"Il sito {host} non ha risposto entro 15 secondi.");
+            return new(true, T("Il sito {0} non ha risposto entro 15 secondi.", host));
         }
         catch (HttpRequestException ex)
         {
             Log.Write($"annulla iscrizione: POST a {host} non riuscita ({ex.Message})");
-            return new(true, $"Non è stato possibile collegarsi al sito {host}.");
+            return new(true, T("Non è stato possibile collegarsi al sito {0}.", host));
         }
     }
 }

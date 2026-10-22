@@ -11,7 +11,9 @@ namespace Missiva;
 public static partial class GoogleContacts
 {
     const string Base = "https://people.googleapis.com/v1/";
-    static readonly GoogleService Service = new("Google People API", "people", "i contatti", "Consenti l'accesso ai contatti", "in Persone");
+    static readonly GoogleService Service = new("Google People API", "people",
+        N("Missiva non ha il permesso di usare i contatti di questo account: premi \"Consenti l'accesso ai contatti\" in Persone."),
+        N("Google ha limitato le richieste (i contatti): riprova fra poco."));
 
     /// <summary>I campi della scheda: nomi, indirizzi, telefoni, azienda e ruolo, indirizzo, note.</summary>
     public const string PersonFields = "names,emailAddresses,phoneNumbers,organizations,addresses,biographies,urls";

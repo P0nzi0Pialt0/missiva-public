@@ -7,13 +7,13 @@ namespace Missiva;
 /// Una ricerca con i filtri, come i Filtri della ricerca del nuovo Outlook: le parole libere più Da, A, Oggetto, Dal, Al,
 /// Con allegati, Non letti e Contrassegnati. Scritta come testo con parole chiave italiane ("fattura da:TIM ha:allegati
 /// dal:1/3/2026"), che si possono anche battere a mano e che restano così nelle ricerche recenti; il resto del testo
-/// (anche la sintassi di Gmail, from:, OR, participants:) passa com'è. Ogni provider la traduce nella sua ricerca: Gmail
+/// (anche la sintassi di Gmail, from:, OR, participants:) passa com'è. Con Missiva in inglese valgono anche le parole chiave
+/// inglesi ("invoice from:TIM has:attachment after:2026-03-01"), che sono quelle che ToString scrive; le italiane restano
+/// accettate sempre (le ricerche recenti fatte in italiano). Ogni provider la traduce nella sua ricerca: Gmail
 /// X-GM-RAW (ToGmail), Graph $search KQL o $filter (ToKql, Filter, Matches), IMAP i criteri di SEARCH.
 /// </summary>
 public sealed record SearchTerms
 {
-    static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
-
     /// <summary>Le parole libere, com'erano scritte.</summary>
     public string Text { get; init; } = "";
     public string From { get; init; } = "";
@@ -86,27 +86,71 @@ public sealed record SearchTerms
     /// dicembre, e la ricerca non trovava nulla: audit dell'11 ottobre, C-62).
     /// </summary>
     /// <param name="today">Il giorno di oggi (le prove lo simulano).</param>
-    public static DateTime? ParseDate(string text, DateTime? today = null)
+    /// <param name="english">
+    /// La data di una parola chiave inglese (after:, before:): prima come la scrive chi usa l'inglese, con la cultura di
+    /// Lingua.Culture (12/03 è il 12 marzo in en-GB e il 3 dicembre in en-US; anche "12 March", "March 12, 2026"), poi
+    /// come sempre. Le parole chiave italiane leggono le date come sempre, in qualunque lingua.
+    /// </param>
+    public static DateTime? ParseDate(string text, DateTime? today = null, bool english = false)
     {
         text = text.Trim();
+        if (english && ParseEnglishDate(text, Lingua.Culture, today) is { } written) return written;
         string[] formats = ["d/M/yyyy", "d/M/yy", "d-M-yyyy", "d.M.yyyy", "yyyy-M-d"];
         if (DateTime.TryParseExact(text, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)) return day.Date;
         // Con l'anno 2000, bisestile: 29/2 si legge, e vale per l'ultimo anno che l'ha avuto.
         if (!DateTime.TryParseExact(text + "/2000", "d/M/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out day)) return null;
+        return LastTime(day, today);
+    }
+
+    /// <summary>Un giorno senza anno (day, con l'anno 2000) l'ultima volta che c'è stato fino a oggi, negli ultimi otto anni.</summary>
+    static DateTime? LastTime(DateTime day, DateTime? today)
+    {
         var now = (today ?? DateTime.Today).Date;
         for (int year = now.Year; year > now.Year - 8; year--)
             if (day.Day <= DateTime.DaysInMonth(year, day.Month) && new DateTime(year, day.Month, day.Day) is var found && found <= now) return found;
         return null;
     }
 
+    /// <summary>Nella data corta della cultura il mese viene prima del giorno (en-US: M/d/yyyy).</summary>
+    static bool MonthFirst(CultureInfo culture)
+    {
+        var pattern = culture.DateTimeFormat.ShortDatePattern.Replace("y", "");
+        int month = pattern.IndexOf('M'), day = pattern.IndexOf('d');
+        return month >= 0 && day >= 0 && month < day;
+    }
+
+    /// <summary>
+    /// Una data scritta in inglese, con la cultura data: in cifre nell'ordine della sua data corta (12/03/2026, 12/03/26,
+    /// 12-03-2026, 12.03.2026, 12/03), o con il nome del mese ("12 March", "12 Mar 2026", "March 12, 2026", "Mar 12").
+    /// Senza l'anno è l'ultima volta che quel giorno c'è stato, come in ParseDate. Null se non si legge così.
+    /// </summary>
+    internal static DateTime? ParseEnglishDate(string text, CultureInfo culture, DateTime? today = null)
+    {
+        text = text.Trim();
+        if (text.Length == 0) return null;
+        const DateTimeStyles style = DateTimeStyles.AllowWhiteSpaces;
+        bool monthFirst = MonthFirst(culture);
+        string[] withYear = monthFirst
+            ? ["M/d/yyyy", "M/d/yy", "M-d-yyyy", "M.d.yyyy", "MMMM d yyyy", "MMMM d, yyyy", "MMM d yyyy", "MMM d, yyyy", "d MMMM yyyy", "d MMM yyyy", "yyyy-M-d"]
+            : ["d/M/yyyy", "d/M/yy", "d-M-yyyy", "d.M.yyyy", "d MMMM yyyy", "d MMM yyyy", "MMMM d yyyy", "MMMM d, yyyy", "MMM d yyyy", "MMM d, yyyy", "yyyy-M-d"];
+        if (DateTime.TryParseExact(text, withYear, culture, style, out var day)) return day.Date;
+        // Senza l'anno, con l'anno 2000 aggiunto in fondo (bisestile: 29 February si legge).
+        string[] withoutYear = monthFirst ? ["M/d", "M-d", "MMMM d", "MMM d", "d MMMM", "d MMM"] : ["d/M", "d-M", "d MMMM", "d MMM", "MMMM d", "MMM d"];
+        if (DateTime.TryParseExact(text + " 2000", withoutYear.Select(f => f + " yyyy").ToArray(), culture, style, out day)) return LastTime(day, today);
+        return null;
+    }
+
     /// <summary>
     /// La ricerca da un testo: da:, a:, oggetto:, dal:, al:, ha:allegati, è:nonletto, è:contrassegnato (anche senza accento,
-    /// e:) diventano filtri; il resto sono le parole libere. Una data che non si legge resta fra le parole.
+    /// e:) diventano filtri; il resto sono le parole libere. Una data che non si legge resta fra le parole. Con Missiva in
+    /// inglese anche from:, to:, subject:, after:, before:, has:attachment, is:unread e is:flagged (in italiano restano
+    /// parole libere, come sempre: la sintassi di Gmail passa al provider).
     /// </summary>
     public static SearchTerms Parse(string text)
     {
         var terms = new SearchTerms();
         var free = new List<string>();
+        bool english = Lingua.English;
         foreach (var token in Tokens(text))
         {
             int colon = token.IndexOf(':');
@@ -122,6 +166,16 @@ public sealed record SearchTerms
                 case "ha" when value.Equals("allegati", StringComparison.OrdinalIgnoreCase): terms = terms with { HasAttachments = true }; continue;
                 case "è" or "e" when value.Replace("-", "").Replace(" ", "").Equals("nonletto", StringComparison.OrdinalIgnoreCase): terms = terms with { Unread = true }; continue;
                 case "è" or "e" when value.Equals("contrassegnato", StringComparison.OrdinalIgnoreCase): terms = terms with { Flagged = true }; continue;
+                case "from" when english && value.Length > 0: terms = terms with { From = value }; continue;
+                case "to" when english && value.Length > 0: terms = terms with { To = value }; continue;
+                case "subject" when english && value.Length > 0: terms = terms with { Subject = value }; continue;
+                case "after" when english && ParseDate(value, english: true) is { } since: terms = terms with { Since = since }; continue;
+                case "before" when english && ParseDate(value, english: true) is { } until: terms = terms with { Until = until }; continue;
+                case "has" when english && (value.Equals("attachment", StringComparison.OrdinalIgnoreCase) || value.Equals("attachments", StringComparison.OrdinalIgnoreCase)):
+                    terms = terms with { HasAttachments = true };
+                    continue;
+                case "is" when english && value.Equals("unread", StringComparison.OrdinalIgnoreCase): terms = terms with { Unread = true }; continue;
+                case "is" when english && value.Equals("flagged", StringComparison.OrdinalIgnoreCase): terms = terms with { Flagged = true }; continue;
             }
             free.Add(token);
         }
@@ -131,18 +185,30 @@ public sealed record SearchTerms
     /// <summary>Le parole libere con questi filtri (quelli di prima sostituiti).</summary>
     public SearchTerms WithText(string text) => this with { Text = text.Trim() };
 
-    /// <summary>I filtri in parole, per le pastiglie e il testo della ricerca: ("da", "TIM"), ("ha", "allegati")...</summary>
+    /// <summary>
+    /// I filtri in parole, per le pastiglie e il testo della ricerca: ("da", "TIM"), ("ha", "allegati")... Le parole chiave
+    /// sono quelle della lingua di Missiva (in inglese from:, after: con la data come 2026-03-01, has:attachment...), e le
+    /// etichette delle pastiglie sono tradotte, con le date nella cultura di Lingua.
+    /// </summary>
     public IEnumerable<(string Key, string Label, string Token)> Parts()
     {
-        if (From.Length > 0) yield return ("From", $"Da: {From}", "da:" + Quote(From));
-        if (To.Length > 0) yield return ("To", $"A: {To}", "a:" + Quote(To));
-        if (Subject.Length > 0) yield return ("Subject", $"Oggetto: {Subject}", "oggetto:" + Quote(Subject));
-        if (Since is { } s) yield return ("Since", $"Dal {s.ToString("d MMM yyyy", Italian)}", "dal:" + s.ToString("d/M/yyyy", CultureInfo.InvariantCulture));
-        if (Until is { } u) yield return ("Until", $"Al {u.ToString("d MMM yyyy", Italian)}", "al:" + u.ToString("d/M/yyyy", CultureInfo.InvariantCulture));
-        if (HasAttachments) yield return ("HasAttachments", "Con allegati", "ha:allegati");
-        if (Unread) yield return ("Unread", "Non letti", "è:nonletto");
-        if (Flagged) yield return ("Flagged", "Contrassegnati", "è:contrassegnato");
+        bool english = Lingua.English;
+        if (From.Length > 0) yield return ("From", T("Da: {0}", From), (english ? "from:" : "da:") + Quote(From));
+        if (To.Length > 0) yield return ("To", T("A: {0}", To), (english ? "to:" : "a:") + Quote(To));
+        if (Subject.Length > 0) yield return ("Subject", T("Oggetto: {0}", Subject), (english ? "subject:" : "oggetto:") + Quote(Subject));
+        if (Since is { } s) yield return ("Since", T("Dal {0}", Shown(s)), english ? "after:" + Written(s) : "dal:" + s.ToString("d/M/yyyy", CultureInfo.InvariantCulture));
+        if (Until is { } u) yield return ("Until", T("Al {0}", Shown(u)), english ? "before:" + Written(u) : "al:" + u.ToString("d/M/yyyy", CultureInfo.InvariantCulture));
+        if (HasAttachments) yield return ("HasAttachments", T("Con allegati"), english ? "has:attachment" : "ha:allegati");
+        if (Unread) yield return ("Unread", T("Non letti"), english ? "is:unread" : "è:nonletto");
+        if (Flagged) yield return ("Flagged", T("Contrassegnati"), english ? "is:flagged" : "è:contrassegnato");
     }
+
+    /// <summary>Una data nella pastiglia: "3 mar 2026" in italiano, "3 Mar 2026" o "Mar 3, 2026" in inglese (secondo la cultura).</summary>
+    static string Shown(DateTime day) =>
+        day.ToString(Lingua.English && MonthFirst(Lingua.Culture) ? "MMM d, yyyy" : "d MMM yyyy", Lingua.Culture);
+
+    /// <summary>Una data dopo after: e before:, 2026-03-01: si rilegge uguale con qualunque cultura inglese.</summary>
+    static string Written(DateTime day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     /// <summary>Un filtro tolto (la x della pastiglia).</summary>
     public SearchTerms Without(string key) => key switch

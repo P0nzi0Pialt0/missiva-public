@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace Missiva;
 
 /// <summary>
@@ -10,8 +8,6 @@ namespace Missiva;
 /// </summary>
 public static class Flags
 {
-    static readonly CultureInfo Italian = new("it-IT");
-
     /// <summary>Una scelta del sottomenu: il nome, l'inizio e la scadenza (giorni interi).</summary>
     public sealed record Choice(string Name, DateTime Start, DateTime Due);
 
@@ -22,26 +18,30 @@ public static class Flags
     public static List<Choice> Choices(DateTime now)
     {
         var today = now.Date;
-        var list = new List<Choice> { new("Oggi", today, today), new("Domani", today.AddDays(1), today.AddDays(1)) };
+        var list = new List<Choice> { new(T("Oggi"), today, today), new(T("Domani"), today.AddDays(1), today.AddDays(1)) };
         if (today.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday))
         {
             var friday = today.AddDays(DayOfWeek.Friday - today.DayOfWeek);
             var start = today.AddDays(2) < friday ? today.AddDays(2) : friday;
-            if (friday > today.AddDays(1)) list.Add(new("Questa settimana", start, friday));
+            if (friday > today.AddDays(1)) list.Add(new(T("Questa settimana"), start, friday));
         }
         int toMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
         var monday = today.AddDays(toMonday == 0 ? 7 : toMonday);
-        list.Add(new("Settimana prossima", monday, monday.AddDays(4)));
+        list.Add(new(T("Settimana prossima"), monday, monday.AddDays(4)));
         return list;
     }
 
-    /// <summary>Come la dice la riga: "Scadenza: oggi", "domani", "ieri", o il giorno ("ven 2 ott").</summary>
+    /// <summary>
+    /// Come la dice la riga: "Scadenza: oggi", "domani", "ieri", o il giorno ("ven 2 ott"); in inglese "Due today", "Due
+    /// Fri 2 Oct" (una frase intera per caso).
+    /// </summary>
     public static string DueText(DateTime due, DateTime today)
     {
         var d = due.Date;
-        var when = d == today ? "oggi" : d == today.AddDays(1) ? "domani" : d == today.AddDays(-1) ? "ieri"
-            : d.Year == today.Year ? d.ToString("ddd d MMM", Italian) : d.ToString("d MMM yyyy", Italian);
-        return "Scadenza: " + when;
+        if (d == today) return T("Scadenza: oggi");
+        if (d == today.AddDays(1)) return T("Scadenza: domani");
+        if (d == today.AddDays(-1)) return T("Scadenza: ieri");
+        return T("Scadenza: {0}", d.Year == today.Year ? d.ToString("ddd d MMM", Lingua.Culture) : d.ToString("d MMM yyyy", Lingua.Culture));
     }
 
     /// <summary>Scaduto: la scadenza è prima di oggi (la riga lo dice in rosso).</summary>
@@ -50,10 +50,10 @@ public static class Flags
     /// <summary>I gruppi di Contrassegnati in Tutti gli account, per scadenza, come l'elenco delle attività di Outlook.</summary>
     public static string Group(DateTime? due, DateTime today)
     {
-        if (due is not { } d) return "Senza data";
+        if (due is not { } d) return T("Senza data");
         d = d.Date;
         var sunday = today.AddDays((7 - (int)today.DayOfWeek) % 7);
-        return d < today ? "In ritardo" : d == today ? "Oggi" : d == today.AddDays(1) ? "Domani" : d <= sunday ? "Questa settimana" : "Più avanti";
+        return d < today ? T("In ritardo") : d == today ? T("Oggi") : d == today.AddDays(1) ? T("Domani") : d <= sunday ? T("Questa settimana") : T("Più avanti");
     }
 
     /// <summary>

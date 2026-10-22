@@ -59,8 +59,6 @@ public sealed class Invitation
     /// <summary>Nome e parametri di una riga (quello che sta prima dei due punti) più lunghi di così: la riga si ignora.</summary>
     const int MaxHead = 1024;
 
-    static readonly CultureInfo Italian = new("it-IT");
-
     // ---------------------------------------------------------------- lettura
 
     /// <summary>
@@ -281,14 +279,19 @@ public sealed class Invitation
         if (value.Length > 64) return null;
         var m = Regex.Match(value.Trim(), @"^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$");
         if (!m.Success) return null;
-        int N(int g) => m.Groups[g].Success ? int.Parse(m.Groups[g].Value) : 0;
-        return new TimeSpan(N(1) * 7 + N(2), N(3), N(4), N(5));
+        // Number e non N: N è Lingua.N (global using static), e una funzione locale con quel nome la nasconderebbe qui.
+        int Number(int g) => m.Groups[g].Success ? int.Parse(m.Groups[g].Value) : 0;
+        return new TimeSpan(Number(1) * 7 + Number(2), Number(3), Number(4), Number(5));
     }
 
     static readonly string[] Days = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
     static readonly Dictionary<string, int> DayCodes = new() { ["SU"] = 0, ["MO"] = 1, ["TU"] = 2, ["WE"] = 3, ["TH"] = 4, ["FR"] = 5, ["SA"] = 6 };
 
-    /// <summary>La ricorrenza in parole: "Ogni settimana il lunedì e il mercoledì, fino al 31/12/2026".</summary>
+    /// <summary>
+    /// La ricorrenza in parole: "Ogni settimana il lunedì e il mercoledì, fino al 31/12/2026". In inglese una frase inglese
+    /// (RecurrenceEnglish: "Every 2 weeks on Monday and Wednesday, until 31/12/2026"); l'italiano, con articoli e accordi,
+    /// resta il ramo di sempre.
+    /// </summary>
     public static string RecurrenceText(string rule, DateTime start)
     {
         var parts = rule.Split(';', StringSplitOptions.RemoveEmptyEntries).Select(p => p.Split('=', 2)).Where(p => p.Length == 2)
@@ -296,6 +299,7 @@ public sealed class Invitation
         int interval = int.TryParse(parts.GetValueOrDefault("INTERVAL"), out var n) && n > 1 ? n : 1;
         var days = (parts.GetValueOrDefault("BYDAY") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(d => Regex.Match(d, @"^([+-]?\d*)([A-Z]{2})$")).Where(m => m.Success && DayCodes.ContainsKey(m.Groups[2].Value)).ToList();
+        if (Lingua.English) return RecurrenceEnglish(parts, interval, days, start);
         static string Join(IEnumerable<string> items)
         {
             var list = items.ToList();
@@ -311,13 +315,46 @@ public sealed class Invitation
                          (days.Count == 1 && days[0].Groups[1].Value is { Length: > 0 } ord && int.TryParse(ord, out var o)
                              ? $", {(o == -1 ? "l'ultimo" : $"il {o}°")} {Days[DayCodes[days[0].Groups[2].Value]]}"
                              : $", il giorno {(int.TryParse(parts.GetValueOrDefault("BYMONTHDAY"), out var md) ? md : start.Day)}"),
-            "YEARLY" => interval == 1 ? $"Ogni anno il {start.ToString("d MMMM", Italian)}" : $"Ogni {interval} anni il {start.ToString("d MMMM", Italian)}",
+            "YEARLY" => interval == 1 ? $"Ogni anno il {start.ToString("d MMMM", Lingua.Culture)}" : $"Ogni {interval} anni il {start.ToString("d MMMM", Lingua.Culture)}",
             _ => "Si ripete",
         };
         if (parts.GetValueOrDefault("COUNT") is { } count && int.TryParse(count, out var c)) text += $", {c} volte";
         else if (parts.GetValueOrDefault("UNTIL") is { Length: >= 8 } until &&
                  DateTime.TryParseExact(until[..8], "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end))
             text += $", fino al {end:dd/MM/yyyy}";
+        return text;
+    }
+
+    /// <summary>
+    /// La ricorrenza in inglese, come la dice Outlook: "Every day", "Every 2 weeks on Monday and Wednesday", "Every month on
+    /// the last Friday", "Every month on day 15", "Every year on 26 September", con ", 5 times" o ", until 31/12/2026" (la
+    /// data breve della cultura inglese). Stessi casi del ramo italiano; i giorni e i mesi dalla cultura di Lingua.
+    /// </summary>
+    static string RecurrenceEnglish(Dictionary<string, string> parts, int interval, List<Match> days, DateTime start)
+    {
+        var culture = Lingua.Culture;
+        string Day(int code) => culture.DateTimeFormat.DayNames[code];
+        static string Join(List<string> list) =>
+            list.Count <= 1 ? string.Concat(list) : list.Count == 2 ? $"{list[0]} and {list[1]}" : string.Join(", ", list.Take(list.Count - 1)) + ", and " + list[^1];
+        static string Ordinal(int k) => k % 100 is 11 or 12 or 13 ? $"{k}th" : (k % 10) switch { 1 => $"{k}st", 2 => $"{k}nd", 3 => $"{k}rd", _ => $"{k}th" };
+        string Every(string one, string many) => interval == 1 ? "Every " + one : $"Every {interval} {many}";
+        var text = parts.GetValueOrDefault("FREQ")?.ToUpperInvariant() switch
+        {
+            "DAILY" => Every("day", "days"),
+            "WEEKLY" => Every("week", "weeks") + " on " +
+                        (days.Count > 0 ? Join(days.Select(m => Day(DayCodes[m.Groups[2].Value])).ToList()) : Day((int)start.DayOfWeek)),
+            "MONTHLY" => Every("month", "months") +
+                         (days.Count == 1 && days[0].Groups[1].Value is { Length: > 0 } ord && int.TryParse(ord, out var o)
+                             ? $" on the {(o == -1 ? "last" : o < 0 ? Ordinal(-o) + " to last" : Ordinal(o))} {Day(DayCodes[days[0].Groups[2].Value])}"
+                             : int.TryParse(parts.GetValueOrDefault("BYMONTHDAY"), out var md) && md == -1 ? " on the last day"
+                             : $" on day {(int.TryParse(parts.GetValueOrDefault("BYMONTHDAY"), out var day) ? day : start.Day)}"),
+            "YEARLY" => Every("year", "years") + " on " + start.ToString("M", culture),
+            _ => "Repeats",
+        };
+        if (parts.GetValueOrDefault("COUNT") is { } count && int.TryParse(count, out var c)) text += c == 1 ? ", once" : $", {c} times";
+        else if (parts.GetValueOrDefault("UNTIL") is { Length: >= 8 } until &&
+                 DateTime.TryParseExact(until[..8], "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end))
+            text += ", until " + end.ToString("d", culture);
         return text;
     }
 
@@ -349,29 +386,31 @@ public sealed class Invitation
 
     // ---------------------------------------------------------------- testi
 
-    /// <summary>"giovedì 1 ottobre 2026, 9:00 - 10:00", o per più giorni e per i giorni interi.</summary>
+    /// <summary>"giovedì 1 ottobre 2026, 9:00 - 10:00", o per più giorni e per i giorni interi (giorni e mesi nella lingua di Missiva).</summary>
     public string When
     {
         get
         {
+            var culture = Lingua.Culture;
             if (AllDay)
             {
                 var last = End > Start ? End.AddDays(-1) : Start;
-                return last.Date == Start.Date ? Start.ToString("dddd d MMMM yyyy", Italian) + ", tutto il giorno"
-                    : $"da {Start.ToString("dddd d MMMM", Italian)} a {last.ToString("dddd d MMMM yyyy", Italian)}";
+                return last.Date == Start.Date ? T("{0}, tutto il giorno", Start.ToString("dddd d MMMM yyyy", culture))
+                    : T("da {0} a {1}", Start.ToString("dddd d MMMM", culture), last.ToString("dddd d MMMM yyyy", culture));
             }
             return End.Date == Start.Date
-                ? $"{Start.ToString("dddd d MMMM yyyy", Italian)}, {Start:H:mm} - {End:H:mm}"
-                : $"{Start.ToString("dddd d MMMM yyyy, H:mm", Italian)} - {End.ToString("dddd d MMMM yyyy, H:mm", Italian)}";
+                ? $"{Start.ToString("dddd d MMMM yyyy", culture)}, {Start:H:mm} - {End:H:mm}"
+                : $"{Start.ToString("dddd d MMMM yyyy, H:mm", culture)} - {End.ToString("dddd d MMMM yyyy, H:mm", culture)}";
         }
     }
 
+    /// <summary>La risposta come la dice l'oggetto del messaggio all'organizzatore ("Accettato: titolo", in inglese "Accepted: ...").</summary>
     public static string Verb(InviteAnswer answer) => answer switch
     {
-        InviteAnswer.Accept => "Accettato",
-        InviteAnswer.Tentative => "Provvisorio",
-        InviteAnswer.Decline => "Rifiutato",
-        _ => "Nuovo orario proposto",
+        InviteAnswer.Accept => T("Accettato"),
+        InviteAnswer.Tentative => T("Provvisorio"),
+        InviteAnswer.Decline => T("Rifiutato"),
+        _ => T("Nuovo orario proposto"),
     };
 
     // ---------------------------------------------------------------- risposte (iMIP)
@@ -503,23 +542,25 @@ public sealed class Invitation
         return null;
     }
 
-    /// <summary>Il messaggio iMIP all'organizzatore (oggetto "Accettato: ..." come Outlook), con la parte text/calendar.</summary>
+    /// <summary>
+    /// Il messaggio iMIP all'organizzatore (oggetto "Accettato: ..." come Outlook), con la parte text/calendar. Oggetto e
+    /// testo nella lingua di Missiva (una frase intera per risposta); la parte text/calendar è sempre la stessa.
+    /// </summary>
     public OutgoingMessage ReplyMessage(MailAccount account, InviteResponse response)
     {
-        if (!Answerable) throw new MailException("Non è una richiesta di partecipazione: non si risponde.");
+        if (!Answerable) throw new MailException(T("Non è una richiesta di partecipazione: non si risponde."));
         var me = new Address { Name = account.DisplayName, Email = account.Email };
         var who = account.DisplayName.Length > 0 ? account.DisplayName : account.Email;
         var said = response.Answer switch
         {
-            InviteAnswer.Accept => "ha accettato",
-            InviteAnswer.Tentative => "ha accettato in modo provvisorio",
-            InviteAnswer.Decline => "ha rifiutato",
-            _ => "propone un nuovo orario per",
+            InviteAnswer.Accept => T("{0} ha accettato l'invito \"{1}\".", who, Summary),
+            InviteAnswer.Tentative => T("{0} ha accettato in modo provvisorio l'invito \"{1}\".", who, Summary),
+            InviteAnswer.Decline => T("{0} ha rifiutato l'invito \"{1}\".", who, Summary),
+            _ => response.NewStart is { } s && response.NewEnd is { } e
+                ? T("{0} propone un nuovo orario per l'invito \"{1}\": {2} - {3}.", who, Summary, s.ToString("dddd d MMMM yyyy, H:mm", Lingua.Culture), e.ToString("H:mm"))
+                : T("{0} propone un nuovo orario per l'invito \"{1}\".", who, Summary),
         };
-        var text = $"{who} {said} l'invito \"{Summary}\"" +
-                   (response.Answer == InviteAnswer.Propose && response.NewStart is { } s && response.NewEnd is { } e
-                       ? $": {s.ToString("dddd d MMMM yyyy, H:mm", Italian)} - {e:H:mm}." : ".") +
-                   (response.Comment.Trim().Length > 0 ? "\n\n" + response.Comment.Trim() : "");
+        var text = said + (response.Comment.Trim().Length > 0 ? "\n\n" + response.Comment.Trim() : "");
         var method = response.Answer == InviteAnswer.Propose ? "COUNTER" : "REPLY";
         return new OutgoingMessage
         {

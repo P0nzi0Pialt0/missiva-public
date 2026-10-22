@@ -265,8 +265,10 @@ public static class EditorImages
     }
 
     /// <summary>Un'immagine dagli appunti (uno screenshot): PNG, come la incolla il nuovo Outlook.</summary>
-    public static InlineImage FromBitmap(BitmapSource source, string name = "immagine.png")
+    /// <param name="name">Il nome del file che parte con il messaggio; di base "immagine.png" nella lingua di Missiva.</param>
+    public static InlineImage FromBitmap(BitmapSource source, string? name = null)
     {
+        name ??= T("immagine.png");
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(source));
         using var stream = new MemoryStream();

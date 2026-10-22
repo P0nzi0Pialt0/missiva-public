@@ -76,7 +76,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     public bool SupportsFocused => false;
     public bool PrefetchesMany => true;
 
-    ImapServer Server => Account.Imap ?? throw new MailException("Mancano le impostazioni del server: rimuovi l'account e aggiungilo di nuovo.");
+    ImapServer Server => Account.Imap ?? throw new MailException(T("Mancano le impostazioni del server: rimuovi l'account e aggiungilo di nuovo."));
 
     /// <summary>
     /// La password salvata che non si decifra più (profilo di Windows cambiato, impostazioni copiate da un altro PC) è un
@@ -88,10 +88,10 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         // Un account arrivato con una copia di sicurezza fatta senza le password (Backup): nessun tentativo con una password
         // vuota, che il server conterebbe fra gli accessi sbagliati; la barra "Aggiorna password" sotto l'account.
         if (server.ProtectedPassword == null)
-            throw new MailException($"Su questo PC manca la password di {server.UserName}: scrivila con Aggiorna password.") { Fix = AccountFix.Password };
+            throw new MailException(T("Su questo PC manca la password di {0}: scrivila con Aggiorna password.", server.UserName)) { Fix = AccountFix.Password };
         if (Store.TryUnprotect(server.ProtectedPassword, out var password)) return new(server.UserName, password);
-        throw new MailException($"La password di {server.UserName} salvata su questo PC non si legge più (profilo di Windows cambiato, o impostazioni copiate " +
-                                "da un altro PC): scrivila di nuovo con Aggiorna password.") { Fix = AccountFix.Password };
+        throw new MailException(T("La password di {0} salvata su questo PC non si legge più (profilo di Windows cambiato, o impostazioni copiate da un altro PC): scrivila di nuovo con Aggiorna password.",
+                                  server.UserName)) { Fix = AccountFix.Password };
     }
 
 #if DEBUG
@@ -131,18 +131,17 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     {
         MailException => null,
         SslHandshakeException => new MailException(
-            $"Il certificato di {host} non è valido, quindi Missiva non si collega: con un certificato sbagliato qualcuno potrebbe leggere la password. " +
-            "Controlla il nome del server (spesso è quello del provider, come imaps.aruba.it, invece di mail.tuodominio) o chiedi a chi gestisce la posta. " +
-            "Dettagli: " + FirstSentence(ex.Message), ex),
+            T("Il certificato di {0} non è valido, quindi Missiva non si collega: con un certificato sbagliato qualcuno potrebbe leggere la password. Controlla il nome del server (spesso è quello del provider, come imaps.aruba.it, invece di mail.tuodominio) o chiedi a chi gestisce la posta. Dettagli: {1}",
+              host, FirstSentence(ex.Message)), ex),
         AuthenticationException => new MailException(
-            $"{host} ha rifiutato nome utente o password ({what}). Controllali: spesso il nome utente è l'indirizzo intero, e con la verifica in due " +
-            "passaggi serve una password per le app.", ex) { Fix = AccountFix.Password },
+            T("{0} ha rifiutato nome utente o password ({1}). Controllali: spesso il nome utente è l'indirizzo intero, e con la verifica in due passaggi serve una password per le app.", host, what), ex)
+            { Fix = AccountFix.Password },
         NotSupportedException when ex.Message.Contains("STARTTLS", StringComparison.OrdinalIgnoreCase) => new MailException(
-            $"{host} non offre la cifratura STARTTLS sulla porta {port}: Missiva non gli manda la password in chiaro. Prova SSL/TLS (di solito porta {(what == "IMAP" ? 993 : 465)}).", ex),
+            T("{0} non offre la cifratura STARTTLS sulla porta {1}: Missiva non gli manda la password in chiaro. Prova SSL/TLS (di solito porta {2}).", host, port, what == "IMAP" ? 993 : 465), ex),
         SocketException or TimeoutException or OperationCanceledException => new MailException(
-            $"{host} non risponde sulla porta {port} ({what}): controlla nome del server e porta, o la connessione a Internet.", ex),
+            T("{0} non risponde sulla porta {1} ({2}): controlla nome del server e porta, o la connessione a Internet.", host, port, what), ex),
         ImapProtocolException or SmtpProtocolException => new MailException(
-            $"{host} ha risposto in modo inatteso sulla porta {port} ({what}): forse la sicurezza scelta (SSL/TLS o STARTTLS) non è quella della porta.", ex),
+            T("{0} ha risposto in modo inatteso sulla porta {1} ({2}): forse la sicurezza scelta (SSL/TLS o STARTTLS) non è quella della porta.", host, port, what), ex),
         _ => null,
     };
 
@@ -356,14 +355,18 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         [FolderKind.Archive] = ["Archive", "Archives", "Archivio", "Archiv"],
     };
 
-    static readonly (FolderKind Kind, FolderAttributes Attribute, string Name)[] Specials =
+    /// <summary>Le cartelle speciali con il loro attributo SPECIAL-USE; il nome lo dà Missiva (Named, MailFolder.SpecialName).</summary>
+    static readonly (FolderKind Kind, FolderAttributes Attribute)[] Specials =
     {
-        (FolderKind.Drafts, FolderAttributes.Drafts, "Bozze"),
-        (FolderKind.Sent, FolderAttributes.Sent, "Posta inviata"),
-        (FolderKind.Deleted, FolderAttributes.Trash, "Cestino"),
-        (FolderKind.Archive, FolderAttributes.Archive, "Archivio"),
-        (FolderKind.Junk, FolderAttributes.Junk, "Posta indesiderata"),
+        (FolderKind.Drafts, FolderAttributes.Drafts),
+        (FolderKind.Sent, FolderAttributes.Sent),
+        (FolderKind.Deleted, FolderAttributes.Trash),
+        (FolderKind.Archive, FolderAttributes.Archive),
+        (FolderKind.Junk, FolderAttributes.Junk),
     };
+
+    /// <summary>Il nome di una cartella speciale nella lingua di Missiva (Posta in arrivo, Bozze, Cestino...), non quello del server.</summary>
+    static string Named(FolderKind kind) => MailFolder.SpecialShown(AccountKind.Imap, kind);
 
     /// <summary>Le cartelle speciali trovate (tipo → percorso), per bozze, Posta inviata e cartelle del messaggio.</summary>
     readonly Dictionary<FolderKind, string> special = new();
@@ -397,9 +400,9 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
                 ParentId = top || cut <= 0 ? null : f.FullName[..cut],
             });
         }
-        Add(all.FirstOrDefault(f => f.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase)) ?? client.Inbox, FolderKind.Inbox, "Posta in arrivo", true);
-        foreach (var (kind, _, name) in Specials)
-            if (special.TryGetValue(kind, out var id) && all.FirstOrDefault(f => f.FullName == id) is { } f) Add(f, kind, name, true);
+        Add(all.FirstOrDefault(f => f.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase)) ?? client.Inbox, FolderKind.Inbox, Named(FolderKind.Inbox), true);
+        foreach (var (kind, _) in Specials)
+            if (special.TryGetValue(kind, out var id) && all.FirstOrDefault(f => f.FullName == id) is { } f) Add(f, kind, Named(kind), true);
         var used = result.Select(r => r.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var f in all.Where(f => !used.Contains(f.FullName) && Selectable(f)).OrderBy(f => f.FullName, StringComparer.CurrentCultureIgnoreCase))
             Add(f, FolderKind.Other, f.Name, false);
@@ -424,7 +427,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     void FindSpecial(ImapClient client, IList<IMailFolder> all)
     {
         special.Clear();
-        foreach (var (kind, attribute, _) in Specials)
+        foreach (var (kind, attribute) in Specials)
         {
             var found = all.FirstOrDefault(f => Selectable(f) && f.Attributes.HasFlag(attribute))
                         ?? all.FirstOrDefault(f => Selectable(f) && Depth(f) == 0 && SpecialNames[kind].Contains(f.Name, StringComparer.OrdinalIgnoreCase)
@@ -444,7 +447,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     public Task<MailFolder> CreateFolderAsync(string name, MailFolder? parent) => RunAsync(async client =>
     {
         var container = parent == null ? client.GetFolder(client.PersonalNamespaces[0]) : await client.GetFolderAsync(parent.Id);
-        var created = await container.CreateAsync(name.Trim(), true) ?? throw new MailException($"Il server non ha creato la cartella {name.Trim()}.");
+        var created = await container.CreateAsync(name.Trim(), true) ?? throw new MailException(T("Il server non ha creato la cartella {0}.", name.Trim()));
         return new MailFolder { Id = created.FullName, Name = created.Name, Kind = FolderKind.Other, ParentId = parent?.Id };
     });
 
@@ -479,7 +482,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     public Task EmptyFolderAsync(MailFolder folder, MailFolder? trash) => InboxIdle.OwnAsync(Account.Id, () => RunAsync(async client =>
     {
         bool permanent = folder.Kind is FolderKind.Deleted or FolderKind.Junk;
-        if (!permanent && trash == null) throw new MailException($"L'account non ha un Cestino: {folder.Name} non si svuota, perché i messaggi andrebbero persi per sempre.");
+        if (!permanent && trash == null) throw new MailException(T("L'account non ha un Cestino: {0} non si svuota, perché i messaggi andrebbero persi per sempre.", folder.Name));
         var f = await OpenAsync(client, folder.Id);
         if (f.Count == 0) return;
         var all = await f.SearchAsync(SearchQuery.All);
@@ -499,12 +502,12 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         if (special.GetValueOrDefault(FolderKind.Deleted) is not { } id)
         {
             var created = await client.GetFolder(client.PersonalNamespaces[0]).CreateAsync("Trash", true)
-                          ?? throw new MailException("Il server non ha creato il Cestino.");
+                          ?? throw new MailException(T("Il server non ha creato il Cestino."));
             id = created.FullName;
             special[FolderKind.Deleted] = id;
             Log.Write($"Cestino creato in {Account.Email}: {id}");
         }
-        return new MailFolder { Id = id, Name = "Cestino", Kind = FolderKind.Deleted };
+        return new MailFolder { Id = id, Name = Named(FolderKind.Deleted), Kind = FolderKind.Deleted };
     });
 
     public Task MarkAllReadAsync(MailFolder folder) => InboxIdle.OwnAsync(Account.Id, () => RunAsync(async client =>
@@ -520,7 +523,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         var existing = (await client.GetFoldersAsync(client.PersonalNamespaces[0]))
             .FirstOrDefault(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && Selectable(f) && Depth(f) == 0);
         var folder = existing ?? await client.GetFolder(client.PersonalNamespaces[0]).CreateAsync(name, true)
-                     ?? throw new MailException($"Il server non ha creato la cartella {name}.");
+                     ?? throw new MailException(T("Il server non ha creato la cartella {0}.", name));
         return new MailFolder { Id = folder.FullName, Name = folder.Name, Kind = FolderKind.Other };
     });
 
@@ -788,8 +791,9 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
                 searched++;
                 var uids = (await open.SearchAsync(query)).OrderByDescending(u => u.Id).Take(100).ToList();
                 if (uids.Count == 0) continue;
-                var name = f.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase) ? "Posta in arrivo"
-                         : Specials.FirstOrDefault(s => special.GetValueOrDefault(s.Kind) == f.FullName).Name ?? f.Name;
+                int at = Array.FindIndex(Specials, s => special.GetValueOrDefault(s.Kind) == f.FullName);
+                var name = f.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase) ? Named(FolderKind.Inbox)
+                         : at >= 0 ? Named(Specials[at].Kind) : f.Name;
                 foreach (var i in await open.FetchAsync(uids, MessageSummaryItems.UniqueId | MessageSummaryItems.InternalDate))
                     hits.Add(new Hit(f.FullName, name, i.UniqueId, i.InternalDate ?? DateTimeOffset.MinValue));
             }
@@ -1184,7 +1188,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         if (!known.TryGetValue(key, out var s))
             s = (await f.FetchAsync(new[] { uid }, MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope |
                                                    MessageSummaryItems.BodyStructure | MessageSummaryItems.Size)).FirstOrDefault()
-                ?? throw new MailException("Il messaggio non c'è più: forse è stato spostato o eliminato.");
+                ?? throw new MailException(T("Il messaggio non c'è più: forse è stato spostato o eliminato."));
 
         // Busta PEC o messaggio firmato: i byte com'è sul server, così Pec verifica la firma senza scaricarlo di nuovo.
         byte[]? raw = null;
@@ -1279,7 +1283,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
             var f = await ExamineOrOpenAsync(client, message.FolderId, on);
             var uid = Uid(message);
             var s = (await f.FetchAsync(new[] { uid }, MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure, cancel)).FirstOrDefault();
-            var part = s?.BodyParts.FirstOrDefault(p => p.PartSpecifier == attachment.Id) ?? throw new MailException("Allegato non trovato.");
+            var part = s?.BodyParts.FirstOrDefault(p => p.PartSpecifier == attachment.Id) ?? throw new MailException(T("Allegato non trovato."));
             return await ContentOf(f, uid, part, cancel, progress);
         }, on, cancel);
     }
@@ -1382,7 +1386,9 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
             catch (ImapCommandException ex)
             {
                 // Con MOVE il rifiuto vale per il comando intero; senza, può essere arrivato dopo la copia (MailException.Repeatable).
-                throw new MailException($"Il server non ha spostato {(uids.Count == 1 ? "il messaggio" : $"{uids.Count} messaggi")} in \"{destination.Name}\": {ex.ResponseText}", ex)
+                throw new MailException(uids.Count == 1
+                        ? T("Il server non ha spostato il messaggio in \"{0}\": {1}", destination.Name, ex.ResponseText)
+                        : T("Il server non ha spostato {0} messaggi in \"{1}\": {2}", uids.Count, destination.Name, ex.ResponseText), ex)
                     { Repeatable = client.Capabilities.HasFlag(ImapCapabilities.Move) };
             }
             // Senza UIDPLUS il server non dice i nuovi UID: Annulla ritrova i messaggi con il Message-Id.
@@ -1458,7 +1464,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     public Task<string> SnoozeAsync(MessageSummary message, MailFolder snoozeFolder) => InboxIdle.OwnAsync(Account.Id, () => RunAsync(async client =>
     {
         var f = await OpenAsync(client, message.FolderId);
-        if (message.StableId.Length == 0) throw new MailException("Il messaggio non ha un Message-Id: non si può posporre.");
+        if (message.StableId.Length == 0) throw new MailException(T("Il messaggio non ha un Message-Id: non si può posporre."));
         await MoveUidsAsync(client, f, [Uid(message)], await client.GetFolderAsync(snoozeFolder.Id));
         return message.StableId;
     }));
@@ -1599,15 +1605,15 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         bool retried = false;
         return await RunAsync(async client =>
         {
-            var folder = await SpecialAsync(client, FolderKind.Drafts) ?? throw new MailException("Non trovo la cartella Bozze sul server.");
+            var folder = await SpecialAsync(client, FolderKind.Drafts) ?? throw new MailException(T("Non trovo la cartella Bozze sul server."));
             var f = await OpenAsync(client, folder);
             // Ripresa dopo una connessione caduta: la bozza forse è già scritta, e due APPEND ne lascerebbero due.
             UniqueId? uid = retried ? await FindAsync(f, messageId) : null;
             retried = true;
             uid ??= await f.AppendAsync(new AppendRequest(message, MessageFlags.Draft | MessageFlags.Seen))
                     ?? await FindAsync(f, messageId)
-                    ?? throw new MailException("Il server non ha restituito la bozza salvata.");
-            var s = (await f.FetchAsync(new[] { uid.Value }, ListItems)).FirstOrDefault() ?? throw new MailException("Il server non ha restituito la bozza salvata.");
+                    ?? throw new MailException(T("Il server non ha restituito la bozza salvata."));
+            var s = (await f.FetchAsync(new[] { uid.Value }, ListItems)).FirstOrDefault() ?? throw new MailException(T("Il server non ha restituito la bozza salvata."));
             if (mail.Draft is { } old) await DeleteDraftAsync(client, f, old.Message.StableId, keep: uid);
             var parts = (s.Attachments ?? []).ToList();
             // Allegati del server e del messaggio scritto, uno per uno, nello stesso ordine.
@@ -1633,7 +1639,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
 
     public Task DiscardDraftAsync(SavedDraft draft) => RunAsync(async client =>
     {
-        var folder = await SpecialAsync(client, FolderKind.Drafts) ?? throw new MailException("Non trovo la cartella Bozze sul server.");
+        var folder = await SpecialAsync(client, FolderKind.Drafts) ?? throw new MailException(T("Non trovo la cartella Bozze sul server."));
         await DeleteDraftAsync(client, await OpenAsync(client, folder), draft.Message.StableId);
     }, drafts);
 

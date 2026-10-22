@@ -47,7 +47,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         {
             // Solo la lunghezza: se un giorno Graph ne desse uno vero fatto così, dal registro si vede che è stato fermato qui.
             Log.Write($"Graph: un identificativo di {id?.Length ?? 0} caratteri non è di Graph (vuoto, di soli punti o con caratteri che cambierebbero il percorso): la richiesta non parte");
-            throw new NotFoundException("L'identificativo non è di Microsoft Graph: la richiesta non è stata inviata.");
+            throw new NotFoundException(T("L'identificativo non è di Microsoft Graph: la richiesta non è stata inviata."));
         }
         return escape ? Uri.EscapeDataString(id!) : id!;
     }
@@ -95,7 +95,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort && uri.UserInfo.Length == 0
             && uri.IdnHost.Equals(new Uri(Base).IdnHost, StringComparison.OrdinalIgnoreCase))
             return url;
-        throw new MailException("Microsoft Graph ha risposto con un indirizzo che non è il suo: la richiesta non è stata inviata.");
+        throw new MailException(T("Microsoft Graph ha risposto con un indirizzo che non è il suo: la richiesta non è stata inviata."));
     }
 
     /// <summary>
@@ -178,7 +178,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             return await MicrosoftAuth.TokenAsync(Account);
         }
         return await SharedTokenAsync() ?? throw new MailException(
-            $"Per aprire la casella condivisa {Account.Email} Missiva deve poter usare le caselle condivise: premi \"Consenti l'accesso alle caselle condivise\".")
+            T("Per aprire la casella condivisa {0} Missiva deve poter usare le caselle condivise: premi \"Consenti l'accesso alle caselle condivise\".", Account.Email))
             { Fix = AccountFix.Consent };
     }
 
@@ -190,7 +190,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// altri l'account stesso.
     /// </summary>
     public MailAccount SignInAccount => Account.SharedOf is { } owner
-        ? Store.Settings.Accounts.FirstOrDefault(a => a.Id == owner) ?? throw new MailException($"L'account di lavoro che apriva {Account.Email} non c'è più: rimuovi la casella condivisa e aggiungila di nuovo.")
+        ? Store.Settings.Accounts.FirstOrDefault(a => a.Id == owner) ?? throw new MailException(T("L'account di lavoro che apriva {0} non c'è più: rimuovi la casella condivisa e aggiungila di nuovo.", Account.Email))
         : Account;
 
 #if DEBUG
@@ -208,11 +208,11 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// <summary>Di un permesso in più: gli ambiti da chiedere, il token finto delle prove e la frase quando il consenso non arriva.</summary>
     static (string[] Scopes, string Sample, string Missing) ExtraOf(Extra extra) => extra switch
     {
-        Extra.Shared => (MicrosoftAuth.SharedScopes, "prova-condivise", "Il consenso alle caselle condivise non è arrivato."),
-        Extra.Calendar => (MicrosoftAuth.CalendarScopes, "prova-calendario", "Il consenso al calendario non è arrivato."),
-        Extra.Settings => (MicrosoftAuth.MailboxSettingsScopes, "prova-impostazioni", "Il consenso alle impostazioni della casella non è arrivato."),
-        Extra.Contacts => (MicrosoftAuth.ContactsScopes, "prova-contatti", "Il consenso ai contatti non è arrivato."),
-        _ => (MicrosoftAuth.PeopleScopes, "prova-persone", "Il consenso alle persone non è arrivato."),
+        Extra.Shared => (MicrosoftAuth.SharedScopes, "prova-condivise", N("Il consenso alle caselle condivise non è arrivato.")),
+        Extra.Calendar => (MicrosoftAuth.CalendarScopes, "prova-calendario", N("Il consenso al calendario non è arrivato.")),
+        Extra.Settings => (MicrosoftAuth.MailboxSettingsScopes, "prova-impostazioni", N("Il consenso alle impostazioni della casella non è arrivato.")),
+        Extra.Contacts => (MicrosoftAuth.ContactsScopes, "prova-contatti", N("Il consenso ai contatti non è arrivato.")),
+        _ => (MicrosoftAuth.PeopleScopes, "prova-persone", N("Il consenso alle persone non è arrivato.")),
     };
 
 #if DEBUG
@@ -240,7 +240,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// <summary>La finestra di Microsoft per un permesso in più, dal suo pulsante: se il consenso non arriva lo dice.</summary>
     async Task AllowAsync(Extra extra)
     {
-        if (await ExtraTokenAsync(extra, interactive: true) == null) throw new MailException(ExtraOf(extra).Missing);
+        if (await ExtraTokenAsync(extra, interactive: true) == null) throw new MailException(T(ExtraOf(extra).Missing));
     }
 
     /// <summary>
@@ -251,14 +251,15 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
 
     public Task AllowSharedAsync() => IsShared ? AllowAsync(Extra.Shared) : Task.CompletedTask;
 
-    static readonly (string Alias, FolderKind Kind, string Name)[] WellKnown =
+    /// <summary>Le cartelle speciali di Outlook, per alias; il nome lo dà Missiva (MailFolder.SpecialName: Posta in arrivo, Bozze...).</summary>
+    static readonly (string Alias, FolderKind Kind)[] WellKnown =
     {
-        ("inbox", FolderKind.Inbox, "Posta in arrivo"),
-        ("drafts", FolderKind.Drafts, "Bozze"),
-        ("sentitems", FolderKind.Sent, "Posta inviata"),
-        ("deleteditems", FolderKind.Deleted, "Posta eliminata"),
-        ("archive", FolderKind.Archive, "Archivio"),
-        ("junkemail", FolderKind.Junk, "Posta indesiderata"),
+        ("inbox", FolderKind.Inbox),
+        ("drafts", FolderKind.Drafts),
+        ("sentitems", FolderKind.Sent),
+        ("deleteditems", FolderKind.Deleted),
+        ("archive", FolderKind.Archive),
+        ("junkemail", FolderKind.Junk),
     };
 
     public MailAccount Account { get; } = account;
@@ -328,15 +329,14 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             catch { }
             if (shared != null && SharedError(response.StatusCode, code, shared) is { } explained)
                 throw new MailException(explained, status: (int)response.StatusCode) { Code = code };
-            if (response.StatusCode == HttpStatusCode.NotFound) throw new NotFoundException($"Errore di Microsoft Graph: {message}");
+            if (response.StatusCode == HttpStatusCode.NotFound) throw new NotFoundException(T("Errore di Microsoft Graph: {0}", message));
             // Da un indirizzo che l'account non può usare (Gestisci account, altri indirizzi).
             if (code == "ErrorSendAsDenied")
-                throw new MailException("Microsoft non ti lascia inviare da questo indirizzo. Con Outlook.com deve essere un alias del tuo account Microsoft " +
-                                        "(account.microsoft.com, Le tue informazioni); con Microsoft 365 un amministratore deve darti il permesso Invia come " +
-                                        "su quella casella.", status: (int)response.StatusCode) { Code = code };
+                throw new MailException(T("Microsoft non ti lascia inviare da questo indirizzo. Con Outlook.com deve essere un alias del tuo account Microsoft (account.microsoft.com, Le tue informazioni); con Microsoft 365 un amministratore deve darti il permesso Invia come su quella casella."),
+                                        status: (int)response.StatusCode) { Code = code };
             throw new MailException(response.StatusCode == HttpStatusCode.Forbidden
-                ? $"Accesso negato da Microsoft: {message}"
-                : $"Errore di Microsoft Graph: {message}", status: (int)response.StatusCode) { Code = code };
+                ? T("Accesso negato da Microsoft: {0}", message)
+                : T("Errore di Microsoft Graph: {0}", message), status: (int)response.StatusCode) { Code = code };
         }
         return text.Length == 0 ? null : JsonNode.Parse(text);
     }
@@ -356,14 +356,11 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// </summary>
     internal static string? SharedError(HttpStatusCode status, string code, string shared) => code switch
     {
-        "ErrorSendAsDenied" => $"Microsoft non ti lascia inviare come {shared}: chiedi all'amministratore di Microsoft 365 il permesso Invia come " +
-                               "(o Invia per conto di) su quella casella condivisa.",
+        "ErrorSendAsDenied" => T("Microsoft non ti lascia inviare come {0}: chiedi all'amministratore di Microsoft 365 il permesso Invia come (o Invia per conto di) su quella casella condivisa.", shared),
         "ErrorInvalidUser" or "MailboxNotEnabledForRESTAPI" or "MailboxNotHostedInExchangeOnline" or "ErrorNonExistentMailbox" =>
-            $"La casella {shared} non esiste o non è una casella di Exchange Online della tua organizzazione: controlla l'indirizzo " +
-            "(Rimuovi casella condivisa, poi aggiungila di nuovo).",
+            T("La casella {0} non esiste o non è una casella di Exchange Online della tua organizzazione: controlla l'indirizzo (Rimuovi casella condivisa, poi aggiungila di nuovo).", shared),
         _ when status == HttpStatusCode.Forbidden || code == "ErrorAccessDenied" =>
-            $"Microsoft non ti lascia aprire la casella condivisa {shared}: chiedi all'amministratore di Microsoft 365 il permesso Accesso completo " +
-            "su quella casella. Se l'ha appena dato, possono servire fino a due ore.",
+            T("Microsoft non ti lascia aprire la casella condivisa {0}: chiedi all'amministratore di Microsoft 365 il permesso Accesso completo su quella casella. Se l'ha appena dato, possono servire fino a due ore.", shared),
         _ => null,
     };
 
@@ -440,7 +437,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         {
             var match = folders.FirstOrDefault(f => f.Id == ids[i]);
             if (match.Id == null) continue;
-            result.Add(new MailFolder { Id = match.Id, Name = WellKnown[i].Name, Kind = WellKnown[i].Kind, Unread = match.Unread, Total = match.Total });
+            result.Add(new MailFolder { Id = match.Id, Name = MailFolder.SpecialShown(AccountKind.Microsoft, WellKnown[i].Kind), Kind = WellKnown[i].Kind, Unread = match.Unread, Total = match.Total });
         }
         foreach (var f in folders.Where(f => !ids.Contains(f.Id)).OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase))
             result.Add(new MailFolder { Id = f.Id, Name = f.Name, Kind = FolderKind.Other, Unread = f.Unread, Total = f.Total });
@@ -750,7 +747,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         name = name.Trim();
         try
         {
-            var token = (IsShared ? null : await SettingsTokenAsync()) ?? throw new MailException("Nessun consenso alle impostazioni della casella.");
+            var token = (IsShared ? null : await SettingsTokenAsync()) ?? throw new MailException(T("Nessun consenso alle impostazioni della casella."));
             await SendAsync(HttpMethod.Post, "me/outlook/masterCategories",
                 new JsonObject { ["displayName"] = name, ["color"] = CategoryPalette.GraphName(preset) }, token: token);
         }
@@ -957,7 +954,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             progress?.Report(kept.Length);
             return kept;
         }
-        return await DownloadAsync($"{MessageUrl(message.Id)}/attachments/{Segment(attachment.Id)}/$value", "l'allegato", cancel: cancel, progress: progress);
+        return await DownloadAsync($"{MessageUrl(message.Id)}/attachments/{Segment(attachment.Id)}/$value", whole: false, cancel: cancel, progress: progress);
     }
 
     /// <summary>Senza dati per tanto tempo, uno scaricamento si interrompe (le prove di --prova-bozze lo accorciano).</summary>
@@ -970,7 +967,8 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// superato (un altro messaggio aperto, Annulla del gestore degli scaricamenti) smette fra un blocco e l'altro. Con
     /// progress i byte arrivati dopo ogni blocco, e prima la lunghezza dichiarata dalla risposta, se c'è (IExpectedSize).
     /// </summary>
-    async Task<byte[]> DownloadAsync(string url, string what, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null)
+    /// <param name="whole">Il messaggio intero (l'Origine, Salva con nome .eml), non un allegato: cambia solo la frase dell'errore.</param>
+    async Task<byte[]> DownloadAsync(string url, bool whole, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null)
     {
         using var request = Network.ApiRequest(HttpMethod.Get, Base + url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync());
@@ -982,7 +980,8 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             using var slot = await gate.EnterAsync(opening: false, cancel, lengthy: true);
             idle.CancelAfter(DownloadIdle);
             using var response = await Downloads.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, idle.Token);
-            if (!response.IsSuccessStatusCode) throw new MailException($"Non riesco a scaricare {what}.", status: (int)response.StatusCode);
+            if (!response.IsSuccessStatusCode)
+                throw new MailException(whole ? T("Non riesco a scaricare il messaggio.") : T("Non riesco a scaricare l'allegato."), status: (int)response.StatusCode);
             await using var stream = await response.Content.ReadAsStreamAsync(idle.Token);
             using var result = new MemoryStream(response.Content.Headers.ContentLength is long length and < int.MaxValue ? (int)Math.Min(length, limit) : 0);
             if (progress is IExpectedSize expected && response.Content.Headers.ContentLength is long declared and > 0) expected.Expect(Math.Min(declared, limit));
@@ -999,7 +998,8 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         }
         catch (OperationCanceledException) when (idle.IsCancellationRequested && !cancel.IsCancellationRequested)
         {
-            throw new MailException($"Non riesco a scaricare {what}: da {DownloadIdle.TotalSeconds:0} secondi la connessione non manda nulla.");
+            throw new MailException(whole ? T("Non riesco a scaricare il messaggio: da {0:0} secondi la connessione non manda nulla.", DownloadIdle.TotalSeconds)
+                                          : T("Non riesco a scaricare l'allegato: da {0:0} secondi la connessione non manda nulla.", DownloadIdle.TotalSeconds));
         }
     }
 
@@ -1116,7 +1116,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         SendAsync(HttpMethod.Post, $"{MessageUrl(m.Id)}/copy", new JsonObject { ["destinationId"] = destination.Id }));
 
     public Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null) =>
-        DownloadAsync($"{MessageUrl(message.Id)}/$value", "il messaggio", limit, cancel, progress);
+        DownloadAsync($"{MessageUrl(message.Id)}/$value", whole: true, limit, cancel, progress);
 
     public Task DeletePermanentlyAsync(IReadOnlyList<MessageSummary> messages) => UnreadSync.WriteAsync(Account.Id, () => EachAsync(messages, m =>
         SendAsync(HttpMethod.Delete, $"{MessageUrl(m.Id)}")));
@@ -1218,7 +1218,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     public async Task SetAutoRepliesAsync(AutoReplies replies)
     {
         var token = await SettingsTokenAsync() ?? throw new MailException(
-            "Per cambiare le risposte automatiche serve l'accesso alle impostazioni della casella: premi \"Consenti l'accesso alle impostazioni della casella\".");
+            T("Per cambiare le risposte automatiche serve l'accesso alle impostazioni della casella: premi \"Consenti l'accesso alle impostazioni della casella\"."));
         await SendAsync(HttpMethod.Patch, "me/mailboxSettings", replies.ToGraph(), token: token);
     }
 
@@ -1240,7 +1240,8 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         return (list?["value"]?.AsArray() ?? new JsonArray()).Select(r => Rules.FromGraph(r, Account.Id)).OrderBy(r => r.Sequence).ToList();
     }
 
-    const string RulesConsentNeeded = "Per cambiare le regole di Outlook serve l'accesso alle impostazioni della casella: premi \"Consenti l'accesso alle impostazioni della casella\".";
+    /// <summary>Calcolato a ogni uso (non un const): T, nella lingua di Missiva, che si sceglie all'avvio.</summary>
+    static string RulesConsentNeeded => T("Per cambiare le regole di Outlook serve l'accesso alle impostazioni della casella: premi \"Consenti l'accesso alle impostazioni della casella\".");
 
     /// <summary>POST della regola nuova; per una cambiata PATCH dei soli campi cambiati (Rules.Changes), nessuna richiesta senza modifiche.</summary>
     public async Task<string> SaveRuleAsync(MailRule? before, MailRule after)
@@ -1273,7 +1274,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
 
     public Task AllowContactsAsync() => AllowAsync(Extra.Contacts);
 
-    const string ContactsConsentNeeded = "Per scrivere nei contatti di Outlook Missiva deve poterli usare: premi \"Consenti l'accesso ai contatti\" in Persone.";
+    static string ContactsConsentNeeded => T("Per scrivere nei contatti di Outlook Missiva deve poterli usare: premi \"Consenti l'accesso ai contatti\" in Persone.");
 
     /// <summary>
     /// I contatti di Outlook, come Persone del nuovo Outlook: me/contacts a pagine di 100 (@odata.nextLink, al massimo 50),
@@ -1390,7 +1391,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         return new CalendarData { Calendars = calendars, Events = events.SelectMany(e => e).ToList(), From = from, To = to };
     }
 
-    const string CalendarConsentNeeded = "Per scrivere nel calendario Missiva deve poterlo usare: premi \"Consenti l'accesso al calendario\" nel calendario.";
+    static string CalendarConsentNeeded => T("Per scrivere nel calendario Missiva deve poterlo usare: premi \"Consenti l'accesso al calendario\" nel calendario.");
 
     /// <summary>
     /// Nuovo evento, come il nuovo Outlook: POST me/calendars/{id}/events con il fuso di Windows (Calendars.ToGraph); con
@@ -1399,7 +1400,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     public async Task<string> CreateEventAsync(NewEvent e)
     {
         var token = await CalendarTokenAsync() ?? throw new MailException(CalendarConsentNeeded);
-        if (e.OnlineMeeting && Account.Tenant == null) throw new MailException("Le riunioni di Teams si creano solo con gli account di lavoro o della scuola.");
+        if (e.OnlineMeeting && Account.Tenant == null) throw new MailException(T("Le riunioni di Teams si creano solo con gli account di lavoro o della scuola."));
         var path = e.CalendarId.Length > 0 ? $"me/calendars/{Segment(e.CalendarId, escape: true)}/events" : "me/events";
         var created = await SendAsync(HttpMethod.Post, path, Calendars.ToGraph(e, TimeZoneInfo.Local.Id), token: token);
         return Str(created, "id");
@@ -1427,7 +1428,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         if (series && patch.ContainsKey("start"))
         {
             if (changed.Start.Date != original.Start.Date || changed.AllDay != original.AllDay)
-                throw new MailException("Tutta la serie si sposta solo di orario, nello stesso giorno: per cambiare i giorni della ripetizione usa Outlook sul web.");
+                throw new MailException(T("Tutta la serie si sposta solo di orario, nello stesso giorno: per cambiare i giorni della ripetizione usa Outlook sul web."));
             var master = await SendAsync(HttpMethod.Get, $"me/events/{EventId(original, true)}?$select=start,end,isAllDay", token: token, timeZone: zone);
             var (start, end) = Calendars.SeriesTimes(original, changed, Calendars.LocalTime(master?["start"]));
             Calendars.SetTimes(patch, start, end, changed.AllDay, zone);
@@ -1443,7 +1444,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     public async Task<List<Availability>?> GetScheduleAsync(IReadOnlyList<string> emails, DateTime from, DateTime to)
     {
         if (Account.Tenant == null)
-            throw new MailException("La disponibilità dei partecipanti c'è solo con gli account di lavoro o della scuola: Outlook.com non la dà ai programmi.");
+            throw new MailException(T("La disponibilità dei partecipanti c'è solo con gli account di lavoro o della scuola: Outlook.com non la dà ai programmi."));
         var token = await CalendarTokenAsync();
         if (token == null || emails.Count == 0) return null;
         var zone = TimeZoneInfo.Local.Id;
@@ -1456,7 +1457,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             ["availabilityViewInterval"] = 30,
         }, token: token, timeZone: zone);
         return (answer?["value"]?.AsArray() ?? new JsonArray()).Select(s => new Availability(
-            Str(s, "scheduleId"), Str(s, "availabilityView"), s?["error"] is { } error ? Str(error, "message") is { Length: > 0 } m ? m : "non disponibile" : null)).ToList();
+            Str(s, "scheduleId"), Str(s, "availabilityView"), s?["error"] is { } error ? Str(error, "message") is { Length: > 0 } m ? m : T("non disponibile") : null)).ToList();
     }
 
     /// <summary>Elimina: DELETE me/events/{id}, dell'occorrenza o della serie.</summary>
@@ -1556,10 +1557,10 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             return;
         }
         var token = await CalendarTokenAsync() ?? throw new MailException(
-            "Per rispondere agli inviti di Outlook Missiva deve poter usare il tuo calendario: premi \"Consenti l'accesso al calendario\" nella scheda dell'invito.");
+            T("Per rispondere agli inviti di Outlook Missiva deve poter usare il tuo calendario: premi \"Consenti l'accesso al calendario\" nella scheda dell'invito."));
         var withEvent = await SendAsync(HttpMethod.Get, $"me/messages/{Segment(invite.GraphMessageId)}?$select=id&$expand=microsoft.graph.eventMessage/event($select=id)", token: token);
         var eventId = Str(withEvent?["event"], "id");
-        if (eventId.Length == 0) throw new MailException("Outlook non trova l'evento dell'invito nel calendario: forse è stato annullato o spostato.");
+        if (eventId.Length == 0) throw new MailException(T("Outlook non trova l'evento dell'invito nel calendario: forse è stato annullato o spostato."));
         var action = response.Answer switch { InviteAnswer.Accept => "accept", InviteAnswer.Decline => "decline", _ => "tentativelyAccept" };
         var body = new JsonObject { ["comment"] = response.Comment.Trim(), ["sendResponse"] = response.Send || response.Answer == InviteAnswer.Propose };
         if (response.Answer == InviteAnswer.Propose && response.NewStart is { } s && response.NewEnd is { } e)
@@ -1645,8 +1646,8 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         // Il limite di Outlook per un messaggio, detto prima di cominciare: allegati nuovi, quelli che restano e immagini del testo.
         long total = files.Sum(f => f.Size) + mail.KeptAttachments.Sum(a => a.Size) + mail.Images.Sum(i => (long)i.Content.Length);
         if (total > MaxAttachments)
-            throw new MailException($"Gli allegati pesano in tutto {total / 1048576.0:0} MB: Outlook ne accetta al massimo {MaxAttachments / 1048576} per messaggio. " +
-                                    "Togline qualcuno, oppure condividi i file più grandi con un link.");
+            throw new MailException(T("Gli allegati pesano in tutto {0:0} MB: Outlook ne accetta al massimo {1} per messaggio. Togline qualcuno, oppure condividi i file più grandi con un link.",
+                                      total / 1048576.0, MaxAttachments / 1048576));
         // Per riconoscere, dopo, l'allegato appena caricato a pezzi (ListedAttachmentsAsync): quelli che la bozza ha già.
         HashSet<string>? known = null;
 
@@ -1738,7 +1739,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                     // La misura è di prima (serve al limite dei 150 MB e alla sessione di caricamento): se nel frattempo il file è
                     // cresciuto partirebbe troncato, con un Content-Range coerente, senza che nessuno se ne accorga (T-24). Da
                     // qui in poi è aperto senza lasciar scrivere agli altri programmi.
-                    if (stream.Length != size) throw new MailException($"{name} è cambiato mentre il messaggio veniva preparato: l'allegato non è stato aggiunto. Riprova quando il file è completo.");
+                    if (stream.Length != size) throw new MailException(T("{0} è cambiato mentre il messaggio veniva preparato: l'allegato non è stato aggiunto. Riprova quando il file è completo.", name));
                     added.Add(await UploadLargeAsync(id, name, null, size, stream, null, known, mail.Progress, cancel));
                     continue;
                 }
@@ -1849,8 +1850,8 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     async Task<Attachment> UploadLargeAsync(string message, string name, string? contentType, long size, Stream content, string? contentId, HashSet<string> known,
                                             IProgress<string>? progress, CancellationToken cancel)
     {
-        static string Mb(long bytes) => (bytes / 1048576.0).ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("it-IT"));
-        string Stopped(long at) => $"Caricamento di {name} interrotto a {Mb(at)} di {Mb(size)} MB: l'allegato non è stato aggiunto.";
+        static string Mb(long bytes) => (bytes / 1048576.0).ToString("0.#", Lingua.Culture);
+        string Stopped(long at) => T("Caricamento di {0} interrotto a {1} di {2} MB: l'allegato non è stato aggiunto.", name, Mb(at), Mb(size));
         var item = new JsonObject { ["attachmentType"] = "file", ["name"] = name, ["size"] = size };
         if (contentType != null) item["contentType"] = contentType;
         if (contentId != null)
@@ -1861,7 +1862,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var session = await SendAsync(HttpMethod.Post, $"{MessageUrl(message)}/attachments/createUploadSession", new JsonObject { ["AttachmentItem"] = item }, cancel: cancel);
         if (!Uri.TryCreate(Str(session, "uploadUrl"), UriKind.Absolute, out var target) || target.Scheme != Uri.UriSchemeHttps)
-            throw new MailException($"Outlook non ha dato l'indirizzo a cui caricare {name}: l'allegato non è stato aggiunto.");
+            throw new MailException(T("Outlook non ha dato l'indirizzo a cui caricare {0}: l'allegato non è stato aggiunto.", name));
         bool complete = false;
         long sent = 0;
         int pieces = 0;
@@ -1872,8 +1873,10 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             {
                 int want = (int)Math.Min(buffer.Length, size - sent);
                 int read = await content.ReadAtLeastAsync(buffer.AsMemory(0, want), want, throwOnEndOfStream: false, cancel);
-                if (read < want) throw new MailException($"{name} è cambiato mentre veniva caricato: l'allegato non è stato aggiunto.");
-                progress?.Report($"Caricamento di {name}: {Mb(sent)} di {Mb(size)} MB…");
+                if (read < want) throw new MailException(T("{0} è cambiato mentre veniva caricato: l'allegato non è stato aggiunto.", name));
+                // MainWindow.UploadShort riconosce questo testo e lo riscrive per la barra degli invii e la riga di stato della
+                // scrittura: in italiano "Caricamento di nome: 3,5 di 12 MB…", in inglese esattamente "Uploading nome: 3.5 of 12 MB…".
+                progress?.Report(T("Caricamento di {0}: {1} di {2} MB…", name, Mb(sent), Mb(size)));
                 for (int attempt = 0; ; attempt++)
                 {
                     Network.Check(); // --senza-rete (solo Debug)
@@ -1890,7 +1893,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                     }
                     catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
                     {
-                        throw new MailException(Stopped(sent) + " La connessione è troppo lenta o si è interrotta: un pezzo non è arrivato in 60 secondi.");
+                        throw new MailException(Stopped(sent) + " " + T("La connessione è troppo lenta o si è interrotta: un pezzo non è arrivato in 60 secondi."));
                     }
                     using (response)
                     {
@@ -1917,7 +1920,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                 sent += read;
                 pieces++;
             }
-            if (!complete) throw new MailException($"Outlook non ha confermato {name} dopo l'ultimo pezzo: l'allegato non è stato aggiunto.");
+            if (!complete) throw new MailException(T("Outlook non ha confermato {0} dopo l'ultimo pezzo: l'allegato non è stato aggiunto.", name));
         }
         catch
         {
@@ -1940,7 +1943,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         var listed = await ListedAttachmentsAsync(message, cancel);
         var created = listed.Where(a => !known.Contains(a.Id)).ToList();
         var found = created.LastOrDefault(a => a.Name == name).Id ?? created.LastOrDefault().Id
-                    ?? throw new MailException($"Outlook non mostra {name} fra gli allegati della bozza dopo il caricamento: riprova.");
+                    ?? throw new MailException(T("Outlook non mostra {0} fra gli allegati della bozza dopo il caricamento: riprova.", name));
         known.Add(found);
         return new Attachment { Id = found, Name = name, ContentType = contentType ?? "", Size = size, IsInline = contentId != null, ContentId = contentId };
     }

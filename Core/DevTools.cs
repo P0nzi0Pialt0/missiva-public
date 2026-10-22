@@ -21,11 +21,11 @@ namespace Missiva;
 /// Missiva.exe --scrivi-pec cartella
 ///   scrive buste PEC e fatture .p7m di prova (firmate con certificati fatti al volo) da aprire con --eml; con
 ///   --pec-radice cartella\radice-di-prova.cer la radice di prova vale come attendibile nella versione di prova.
-/// Missiva.exe --imap-finto porta [senza-cestino] [password=...] [foto studio|personale|pec]
+/// Missiva.exe --imap-finto porta [senza-cestino] [password=...] [foto studio|personale|pec [en]]
 ///   tiene aperto il server IMAP finto con qualche messaggio, per un account IMAP nella versione di prova
 ///   (MISSIVA_IMAP_FINTO=1: senza TLS verso 127.0.0.1), e un server SMTP finto sulla porta dopo; con senza-cestino il
 ///   server non ha il Cestino, con password=... IMAP e SMTP accettano solo quella; con foto una delle caselle finte
-///   delle foto della pagina GitHub (ProvaBozze.Foto.cs).
+///   delle foto della pagina GitHub (ProvaBozze.Foto.cs), con en quella delle foto inglesi.
 /// Variabile MISSIVA_DUMP=cartella: salva l'HTML di ogni messaggio aperto e di ogni messaggio scritto (alla chiusura).
 /// Variabile MISSIVA_KEYS=file: ogni riga scritta nel file ("ctrl+shift+r", "esc") arriva come tasto (WatchKeys); anche
 /// "clic N", "testo ...", "fine sessione", "chiudi finestra", "apri finestra", "menu area di notifica", "deseleziona",
@@ -70,7 +70,7 @@ static partial class DevTools
         if (args is ["--imap-finto", var port, ..] && int.TryParse(port, out var number))
         {
             ProvaBozze.ServeImap(number, args.Contains("senza-cestino"), args.FirstOrDefault(a => a.StartsWith("password="))?["password=".Length..], args.Contains("vecchi"),
-                                 args.SkipWhile(a => a != "foto").Skip(1).FirstOrDefault());
+                                 args.SkipWhile(a => a != "foto").Skip(1).FirstOrDefault(), args.SkipWhile(a => a != "foto").Skip(2).FirstOrDefault() == "en");
             return true;
         }
         if (args is ["--page-thread", var threadEmail, var threadOut, ..])

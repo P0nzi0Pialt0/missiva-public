@@ -158,7 +158,7 @@ public static class MicrosoftAuth
 
     static string PersonalClientId() =>
         Store.Settings.MicrosoftClientId is { Length: > 0 } id ? id
-        : throw new MailException("Manca l'ID dell'app Microsoft: inseriscilo aggiungendo un account Microsoft.");
+        : throw new MailException(T("Manca l'ID dell'app Microsoft: inseriscilo aggiungendo un account Microsoft."));
 
     /// <summary>L'indirizzo dell'autorità, per il registro e per il link del consenso dell'amministratore.</summary>
     public static string AuthorityOf(string? tenant) => "https://login.microsoftonline.com/" + (tenant ?? "consumers");
@@ -285,7 +285,7 @@ public static class MicrosoftAuth
         // Un account arrivato con una copia di sicurezza (Backup: l'accesso a Microsoft non si esporta) e mai entrato su
         // questo PC: nessuna finestra di Microsoft da sola, una per account, all'avvio; la barra "Accedi di nuovo".
         if (account.HomeAccountId == null)
-            throw new MailException($"Su questo PC manca l'accesso a Microsoft di {account.Email}: premi Accedi di nuovo, sotto l'account.") { Fix = AccountFix.SignIn };
+            throw new MailException(T("Su questo PC manca l'accesso a Microsoft di {0}: premi Accedi di nuovo, sotto l'account.", account.Email)) { Fix = AccountFix.SignIn };
         var (clientId, tenant) = AppOf(account);
         var pca = await AppAsync(clientId, tenant);
         var msalAccount = account.HomeAccountId == null ? null : await pca.GetAccountAsync(account.HomeAccountId);
@@ -299,11 +299,11 @@ public static class MicrosoftAuth
 #if DEBUG || PROVA
             // Nella versione di prova nessuno può rifare l'accesso: la finestra account di Windows non si apre da sola.
             if (Environment.GetEnvironmentVariable("MISSIVA_NO_READ") == "1")
-                throw new MailException($"{account.Email} chiede un nuovo accesso: nella versione di prova la finestra di Microsoft non si apre da sola.") { Fix = AccountFix.SignIn };
+                throw new MailException(T("{0} chiede un nuovo accesso: nella versione di prova la finestra di Microsoft non si apre da sola.", account.Email)) { Fix = AccountFix.SignIn };
 #endif
             // Nell'area di notifica, in sottofondo o dopo un Annulla: nessuna finestra da sola, la barra sotto l'account.
             if (!MayAsk(account))
-                throw new MailException($"{account.Email} chiede un nuovo accesso: premi Accedi di nuovo, sotto l'account.") { Fix = AccountFix.SignIn };
+                throw new MailException(T("{0} chiede un nuovo accesso: premi Accedi di nuovo, sotto l'account.", account.Email)) { Fix = AccountFix.SignIn };
             // Token scaduto o permessi cambiati: si richiede l'accesso per questo account.
             var builder = pca.AcquireTokenInteractive(Scopes);
             builder = msalAccount != null ? builder.WithAccount(msalAccount) : builder.WithLoginHint(account.Email);
@@ -316,7 +316,7 @@ public static class MicrosoftAuth
             {
                 declined[account.Id] = true;
                 Log.Write($"accesso di {account.Email} annullato nella finestra di Microsoft: nessuna finestra da sola fino ad Accedi di nuovo");
-                throw new MailException($"Accesso di {account.Email} annullato: premi Accedi di nuovo, sotto l'account, quando vuoi.", ex) { Fix = AccountFix.SignIn };
+                throw new MailException(T("Accesso di {0} annullato: premi Accedi di nuovo, sotto l'account, quando vuoi.", account.Email), ex) { Fix = AccountFix.SignIn };
             }
             CheckChosen(account, result);
             account.HomeAccountId = result.Account.HomeAccountId.Identifier;
@@ -333,8 +333,8 @@ public static class MicrosoftAuth
     internal static void CheckChosen(MailAccount account, AuthenticationResult result)
     {
         if (!result.Account.Username.Equals(account.Email, StringComparison.OrdinalIgnoreCase))
-            throw new MailException($"Nella finestra di Microsoft hai scelto {result.Account.Username}, non {account.Email}: accedi con {account.Email} " +
-                                    "(per un altro account usa Aggiungi account).") { Fix = AccountFix.SignIn };
+            throw new MailException(T("Nella finestra di Microsoft hai scelto {0}, non {1}: accedi con {1} (per un altro account usa Aggiungi account).",
+                                      result.Account.Username, account.Email)) { Fix = AccountFix.SignIn };
     }
 
     /// <summary>Il permesso del calendario, chiesto solo quando serve (rispondere agli inviti di Exchange): mai all'accesso di base.</summary>
@@ -457,7 +457,7 @@ public static class MicrosoftAuth
     // ---------------------------------------------------------------- errori spiegati
 
     /// <summary>
-    /// Un accesso non riuscito, detto in italiano. AdminConsent: serve l'approvazione di un amministratore
+    /// Un accesso non riuscito, detto nella lingua di Missiva. AdminConsent: serve l'approvazione di un amministratore
     /// dell'organizzazione, e la finestra di aggiunta propone il link da mandargli.
     /// </summary>
     public sealed record SignInError(string Text, bool AdminConsent, string? Code);
@@ -470,34 +470,30 @@ public static class MicrosoftAuth
     /// Il codice AADSTS che Microsoft mette nel messaggio (anche quando l'errore passa dalla finestra di Windows) e la sua
     /// spiegazione, con quello che si può fare.
     /// </summary>
-    /// <param name="purpose">Per che cosa serviva il consenso: all'accesso la posta, poi i permessi in più (il calendario).</param>
-    public static SignInError Explain(Exception ex, string email, string clientId, string purpose = "leggere e inviare la posta")
+    /// <param name="purpose">
+    /// Per che cosa serviva il consenso, nella lingua di Missiva: all'accesso (null) "leggere e inviare la posta", poi i
+    /// permessi in più ("usare il calendario"). In inglese un verbo senza "to" ("use the calendar"): la frase lo mette.
+    /// </param>
+    public static SignInError Explain(Exception ex, string email, string clientId, string? purpose = null)
     {
         var code = Regex.Match(ex.Message, @"AADSTS(\d+)") is { Success: true } m ? m.Groups[1].Value : null;
-        var who = email.Length > 0 ? email : "questo account";
+        purpose ??= T("leggere e inviare la posta");
+        var who = email.Length > 0 ? email : T("questo account");
         return code switch
         {
-            "65001" => new($"La tua organizzazione non ha ancora approvato Missiva: nessuno ha dato il consenso all'app per {purpose}. " +
-                           "Serve l'approvazione di un amministratore di Microsoft 365: mandagli il link qui sotto.", true, code),
-            "90094" => new($"La tua organizzazione lascia approvare le app solo agli amministratori: Missiva chiede di {purpose}, " +
-                           "e un amministratore di Microsoft 365 deve approvarla. Mandagli il link qui sotto.", true, code),
-            "90095" => new("Serve l'approvazione di un amministratore. Nella finestra di Microsoft puoi chiederla (Richiedi approvazione, con il motivo): " +
-                           "quando la concede, riprova. Oppure manda all'amministratore il link qui sotto.", true, code),
-            "50020" => new($"{who} non fa parte della directory scelta. Controlla l'indirizzo e la directory (tenant); se è un account personale, " +
-                           "aggiungilo come Outlook.com, Hotmail e Live.", false, code),
-            "700016" => new($"L'app {clientId} non esiste nella directory della tua organizzazione: l'ID dell'app o la directory sono sbagliati, " +
-                            "oppure l'app è registrata per una sola organizzazione. Controllali con chi l'ha registrata.", false, code),
-            "50194" => new($"L'app {clientId} è registrata per una sola organizzazione: scrivi l'ID o il dominio della sua directory (tenant) " +
-                           "in \"Usa l'app della mia organizzazione\".", false, code),
-            "500200" => new($"{who} è un account Microsoft personale: aggiungilo come Outlook.com, Hotmail e Live.", false, code),
-            "53003" => new("L'accesso è bloccato dai criteri della tua organizzazione (accesso condizionale): per esempio solo da dispositivi gestiti, " +
-                           "da certi luoghi o con certe app. Chiedi all'amministratore di Microsoft 365.", false, code),
-            "50105" => new($"{who} non è fra gli utenti a cui l'amministratore ha assegnato l'app {clientId}: chiedigli di assegnartela.", false, code),
-            "65004" => new("Hai rifiutato il consenso nella finestra di Microsoft: senza, Missiva non può leggere la posta. Riprova e premi Accetta.", false, code),
-            "50011" or "500113" => new($"L'app {clientId} non ha gli indirizzi di ritorno di Missiva. Chi l'ha registrata deve aggiungere, nella piattaforma " +
-                                       $"App per dispositivi mobili e desktop, ms-appx-web://microsoft.aad.brokerplugin/{clientId} e http://localhost.", false, code),
-            "7000218" => new($"L'app {clientId} non accetta le app senza segreto: chi l'ha registrata deve attivare \"Consenti flussi client pubblici\".", false, code),
-            _ => new("Accesso non riuscito: " + ex.Message, false, code),
+            "65001" => new(T("La tua organizzazione non ha ancora approvato Missiva: nessuno ha dato il consenso all'app per {0}. Serve l'approvazione di un amministratore di Microsoft 365: mandagli il link qui sotto.", purpose), true, code),
+            "90094" => new(T("La tua organizzazione lascia approvare le app solo agli amministratori: Missiva chiede di {0}, e un amministratore di Microsoft 365 deve approvarla. Mandagli il link qui sotto.", purpose), true, code),
+            "90095" => new(T("Serve l'approvazione di un amministratore. Nella finestra di Microsoft puoi chiederla (Richiedi approvazione, con il motivo): quando la concede, riprova. Oppure manda all'amministratore il link qui sotto."), true, code),
+            "50020" => new(T("{0} non fa parte della directory scelta. Controlla l'indirizzo e la directory (tenant); se è un account personale, aggiungilo come Outlook.com, Hotmail e Live.", who), false, code),
+            "700016" => new(T("L'app {0} non esiste nella directory della tua organizzazione: l'ID dell'app o la directory sono sbagliati, oppure l'app è registrata per una sola organizzazione. Controllali con chi l'ha registrata.", clientId), false, code),
+            "50194" => new(T("L'app {0} è registrata per una sola organizzazione: scrivi l'ID o il dominio della sua directory (tenant) in \"Usa l'app della mia organizzazione\".", clientId), false, code),
+            "500200" => new(T("{0} è un account Microsoft personale: aggiungilo come Outlook.com, Hotmail e Live.", who), false, code),
+            "53003" => new(T("L'accesso è bloccato dai criteri della tua organizzazione (accesso condizionale): per esempio solo da dispositivi gestiti, da certi luoghi o con certe app. Chiedi all'amministratore di Microsoft 365."), false, code),
+            "50105" => new(T("{0} non è fra gli utenti a cui l'amministratore ha assegnato l'app {1}: chiedigli di assegnartela.", who, clientId), false, code),
+            "65004" => new(T("Hai rifiutato il consenso nella finestra di Microsoft: senza, Missiva non può leggere la posta. Riprova e premi Accetta."), false, code),
+            "50011" or "500113" => new(T("L'app {0} non ha gli indirizzi di ritorno di Missiva. Chi l'ha registrata deve aggiungere, nella piattaforma App per dispositivi mobili e desktop, ms-appx-web://microsoft.aad.brokerplugin/{0} e http://localhost.", clientId), false, code),
+            "7000218" => new(T("L'app {0} non accetta le app senza segreto: chi l'ha registrata deve attivare \"Consenti flussi client pubblici\".", clientId), false, code),
+            _ => new(T("Accesso non riuscito: {0}", ex.Message), false, code),
         };
     }
 
@@ -515,7 +511,6 @@ public static class MicrosoftAuth
     /// solo quando si aprono; per l'app dell'organizzazione i permessi che le ha dato chi l'ha registrata.
     /// </summary>
     public static string AdminConsentScope(string clientId) => clientId == DefaultClientId
-        ? "Con un solo consenso approva tutti i permessi di Missiva: posta, e anche calendario, impostazioni della casella (risposte automatiche) " +
-          "e caselle condivise, che Missiva usa solo quando apri quelle funzioni."
-        : "Con un solo consenso approva tutti i permessi che la tua organizzazione ha dato all'app.";
+        ? T("Con un solo consenso approva tutti i permessi di Missiva: posta, e anche calendario, impostazioni della casella (risposte automatiche) e caselle condivise, che Missiva usa solo quando apri quelle funzioni.")
+        : T("Con un solo consenso approva tutti i permessi che la tua organizzazione ha dato all'app.");
 }

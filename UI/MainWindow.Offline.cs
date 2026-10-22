@@ -50,7 +50,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error(what, ex);
-            Dialog.Show(this, "Operazione non riuscita", ex.Message);
+            Dialog.Show(this, T("Operazione non riuscita"), ex.Message);
             return false;
         }
     }
@@ -86,22 +86,30 @@ public partial class MainWindow
                 await Outbox.SendAsync(account.Provider);
                 return replay;
             });
-            string Others() => result.Done > 0 ? $" Le altre {result.Done} sono fatte." : "";
+            // Una frase intera per caso (una o più azioni): in inglese l'ordine delle parole è un altro.
+            string Others() => result.Done > 0 ? " " + T("Le altre {0} sono fatte.", result.Done) : "";
             static string Sentence(string? text) => text is { Length: > 0 } t ? (t.TrimEnd().EndsWith('.') ? t.TrimEnd() : t.TrimEnd() + ".") : "";
+            string where = account.Header;
             if (result.Gone > 0)
-                Tell("Azioni non più possibili",
-                     (result.Gone == 1 ? "Un'azione fatta senza rete non si è potuta ripetere" : $"{result.Gone} azioni fatte senza rete non si sono potute ripetere") +
-                     $" su {account.Header}: i messaggi non ci sono più (eliminati o spostati altrove, per esempio dal telefono)." + Others());
+                Tell(T("Azioni non più possibili"),
+                     (result.Gone == 1
+                         ? T("Un'azione fatta senza rete non si è potuta ripetere su {0}: i messaggi non ci sono più (eliminati o spostati altrove, per esempio dal telefono).", where)
+                         : T("{0} azioni fatte senza rete non si sono potute ripetere su {1}: i messaggi non ci sono più (eliminati o spostati altrove, per esempio dal telefono).", result.Gone, where))
+                     + Others());
             if (result.Failed > 0)
-                Tell("Azioni non riuscite",
-                     (result.Failed == 1 ? "Un'azione fatta senza rete non è riuscita" : $"{result.Failed} azioni fatte senza rete non sono riuscite") +
-                     $" su {account.Header}: {Sentence(result.Refused)} I messaggi restano com'erano sul server." + Others());
+                Tell(T("Azioni non riuscite"),
+                     (result.Failed == 1
+                         ? T("Un'azione fatta senza rete non è riuscita su {0}: {1} I messaggi restano com'erano sul server.", where, Sentence(result.Refused))
+                         : T("{0} azioni fatte senza rete non sono riuscite su {1}: {2} I messaggi restano com'erano sul server.", result.Failed, where, Sentence(result.Refused)))
+                     + Others());
             if (result.Waiting > 0 && result.Reason is { } reason)
             {
                 if (queueWaitTold.GetValueOrDefault(id) != reason)
-                    Tell("Azioni in attesa",
-                         (result.Waiting == 1 ? "Un'azione fatta senza rete aspetta ancora" : $"{result.Waiting} azioni fatte senza rete aspettano ancora") +
-                         $" su {account.Header}: {Sentence(reason)} Ripartono da sole al prossimo controllo riuscito, o con Riprova." + Others());
+                    Tell(T("Azioni in attesa"),
+                         (result.Waiting == 1
+                             ? T("Un'azione fatta senza rete aspetta ancora su {0}: {1} Ripartono da sole al prossimo controllo riuscito, o con Riprova.", where, Sentence(reason))
+                             : T("{0} azioni fatte senza rete aspettano ancora su {1}: {2} Ripartono da sole al prossimo controllo riuscito, o con Riprova.", result.Waiting, where, Sentence(reason)))
+                         + Others());
                 queueWaitTold[id] = reason;
             }
             else if (result.Waiting == 0) queueWaitTold.Remove(id);
@@ -136,12 +144,11 @@ public partial class MainWindow
         OutboxText.Text = waiting.Count switch
         {
             0 => "",
-            1 => waiting[0].PendingSubject is { Length: > 0 } subject ? $"Posta in uscita: \"{subject}\" partirà quando torna la rete" : "Posta in uscita: il messaggio partirà quando torna la rete",
-            var n => $"Posta in uscita: {n} messaggi partiranno quando torna la rete",
+            1 => waiting[0].PendingSubject is { Length: > 0 } subject ? T("Posta in uscita: \"{0}\" partirà quando torna la rete", subject) : T("Posta in uscita: il messaggio partirà quando torna la rete"),
+            var n => T("Posta in uscita: {0} messaggi partiranno quando torna la rete", n),
         };
         // La Posta in uscita non va su disco: il suggerimento lo dice, perché nessuno creda il messaggio al sicuro dopo un riavvio.
-        OutboxText.ToolTip = OutboxText.Text + ". Resta finché Missiva è aperta, anche nell'area di notifica: uscendo da Missiva il messaggio si riapre, " +
-                             "da salvare nelle Bozze.";
+        OutboxText.ToolTip = T("{0}. Resta finché Missiva è aperta, anche nell'area di notifica: uscendo da Missiva il messaggio si riapre, da salvare nelle Bozze.", OutboxText.Text);
         OutboxBar.Visibility = waiting.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -155,7 +162,7 @@ public partial class MainWindow
     /// <summary>Annulla, sulla barra: l'ultimo messaggio entrato esce dalla Posta in uscita e la sua finestra si riapre.</summary>
     void OnOutboxUndo(object sender, RoutedEventArgs e)
     {
-        if (OutboxWindows().LastOrDefault() is { } last) last.LeaveOutbox("Invio annullato: il messaggio non è partito.");
+        if (OutboxWindows().LastOrDefault() is { } last) last.LeaveOutbox(T("Invio annullato: il messaggio non è partito."));
     }
 
     // ---------------------------------------------------------------- ricerca senza rete

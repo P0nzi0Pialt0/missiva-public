@@ -59,11 +59,11 @@ public static partial class Safety
     public static (string Heading, string Body, string Primary) WebPageQuestion(string fileName)
     {
         bool drawing = Extension(fileName).Equals(".svg", StringComparison.OrdinalIgnoreCase);
-        return ("Aprire una pagina web arrivata per posta?",
-                $"\"{fileName}\" è {(drawing ? "un disegno che il browser apre come una pagina web: è arrivato" : "una pagina web: è arrivata")} per posta, non viene da un sito. " +
-                "Si apre fuori da Missiva, di solito nel browser, e può imitare la pagina di accesso di una banca o di un servizio. " +
-                $"Non scriverci password, codici o dati di pagamento. {(drawing ? "Aprilo solo se lo aspettavi e ti fidi di chi lo ha mandato." : "Aprila solo se la aspettavi e ti fidi di chi l'ha mandata.")}",
-                drawing ? "Apri il disegno" : "Apri la pagina");
+        return (T("Aprire una pagina web arrivata per posta?"),
+                drawing
+                    ? T("\"{0}\" è un disegno che il browser apre come una pagina web: è arrivato per posta, non viene da un sito. Si apre fuori da Missiva, di solito nel browser, e può imitare la pagina di accesso di una banca o di un servizio. Non scriverci password, codici o dati di pagamento. Aprilo solo se lo aspettavi e ti fidi di chi lo ha mandato.", fileName)
+                    : T("\"{0}\" è una pagina web: è arrivata per posta, non viene da un sito. Si apre fuori da Missiva, di solito nel browser, e può imitare la pagina di accesso di una banca o di un servizio. Non scriverci password, codici o dati di pagamento. Aprila solo se la aspettavi e ti fidi di chi l'ha mandata.", fileName),
+                drawing ? T("Apri il disegno") : T("Apri la pagina"));
     }
 
     /// <summary>
@@ -289,16 +289,16 @@ public static partial class Safety
     {
         root ??= TempDir;
         Directory.CreateDirectory(root);
-        if (IsLink(root)) throw new IOException($"La cartella degli allegati temporanei di Missiva ({root}) è un collegamento a un'altra cartella: Missiva non ci scrive. Va tolta a mano.");
+        if (IsLink(root)) throw new IOException(T("La cartella degli allegati temporanei di Missiva ({0}) è un collegamento a un'altra cartella: Missiva non ci scrive. Va tolta a mano.", root));
         int length = TempNameLength(root, fileName);
         for (int attempt = 0; attempt < 8; attempt++)
         {
             var dir = Path.Combine(root, names?.Invoke(length) ?? System.Security.Cryptography.RandomNumberGenerator.GetHexString(length, lowercase: true));
-            if (CreateDirectoryW(dir, IntPtr.Zero)) return IsLink(dir) ? throw new IOException("La cartella appena creata per l'allegato è un collegamento.") : dir;
+            if (CreateDirectoryW(dir, IntPtr.Zero)) return IsLink(dir) ? throw new IOException(T("La cartella appena creata per l'allegato è un collegamento.")) : dir;
             int error = Marshal.GetLastWin32Error();
             if (error != 183 /* ERROR_ALREADY_EXISTS */) throw new Win32Exception(error);
         }
-        throw new IOException("Non riesco a creare una cartella nuova per l'allegato.");
+        throw new IOException(T("Non riesco a creare una cartella nuova per l'allegato."));
     }
 
     /// <summary>
@@ -504,7 +504,7 @@ public static partial class Safety
         if (target.Scheme is not ("http" or "https")) return null;
         var host = target.IdnHost;
         if (host.Split('.').Any(l => l.StartsWith("xn--", StringComparison.OrdinalIgnoreCase)))
-            return $"L'indirizzo {target.Host} contiene caratteri non latini che possono imitare quelli di un sito conosciuto.";
+            return T("L'indirizzo {0} contiene caratteri non latini che possono imitare quelli di un sito conosciuto.", target.Host);
 
         var m = DomainInText().Match(visibleText.Trim());
         if (!m.Success) return null; // il testo non è un indirizzo ("Clicca qui"): niente da confrontare
@@ -513,7 +513,6 @@ public static partial class Safety
         if (site == shown || BaseDomain(site) == BaseDomain(shown)) return null;
         // Un sito dentro quello mostrato (servizi.salute.gov.it per salute.gov.it), purché il testo non sia solo co.uk.
         if (site.EndsWith("." + shown, StringComparison.Ordinal) && !IsSuffix(shown.Split('.'))) return null;
-        return $"Il testo del link mostra {m.Groups[1].Value}, ma il link porta a {target.Host}. " +
-               "È il trucco più comune dei messaggi di phishing.";
+        return T("Il testo del link mostra {0}, ma il link porta a {1}. È il trucco più comune dei messaggi di phishing.", m.Groups[1].Value, target.Host);
     }
 }

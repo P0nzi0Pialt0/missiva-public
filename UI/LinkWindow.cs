@@ -18,7 +18,7 @@ public sealed class LinkWindow : Window
     /// <param name="current">L'indirizzo del link che si sta correggendo, se c'è.</param>
     public LinkWindow(string selected, string? current = null)
     {
-        Title = "Inserisci collegamento";
+        Title = T("Inserisci collegamento");
         Width = 460;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
@@ -27,31 +27,31 @@ public sealed class LinkWindow : Window
 
         var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
         panel.Children.Add(new TextBlock { Text = Title, FontSize = 20, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 10) });
-        panel.Children.Add(new TextBlock { Text = "Testo da visualizzare" });
+        panel.Children.Add(new TextBlock { Text = T("Testo da visualizzare") });
         text.Text = selected;
-        System.Windows.Automation.AutomationProperties.SetName(text, "Testo da visualizzare");
+        System.Windows.Automation.AutomationProperties.SetName(text, T("Testo da visualizzare"));
         panel.Children.Add(text);
-        panel.Children.Add(new TextBlock { Text = "Indirizzo" });
+        panel.Children.Add(new TextBlock { Text = T("Indirizzo") });
         address.Text = current ?? "";
-        System.Windows.Automation.AutomationProperties.SetName(address, "Indirizzo");
+        System.Windows.Automation.AutomationProperties.SetName(address, T("Indirizzo"));
         panel.Children.Add(address);
         panel.Children.Add(error);
 
         var buttons = new DockPanel { Margin = new Thickness(0, 20, 0, 0), LastChildFill = false };
-        var ok = new Button { Content = "Inserisci", MinWidth = 100, IsDefault = true };
+        var ok = new Button { Content = T("Inserisci"), MinWidth = 100, IsDefault = true };
         ok.SetResourceReference(StyleProperty, "AccentButtonStyle");
         ok.Click += (_, _) =>
         {
             Address = Parse(address.Text);
             if (Address == null)
             {
-                error.Text = "Scrivi un indirizzo web (https://...) o di posta.";
+                error.Text = T("Scrivi un indirizzo web (https://...) o di posta.");
                 error.Visibility = Visibility.Visible;
                 return;
             }
             DialogResult = true;
         };
-        var cancel = new Button { Content = "Annulla", MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+        var cancel = new Button { Content = T("Annulla"), MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
         DockPanel.SetDock(ok, Dock.Right);
         DockPanel.SetDock(cancel, Dock.Right);
         buttons.Children.Add(ok);

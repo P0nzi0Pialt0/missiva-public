@@ -81,23 +81,25 @@ public static class AccountTypes
 
     public static string Name(AccountType type) => type switch
     {
-        AccountType.MicrosoftPersonal => "Microsoft (Outlook.com, Hotmail e Live)",
-        AccountType.Microsoft365 => "Microsoft 365 (lavoro o scuola)",
+        AccountType.MicrosoftPersonal => T("Microsoft (Outlook.com, Hotmail e Live)"),
+        AccountType.Microsoft365 => T("Microsoft 365 (lavoro o scuola)"),
         AccountType.Google => "Gmail",
         AccountType.GoogleWorkspace => "Google Workspace",
-        _ => "Altro account (IMAP e SMTP)",
+        _ => T("Altro account (IMAP e SMTP)"),
     };
 
     /// <summary>Come lo mostrano le Impostazioni: il tipo e, per gli account di lavoro, l'app e la directory usate.</summary>
     public static string Describe(MailAccount account)
     {
         if (account.SharedOf != null)
-            return "Casella condivisa di Microsoft 365" + (Store.Settings.Accounts.FirstOrDefault(a => a.Id == account.SharedOf) is { } owner ? $", aperta con {owner.Email}" : "");
+            return Store.Settings.Accounts.FirstOrDefault(a => a.Id == account.SharedOf) is { } owner
+                ? T("Casella condivisa di Microsoft 365, aperta con {0}", owner.Email)
+                : T("Casella condivisa di Microsoft 365");
         return Of(account) switch
         {
             AccountType.MicrosoftPersonal => "Microsoft (Outlook.com)",
-            AccountType.Microsoft365 => "Microsoft 365 (lavoro o scuola)" +
-                (account.ClientId != null ? $", app dell'organizzazione {account.ClientId}" : "") +
+            AccountType.Microsoft365 => T("Microsoft 365 (lavoro o scuola)") +
+                (account.ClientId != null ? T(", app dell'organizzazione {0}", account.ClientId) : "") +
                 (account.Tenant is { } tenant && tenant != MicrosoftAuth.Organizations ? $", directory {tenant}" : ""),
             AccountType.Google => "Gmail",
             AccountType.GoogleWorkspace => "Google Workspace",

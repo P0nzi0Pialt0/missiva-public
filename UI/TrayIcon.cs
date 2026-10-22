@@ -105,6 +105,10 @@ sealed class TrayIcon : IDisposable
     /// </summary>
     public void ShowMenu()
     {
+#if DEBUG
+        bool photo = DevTools.Photos; // le foto: il menu disegnato in un file (MainWindow.SaveMenuPicture), mai sullo schermo
+        if (!photo)
+#endif
         SetForegroundWindow(window.Handle);
         var menu = new ContextMenu { Placement = PlacementMode.MousePoint };
         MenuItem Item(string text, Action? action)
@@ -114,10 +118,17 @@ sealed class TrayIcon : IDisposable
             menu.Items.Add(item);
             return item;
         }
-        Item("Apri Missiva", OpenRequested).FontWeight = FontWeights.SemiBold;
-        Item("Nuovo messaggio", NewMessageRequested);
+        Item(T("Apri Missiva"), OpenRequested).FontWeight = FontWeights.SemiBold;
+        Item(MainWindow.NewMailWord, NewMessageRequested); // il comando: in inglese New mail, come il pulsante
         menu.Items.Add(new Separator());
-        Item("Esci", ExitRequested);
+        Item(T("Esci"), ExitRequested);
+#if DEBUG
+        if (photo)
+        {
+            MainWindow.SaveMenuPicture(menu, "menu-area-di-notifica");
+            return;
+        }
+#endif
         menu.IsOpen = true;
     }
 

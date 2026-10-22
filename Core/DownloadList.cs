@@ -81,27 +81,27 @@ public sealed class DownloadItem : IProgress<long>, IExpectedSize
     /// </summary>
     public string Status => State switch
     {
-        DownloadState.Waiting => "In coda",
+        DownloadState.Waiting => T("In coda"),
         DownloadState.Running when Expected is long total => $"{Progress(Received, total)}, {Percent}%",
-        DownloadState.Running => Received > 0 ? SizeText(Received) : "Scaricamento in corso",
-        DownloadState.Done when Gone => "Il file non c'è più",
-        DownloadState.Done => $"{(Temporary ? "Aperto" : "Salvato")}, {SizeText(Received)}",
-        DownloadState.Failed => "Non riuscito: " + Error,
-        _ => "Annullato",
+        DownloadState.Running => Received > 0 ? SizeText(Received) : T("Scaricamento in corso"),
+        DownloadState.Done when Gone => T("Il file non c'è più"),
+        DownloadState.Done => Temporary ? T("Aperto, {0}", SizeText(Received)) : T("Salvato, {0}", SizeText(Received)),
+        DownloadState.Failed => T("Non riuscito: {0}", Error),
+        _ => T("Annullato"),
     };
 
-    /// <summary>Come le schede degli allegati del riquadro (ReadingPage.SizeText).</summary>
+    /// <summary>Come le schede degli allegati del riquadro (ReadingPage.SizeText). I decimali nella lingua di Missiva ("1,5 MB", "1.5 MB").</summary>
     public static string SizeText(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:0} KB",
-        _ => $"{bytes / 1048576.0:0.#} MB",
+        < 1024 * 1024 => string.Format(Lingua.Culture, "{0:0} KB", bytes / 1024.0),
+        _ => string.Format(Lingua.Culture, "{0:0.#} MB", bytes / 1048576.0),
     };
 
     /// <summary>"1,2 di 2,9 MB", "300 di 820 KB": i due numeri nell'unità del totale.</summary>
     public static string Progress(long done, long total) => total < 1024 * 1024
-        ? $"{done / 1024.0:0} di {total / 1024.0:0} KB"
-        : $"{done / 1048576.0:0.0} di {total / 1048576.0:0.0} MB";
+        ? T("{0:0} di {1:0} KB", done / 1024.0, total / 1024.0)
+        : T("{0:0.0} di {1:0.0} MB", done / 1048576.0, total / 1048576.0);
 
     internal void Begin() => State = DownloadState.Running;
 
@@ -327,11 +327,11 @@ public sealed class DownloadList
     /// <summary>Il motivo di un errore in parole per chi usa Missiva: quello del provider, una connessione caduta, un rifiuto del server.</summary>
     public static string Reason(Exception ex) => ex switch
     {
-        MailException mail when mail.Status > 0 => $"{mail.Message.TrimEnd('.')} (il server ha risposto {mail.Status}).",
+        MailException mail when mail.Status > 0 => T("{0} (il server ha risposto {1}).", mail.Message.TrimEnd('.'), mail.Status),
         MailException mail => mail.Message,
-        MailKit.Net.Imap.ImapCommandException refused => $"il server ha rifiutato la richiesta ({refused.ResponseText})",
-        UnauthorizedAccessException => "Missiva non può scrivere in quella cartella.",
-        IOException { InnerException: SocketException } or SocketException or MailKit.ServiceNotConnectedException or HttpRequestException => "la connessione si è interrotta.",
+        MailKit.Net.Imap.ImapCommandException refused => T("il server ha rifiutato la richiesta ({0})", refused.ResponseText),
+        UnauthorizedAccessException => T("Missiva non può scrivere in quella cartella."),
+        IOException { InnerException: SocketException } or SocketException or MailKit.ServiceNotConnectedException or HttpRequestException => T("la connessione si è interrotta."),
         _ => ex.Message,
     };
 }

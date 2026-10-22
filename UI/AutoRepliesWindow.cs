@@ -19,9 +19,9 @@ public sealed class AutoRepliesWindow : Window
 {
     readonly IMailProvider provider;
     readonly bool personal;
-    readonly RadioButton off = new() { Content = "Spente", GroupName = "stato" };
-    readonly RadioButton on = new() { Content = "Attive", GroupName = "stato", Margin = new Thickness(0, 6, 0, 0) };
-    readonly RadioButton scheduled = new() { Content = "Attive solo in questo periodo", GroupName = "stato", Margin = new Thickness(0, 6, 0, 0) };
+    readonly RadioButton off = new() { Content = T("Spente"), GroupName = "stato" };
+    readonly RadioButton on = new() { Content = T("Attive"), GroupName = "stato", Margin = new Thickness(0, 6, 0, 0) };
+    readonly RadioButton scheduled = new() { Content = T("Attive solo in questo periodo"), GroupName = "stato", Margin = new Thickness(0, 6, 0, 0) };
     readonly DatePicker startDate = new() { Width = 150 }, endDate = new() { Width = 150 };
     readonly ComboBox startTime = Times(), endTime = Times();
     readonly RichEditor inside = new() { Height = 120 }, outside = new() { Height = 120 };
@@ -32,8 +32,8 @@ public sealed class AutoRepliesWindow : Window
     readonly StackPanel form = new() { Visibility = Visibility.Collapsed };
     readonly StackPanel consent = new() { Visibility = Visibility.Collapsed };
     readonly TextBlock error = Dialog.ErrorText(14);
-    readonly TextBlock status = Secondary("Caricamento…");
-    readonly Button save = new() { Content = "Salva", MinWidth = 100, IsDefault = true, IsEnabled = false };
+    readonly TextBlock status = Secondary(T("Caricamento…"));
+    readonly Button save = new() { Content = T("Salva"), MinWidth = 100, IsDefault = true, IsEnabled = false };
 
     /// <summary>Le risposte lette dal server all'apertura (null senza consenso), per la barra sotto l'account.</summary>
     public AutoReplies? Found { get; private set; }
@@ -46,7 +46,7 @@ public sealed class AutoRepliesWindow : Window
     {
         this.provider = provider;
         personal = provider.Account.Tenant == null;
-        Title = "Risposte automatiche";
+        Title = T("Risposte automatiche");
         Width = 600;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
@@ -54,7 +54,7 @@ public sealed class AutoRepliesWindow : Window
         ShowInTaskbar = false;
 
         var panel = new StackPanel { Margin = new Thickness(28, 22, 28, 24) };
-        panel.Children.Add(new TextBlock { Text = "Risposte automatiche", FontSize = 22, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
+        panel.Children.Add(new TextBlock { Text = T("Risposte automatiche"), FontSize = 22, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
         panel.Children.Add(Secondary(provider.Account.Email));
         status.Margin = new Thickness(0, 14, 0, 0);
         panel.Children.Add(status);
@@ -68,7 +68,7 @@ public sealed class AutoRepliesWindow : Window
         var buttons = new DockPanel { Margin = new Thickness(0, 20, 0, 0), LastChildFill = false };
         save.SetResourceReference(StyleProperty, "AccentButtonStyle");
         save.Click += async (_, _) => await SaveAsync();
-        var cancel = new Button { Content = "Annulla", MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+        var cancel = new Button { Content = T("Annulla"), MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
         DockPanel.SetDock(save, Dock.Right);
         DockPanel.SetDock(cancel, Dock.Right);
         buttons.Children.Add(save);
@@ -76,6 +76,9 @@ public sealed class AutoRepliesWindow : Window
         panel.Children.Add(buttons);
         Content = panel;
         Loaded += async (_, _) => await LoadAsync();
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto, anche in inglese): fuori dallo schermo, senza il fuoco
+#endif
     }
 
 #if DEBUG
@@ -121,34 +124,32 @@ public sealed class AutoRepliesWindow : Window
 
     void BuildConsent()
     {
-        consent.Children.Add(Secondary("Per leggere e cambiare le risposte automatiche Missiva deve poter accedere alle impostazioni della casella " +
-                                       "(il permesso MailboxSettings, che l'accesso di base non chiede). Si chiede una volta sola: vale anche per le " +
-                                       "categorie di Outlook con i loro colori."));
-        var allow = new Button { Content = "Consenti l'accesso alle impostazioni della casella", Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+        consent.Children.Add(Secondary(T("Per leggere e cambiare le risposte automatiche Missiva deve poter accedere alle impostazioni della casella (il permesso MailboxSettings, che l'accesso di base non chiede). Si chiede una volta sola: vale anche per le categorie di Outlook con i loro colori.")));
+        var allow = new Button { Content = T("Consenti l'accesso alle impostazioni della casella"), Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
         allow.SetResourceReference(StyleProperty, "AccentButtonStyle");
-        AutomationProperties.SetName(allow, "Consenti l'accesso alle impostazioni della casella");
+        AutomationProperties.SetName(allow, T("Consenti l'accesso alle impostazioni della casella"));
         allow.Click += async (_, _) => await AllowAsync();
         consent.Children.Add(allow);
     }
 
     void BuildForm()
     {
-        form.Children.Add(Label("Stato", 16));
+        form.Children.Add(Label(T("Stato"), 16));
         form.Children.Add(off);
         form.Children.Add(on);
         form.Children.Add(scheduled);
         var from = new StackPanel { Orientation = Orientation.Horizontal };
-        from.Children.Add(new TextBlock { Text = "Dal", Width = 34, VerticalAlignment = VerticalAlignment.Center });
+        from.Children.Add(new TextBlock { Text = T("Dal"), Width = Lingua.English ? 44 : 34, VerticalAlignment = VerticalAlignment.Center });
         from.Children.Add(startDate);
         from.Children.Add(startTime);
         var to = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-        to.Children.Add(new TextBlock { Text = "Al", Width = 34, VerticalAlignment = VerticalAlignment.Center });
+        to.Children.Add(new TextBlock { Text = T("Al"), Width = Lingua.English ? 44 : 34, VerticalAlignment = VerticalAlignment.Center });
         to.Children.Add(endDate);
         to.Children.Add(endTime);
-        AutomationProperties.SetName(startDate, "Data di inizio");
-        AutomationProperties.SetName(startTime, "Ora di inizio");
-        AutomationProperties.SetName(endDate, "Data di fine");
-        AutomationProperties.SetName(endTime, "Ora di fine");
+        AutomationProperties.SetName(startDate, T("Data di inizio"));
+        AutomationProperties.SetName(startTime, T("Ora di inizio"));
+        AutomationProperties.SetName(endDate, T("Data di fine"));
+        AutomationProperties.SetName(endTime, T("Ora di fine"));
         period.Children.Add(from);
         period.Children.Add(to);
         form.Children.Add(period);
@@ -158,29 +159,29 @@ public sealed class AutoRepliesWindow : Window
             AutomationProperties.SetName(radio, radio.Content.ToString());
         }
 
-        form.Children.Add(Label(personal ? "Messaggio" : "Messaggio per chi è nella tua organizzazione", 18));
-        AutomationProperties.SetName(inside, personal ? "Messaggio" : "Messaggio per l'organizzazione");
+        form.Children.Add(Label(personal ? T("Messaggio") : T("Messaggio per chi è nella tua organizzazione"), 18));
+        AutomationProperties.SetName(inside, personal ? T("Messaggio") : T("Messaggio per l'organizzazione"));
         form.Children.Add(Framed(inside));
         if (personal)
         {
-            external.Content = "Rispondi solo ai miei contatti";
-            AutomationProperties.SetName(external, "Rispondi solo ai miei contatti");
+            external.Content = T("Rispondi solo ai miei contatti");
+            AutomationProperties.SetName(external, T("Rispondi solo ai miei contatti"));
             form.Children.Add(external);
         }
         else
         {
-            external.Content = "Rispondi anche a chi è fuori dalla tua organizzazione";
-            AutomationProperties.SetName(external, "Rispondi anche a chi è fuori dalla tua organizzazione");
+            external.Content = T("Rispondi anche a chi è fuori dalla tua organizzazione");
+            AutomationProperties.SetName(external, T("Rispondi anche a chi è fuori dalla tua organizzazione"));
             external.Checked += (_, _) => UpdateEnabled();
             external.Unchecked += (_, _) => UpdateEnabled();
             form.Children.Add(external);
-            audience.Items.Add(new ComboBoxItem { Content = "Solo ai miei contatti" });
-            audience.Items.Add(new ComboBoxItem { Content = "A tutti" });
-            AutomationProperties.SetName(audience, "A chi rispondere fuori dall'organizzazione");
+            audience.Items.Add(new ComboBoxItem { Content = T("Solo ai miei contatti") });
+            audience.Items.Add(new ComboBoxItem { Content = T("A tutti") });
+            AutomationProperties.SetName(audience, T("A chi rispondere fuori dall'organizzazione"));
             externalPanel.Margin = new Thickness(28, 0, 0, 0);
             externalPanel.Children.Add(audience);
-            externalPanel.Children.Add(Label("Messaggio per chi è fuori dalla tua organizzazione", 10));
-            AutomationProperties.SetName(outside, "Messaggio per gli esterni");
+            externalPanel.Children.Add(Label(T("Messaggio per chi è fuori dalla tua organizzazione"), 10));
+            AutomationProperties.SetName(outside, T("Messaggio per gli esterni"));
             externalPanel.Children.Add(Framed(outside));
             form.Children.Add(externalPanel);
         }
@@ -213,7 +214,7 @@ public sealed class AutoRepliesWindow : Window
     async Task LoadAsync()
     {
         error.Visibility = Visibility.Collapsed;
-        status.Text = "Caricamento…";
+        status.Text = T("Caricamento…");
         status.Visibility = Visibility.Visible;
         try
         {
@@ -227,7 +228,7 @@ public sealed class AutoRepliesWindow : Window
         {
             Log.Error("risposte automatiche", ex);
             status.Visibility = Visibility.Collapsed;
-            ShowError("Le risposte automatiche non si leggono: " + ex.Message);
+            ShowError(T("Le risposte automatiche non si leggono: {0}", ex.Message));
             return;
         }
         status.Visibility = Visibility.Collapsed;
@@ -251,7 +252,7 @@ public sealed class AutoRepliesWindow : Window
         if (MainWindow.Testing)
         {
             await provider.AllowMailboxSettingsAsync(); // TestingProvider: solo "prova: chiederei il consenso ..." nel registro
-            status.Text = "Nella versione di prova la finestra di Microsoft non si apre.";
+            status.Text = T("Nella versione di prova la finestra di Microsoft non si apre.");
             status.Visibility = Visibility.Visible;
             return;
         }
@@ -270,7 +271,7 @@ public sealed class AutoRepliesWindow : Window
         catch (Exception ex)
         {
             Log.Error("consenso alle impostazioni della casella", ex);
-            ReadingView.ShowConsentError(this, "Accesso alle impostazioni non consentito", ex, provider.Account, "leggere e cambiare le risposte automatiche");
+            ReadingView.ShowConsentError(this, T("Accesso alle impostazioni non consentito"), ex, provider.Account, T("leggere e cambiare le risposte automatiche"));
         }
         finally
         {
@@ -304,7 +305,7 @@ public sealed class AutoRepliesWindow : Window
         }
         // Un pubblico esterno che Missiva non conosce: detto, e lasciato com'è finché non se ne sceglie un altro (AutoReplies.UnknownAudience).
         if (replies.UnknownAudience is { Length: > 0 } unknown)
-            ShowError($"Per chi scrive da fuori Outlook ha un'impostazione che Missiva non conosce (\"{unknown}\"): qui la vedi come \"tutti\", ma Salva la lascia com'è finché non ne scegli un'altra.");
+            ShowError(T("Per chi scrive da fuori Outlook ha un'impostazione che Missiva non conosce (\"{0}\"): qui la vedi come \"tutti\", ma Salva la lascia com'è finché non ne scegli un'altra.", unknown));
         UpdateEnabled();
     }
 
@@ -332,19 +333,19 @@ public sealed class AutoRepliesWindow : Window
         {
             if (startDate.SelectedDate is not { } d1 || ParseTime(startTime.Text) is not { } t1 || endDate.SelectedDate is not { } d2 || ParseTime(endTime.Text) is not { } t2)
             {
-                ShowError("Scegli il giorno e l'ora di inizio e di fine (per esempio 9:00).");
+                ShowError(T("Scegli il giorno e l'ora di inizio e di fine (per esempio 9:00)."));
                 return;
             }
             start = d1.Date + t1;
             end = d2.Date + t2;
             if (end <= start)
             {
-                ShowError("La fine deve venire dopo l'inizio.");
+                ShowError(T("La fine deve venire dopo l'inizio."));
                 return;
             }
             if (end <= DateTime.Now)
             {
-                ShowError("La fine è già passata: scegli un periodo che finisce più avanti.");
+                ShowError(T("La fine è già passata: scegli un periodo che finisce più avanti."));
                 return;
             }
         }
@@ -352,7 +353,7 @@ public sealed class AutoRepliesWindow : Window
         var externalHtml = personal ? internalHtml : Html(outside);
         if (HasImages(inside) || !personal && HasImages(outside))
         {
-            ShowError("Le risposte automatiche non possono contenere immagini: Outlook non le tiene. Toglile dal messaggio.");
+            ShowError(T("Le risposte automatiche non possono contenere immagini: Outlook non le tiene. Toglile dal messaggio."));
             return;
         }
         var reach = personal
@@ -360,13 +361,13 @@ public sealed class AutoRepliesWindow : Window
             : external.IsChecked != true ? AutoReplyAudience.None : audience.SelectedIndex == 0 ? AutoReplyAudience.Contacts : AutoReplyAudience.All;
         if (state != AutoReplyState.Off && internalHtml.Length == 0)
         {
-            ShowError("Scrivi il messaggio da mandare in risposta.");
+            ShowError(T("Scrivi il messaggio da mandare in risposta."));
             inside.Focus();
             return;
         }
         if (state != AutoReplyState.Off && reach != AutoReplyAudience.None && externalHtml.Length == 0)
         {
-            ShowError("Scrivi il messaggio per chi è fuori dalla tua organizzazione, o togli la risposta agli esterni.");
+            ShowError(T("Scrivi il messaggio per chi è fuori dalla tua organizzazione, o togli la risposta agli esterni."));
             outside.Focus();
             return;
         }
@@ -389,7 +390,7 @@ public sealed class AutoRepliesWindow : Window
         catch (Exception ex)
         {
             Log.Error("risposte automatiche non salvate", ex);
-            ShowError("Le risposte automatiche non sono state salvate: " + ex.Message);
+            ShowError(T("Le risposte automatiche non sono state salvate: {0}", ex.Message));
             form.IsEnabled = save.IsEnabled = true;
         }
     }

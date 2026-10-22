@@ -1,11 +1,12 @@
 <UserControl x:Class="Missiva.UI.ReadingView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Missiva.UI">
     <Grid>
         <StackPanel x:Name="EmptyPanel" HorizontalAlignment="Center" VerticalAlignment="Center">
             <TextBlock Text="&#xE715;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="48" HorizontalAlignment="Center"
                        Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-            <TextBlock x:Name="EmptyText" Text="Seleziona un elemento da leggere" Margin="0,12,0,0" HorizontalAlignment="Center"
+            <TextBlock x:Name="EmptyText" Text="{local:T 'Seleziona un elemento da leggere'}" Margin="0,12,0,0" HorizontalAlignment="Center"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
         </StackPanel>
 

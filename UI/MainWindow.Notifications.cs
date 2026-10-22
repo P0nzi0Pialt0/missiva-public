@@ -31,11 +31,12 @@ public partial class MainWindow
             // Non si agisce su un messaggio che potrebbe essere un altro: si apre la Posta in arrivo, e il testo di Rispondi
             // resta in una scrittura, da copiare nella risposta.
             Log.Write($"azione dalla notifica: messaggio {messageId} non trovato, si apre la Posta in arrivo");
-            Tell("Messaggio non trovato", "Missiva non ha più questo messaggio sotto mano: lo trovi nella Posta in arrivo, che si apre ora." +
-                                          (action == "reply" && text?.Trim().Length > 0 ? " Il testo della risposta è in una finestra di scrittura." : ""));
+            Tell(T("Messaggio non trovato"), action == "reply" && text?.Trim().Length > 0
+                ? T("Missiva non ha più questo messaggio sotto mano: lo trovi nella Posta in arrivo, che si apre ora. Il testo della risposta è in una finestra di scrittura.")
+                : T("Missiva non ha più questo messaggio sotto mano: lo trovi nella Posta in arrivo, che si apre ora."));
             ShowFromTray();
             await OpenFromNotificationAsync(accountId, messageId, null);
-            if (action == "reply" && text?.Trim().Length > 0) OpenQuickReplyWindow(account, null, text, "Risposta dalla notifica: il messaggio non si è trovato. Copia il testo nella risposta.");
+            if (action == "reply" && text?.Trim().Length > 0) OpenQuickReplyWindow(account, null, text, T("Risposta dalla notifica: il messaggio non si è trovato. Copia il testo nella risposta."));
             return;
         }
         switch (action)
@@ -47,8 +48,8 @@ public partial class MainWindow
             case "reply" when text?.Trim().Length > 0:
                 OpenQuickReplyWindow(account, message, text,
                     SenderCheck.QuickReplyRisk(account.Provider.Account, message) is { } risk
-                        ? $"Dalla notifica non è partita: {risk}. Controlla a chi va prima di inviare."
-                        : "Il testo viene da una notifica: non è stato inviato. Controlla a chi va e invia da qui.");
+                        ? T("Dalla notifica non è partita: {0}. Controlla a chi va prima di inviare.", risk)
+                        : T("Il testo viene da una notifica: non è stato inviato. Controlla a chi va e invia da qui."));
                 break;
             case "reply":
                 OpenReplyFromNotification(account, message);
@@ -172,7 +173,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("contrassegna dalla notifica", ex);
-            Tell("Messaggio non contrassegnato", ex.Message);
+            Tell(T("Messaggio non contrassegnato"), ex.Message);
         }
     }
 
@@ -183,8 +184,8 @@ public partial class MainWindow
     internal static OutgoingMessage QuickReply(MailAccount account, MessageSummary original, string text)
     {
         var (to, _) = Replies.Recipients(original, null, account.Email, ComposeMode.Reply);
-        var subject = original.Subject.StartsWith("R:", StringComparison.OrdinalIgnoreCase) || original.Subject.StartsWith("RE:", StringComparison.OrdinalIgnoreCase)
-            ? original.Subject : "R: " + original.Subject;
+        // L'oggetto come Rispondi: "R: " in italiano, "RE: " in inglese, e un prefisso delle due lingue già presente resta.
+        var subject = ComposeWindow.SubjectFor(ComposeMode.Reply, original.Subject);
         // Come Rispondi: dall'indirizzo a cui era scritto (un alias, info@), con la firma di quell'indirizzo.
         var identity = SendIdentity.For(account, original);
         var (html, plain, images) = QuickReplyBody(text, Store.Settings.SignatureFor(account, reply: true, identity));
@@ -216,7 +217,7 @@ public partial class MainWindow
         bool creating = !account.Folders.Any(IsSnoozeFolder);
         try
         {
-            var target = await provider.EnsureFolderAsync(SnoozeFolderName);
+            var target = await provider.EnsureFolderAsync(SnoozeFolderName(account));
             var key = await provider.SnoozeAsync(message, target);
             S.Snoozed.Add(new SnoozedMessage { AccountId = provider.Account.Id, Key = key, FolderId = target.Id, Until = until, Subject = message.Subject, From = message.From.Display });
             Store.Save();
@@ -228,7 +229,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("posponi dalla notifica", ex);
-            Tell("Messaggio non posposto", ex.Message);
+            Tell(T("Messaggio non posposto"), ex.Message);
         }
     }
 
@@ -243,7 +244,7 @@ public partial class MainWindow
             var trash = Special(account, FolderKind.Deleted) ?? await account.Provider.EnsureTrashAsync();
             if (trash == null)
             {
-                Tell("Messaggio non eliminato", $"L'account {account.Header} non ha un Cestino.");
+                Tell(T("Messaggio non eliminato"), T("L'account {0} non ha un Cestino.", account.Header));
                 return;
             }
             if (message.FolderId == trash.Id) return;
@@ -256,7 +257,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("elimina dalla notifica", ex);
-            Tell("Messaggio non eliminato", ex.Message);
+            Tell(T("Messaggio non eliminato"), ex.Message);
         }
     }
 

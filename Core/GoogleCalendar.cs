@@ -15,7 +15,9 @@ namespace Missiva;
 public static class GoogleCalendar
 {
     const string Base = "https://www.googleapis.com/calendar/v3/";
-    static readonly GoogleService Service = new("Google Calendar API", "calendar-json", "il calendario", "Consenti l'accesso al calendario", "nel calendario");
+    static readonly GoogleService Service = new("Google Calendar API", "calendar-json",
+        N("Missiva non ha il permesso di usare il calendario di questo account: premi \"Consenti l'accesso al calendario\" nel calendario."),
+        N("Google ha limitato le richieste (il calendario): riprova fra poco."));
 
 #if DEBUG
     /// <summary>Prove (Missiva.exe --prova-bozze): un gestore HTTP finto al posto di Google.</summary>

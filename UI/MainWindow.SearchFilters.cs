@@ -18,9 +18,9 @@ public partial class MainWindow
 {
     /// <summary>I filtri della ricerca (senza le parole libere, che sono nella casella).</summary>
     SearchTerms searchFilters = new();
-    readonly TextBox filterFrom = FilterBox("Da"), filterTo = FilterBox("A"), filterSubject = FilterBox("Oggetto"), filterWords = FilterBox("Contiene");
+    readonly TextBox filterFrom = FilterBox(T("Da")), filterTo = FilterBox(T("A")), filterSubject = FilterBox(T("Oggetto")), filterWords = FilterBox(T("Contiene"));
     readonly DatePicker filterSince = new() { Width = 190 }, filterUntil = new() { Width = 190 };
-    readonly CheckBox filterAttachments = FilterCheck("Con allegati"), filterUnread = FilterCheck("Non letti"), filterFlagged = FilterCheck("Contrassegnati");
+    readonly CheckBox filterAttachments = FilterCheck(T("Con allegati")), filterUnread = FilterCheck(T("Non letti")), filterFlagged = FilterCheck(T("Contrassegnati"));
 
     static TextBox FilterBox(string name)
     {
@@ -81,7 +81,7 @@ public partial class MainWindow
         var at = toDip.Transform(corner);
         filtersWindow = new Window
         {
-            Owner = this, Title = "Filtri", WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
+            Owner = this, Title = T("Filtri"), WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
             AllowsTransparency = true, Background = Brushes.Transparent, SizeToContent = SizeToContent.WidthAndHeight,
             WindowStartupLocation = WindowStartupLocation.Manual, Left = at.X, Top = at.Y, Content = filtersPanel,
         };
@@ -132,17 +132,22 @@ public partial class MainWindow
             Grid.SetColumn(field, 1);
             grid.Children.Add(field);
         }
-        Row("Da", filterFrom);
-        Row("A", filterTo);
-        Row("Oggetto", filterSubject);
-        Row("Contiene", filterWords);
+        Row(T("Da"), filterFrom);
+        Row(T("A"), filterTo);
+        Row(T("Oggetto"), filterSubject);
+        Row(T("Contiene"), filterWords);
         var dates = new StackPanel { Orientation = Orientation.Horizontal };
-        AutomationProperties.SetName(filterSince, "Dal giorno");
-        AutomationProperties.SetName(filterUntil, "Al giorno");
+        AutomationProperties.SetName(filterSince, T("Dal giorno"));
+        AutomationProperties.SetName(filterUntil, T("Al giorno"));
+        // In inglese le date nella cultura di Missiva (Lingua.Culture: il mese e il calendario in inglese); in italiano come
+        // sempre, con i formati di Windows (il DatePicker senza Language usa CurrentCulture).
+        if (Lingua.English) filterSince.Language = filterUntil.Language = Lingua.Xml;
         dates.Children.Add(filterSince);
-        dates.Children.Add(new TextBlock { Text = "al", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0) });
+        dates.Children.Add(new TextBlock { Text = T("al"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0) });
         dates.Children.Add(filterUntil);
-        Row("Dal", dates);
+        // "Dal" ha una traduzione sola (From, come nelle risposte automatiche), e qui due righe From una sotto l'altra (il
+        // mittente e le date) si confonderebbero: in inglese la riga delle date si chiama Date, "Date [giorno] to [giorno]".
+        Row(Lingua.English ? T("Data") : T("Dal"), dates);
         var checks = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
         checks.Children.Add(filterAttachments);
         checks.Children.Add(filterUnread);
@@ -150,23 +155,23 @@ public partial class MainWindow
         Row("", checks);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
-        var clear = new Button { Content = "Cancella filtri", Margin = new Thickness(0, 0, 8, 0), MinWidth = 100 };
-        AutomationProperties.SetName(clear, "Cancella filtri");
+        var clear = new Button { Content = T("Cancella filtri"), Margin = new Thickness(0, 0, 8, 0), MinWidth = 100 };
+        AutomationProperties.SetName(clear, T("Cancella filtri"));
         clear.Click += (_, _) =>
         {
             foreach (var box in new[] { filterFrom, filterTo, filterSubject }) box.Text = "";
             filterSince.SelectedDate = filterUntil.SelectedDate = null;
             filterAttachments.IsChecked = filterUnread.IsChecked = filterFlagged.IsChecked = false;
         };
-        var search = new Button { Content = "Cerca", MinWidth = 100 };
+        var search = new Button { Content = T("Cerca"), MinWidth = 100 };
         search.SetResourceReference(StyleProperty, "AccentButtonStyle");
-        AutomationProperties.SetName(search, "Cerca con i filtri");
+        AutomationProperties.SetName(search, T("Cerca con i filtri"));
         search.Click += async (_, _) => await ApplyFiltersAsync();
         buttons.Children.Add(clear);
         buttons.Children.Add(search);
 
         var panel = new StackPanel { Margin = new Thickness(18, 12, 18, 14) };
-        panel.Children.Add(new TextBlock { Text = "Filtri", FontSize = 16, FontWeight = FontWeights.SemiBold });
+        panel.Children.Add(new TextBlock { Text = T("Filtri"), FontSize = 16, FontWeight = FontWeights.SemiBold });
         panel.Children.Add(grid);
         panel.Children.Add(buttons);
         panel.KeyDown += async (_, e) =>
@@ -177,7 +182,7 @@ public partial class MainWindow
         var border = new Border { Child = panel, CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1), Width = Math.Max(SearchArea.ActualWidth, 540) };
         border.SetResourceReference(Border.BackgroundProperty, "SolidBackgroundFillColorBaseBrush");
         border.SetResourceReference(Border.BorderBrushProperty, "SurfaceStrokeColorDefaultBrush");
-        AutomationProperties.SetName(border, "Filtri della ricerca");
+        AutomationProperties.SetName(border, T("Filtri della ricerca"));
         return border;
     }
 
@@ -259,9 +264,9 @@ public partial class MainWindow
             {
                 Content = new TextBlock { Text = "", FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 8 },
                 Width = 18, Height = 18, Padding = new Thickness(0), MinWidth = 0, MinHeight = 0, Margin = new Thickness(4, 0, 0, 0),
-                Background = Brushes.Transparent, BorderThickness = new Thickness(0), ToolTip = "Togli il filtro",
+                Background = Brushes.Transparent, BorderThickness = new Thickness(0), ToolTip = T("Togli il filtro"),
             };
-            AutomationProperties.SetName(remove, "Togli il filtro " + label);
+            AutomationProperties.SetName(remove, T("Togli il filtro {0}", label));
             var filterKey = key;
             remove.Click += async (_, _) =>
             {

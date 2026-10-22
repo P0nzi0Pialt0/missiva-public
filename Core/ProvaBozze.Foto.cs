@@ -32,28 +32,47 @@ static partial class ProvaBozze
     };
 
     /// <summary>
+    /// Le tre caselle delle foto inglesi (--imap-finto porta foto studio|personale|pec en): lo studio è Northlight
+    /// Architects, la posta personale un servizio inventato; la posta certificata resta quella del gestore italiano finto,
+    /// come in italiano (la PEC è italiana per natura).
+    /// </summary>
+    internal static readonly Dictionary<string, string> FotoMailboxesEn = new()
+    {
+        ["studio"] = "ada.galli@northlight.example",
+        ["personale"] = "ada.galli@homemail.example",
+        ["pec"] = "ada.galli@pec-esempio.example",
+    };
+
+    /// <summary>Le caselle delle foto nella lingua data.</summary>
+    internal static Dictionary<string, string> FotoBoxes(bool english) => english ? FotoMailboxesEn : FotoMailboxes;
+
+    /// <summary>
     /// Riempie il server finto con la casella delle foto che ha quel nome (studio, personale, pec). Per la posta
     /// certificata scrive anche la radice di prova accanto ai dati del server (radice-foto.cer), da dare alla finestra con
     /// --pec-radice: solo con lei la firma del gestore finto è verde.
     /// </summary>
-    static void FillFoto(FakeImap fake, string mailbox)
+    /// <param name="english">Le foto inglesi (foto studio en): persone, testi e cartelle in inglese (FotoMailEn).</param>
+    static void FillFoto(FakeImap fake, string mailbox, bool english = false)
     {
-        if (!FotoMailboxes.TryGetValue(mailbox, out var me)) throw new ArgumentException($"casella delle foto sconosciuta: {mailbox} (studio, personale o pec)");
+        if (!FotoBoxes(english).TryGetValue(mailbox, out var me)) throw new ArgumentException($"casella delle foto sconosciuta: {mailbox} (studio, personale o pec)");
         fake.TrueTypes = true; // le immagini della newsletter e i tipi veri degli allegati (anteprime delle foto e dei PDF)
         foreach (var folder in fake.Folders.Keys.Where(k => k is not ("INBOX" or "Drafts" or "Sent" or "Trash" or "Junk" or "Archive")).ToList()) fake.Folders.Remove(folder);
         // Qualche cartella dell'utente, vuota, come in una casella vera.
-        foreach (var folder in mailbox switch { "studio" => new[] { "Progetti", "Amministrazione" }, "personale" => new[] { "Casa", "Viaggi" }, _ => Array.Empty<string>() }) fake.Folders.TryAdd(folder, new());
-        var mail = FotoMail(mailbox, me);
+        var mine = english
+            ? mailbox switch { "studio" => new[] { "Projects", "Accounting" }, "personale" => new[] { "Home", "Travel" }, _ => Array.Empty<string>() }
+            : mailbox switch { "studio" => new[] { "Progetti", "Amministrazione" }, "personale" => new[] { "Casa", "Viaggi" }, _ => Array.Empty<string>() };
+        foreach (var folder in mine) fake.Folders.TryAdd(folder, new());
+        var mail = FotoMail(mailbox, me, english);
         foreach (var (folder, message, flags) in mail)
         {
             fake.Folders.TryAdd(folder, new());
             fake.Add(folder, message, flags);
         }
         if (mailbox == "pec" && fotoRoot != null) File.WriteAllBytes(Path.Combine(Store.Dir, "radice-foto.cer"), fotoRoot);
-        Log.Write($"server IMAP finto: casella delle foto \"{mailbox}\" ({me}), {mail.Count} messaggi");
+        Log.Write($"server IMAP finto: casella delle foto \"{mailbox}\" ({me}){(english ? " in inglese" : "")}, {mail.Count} messaggi");
     }
 
-    static List<(string Folder, MimeMessage Message, string Flags)> FotoMail(string mailbox, string me) => mailbox switch
+    static List<(string Folder, MimeMessage Message, string Flags)> FotoMail(string mailbox, string me, bool english = false) => english ? FotoMailEn(mailbox, me) : mailbox switch
     {
         "studio" =>
         [
@@ -96,6 +115,56 @@ static partial class ProvaBozze
     };
 
     /// <summary>
+    /// Le caselle delle foto inglesi: la stessa storia di quelle italiane, nello stesso ordine e con le stesse ore (lo
+    /// strumento delle foto apre le righe per numero), con persone e organizzazioni inventate dai nomi inglesi o
+    /// internazionali e domini .example. Ada Galli lavora da Northlight Architects; il comune è la City of Easton; Luca
+    /// Bianchi, a cui ha già scritto, le fa la cucina con Bianchi Kitchens (Cucine Bianchi S.r.l., italiana: preventivo,
+    /// frode e fattura per posta certificata in euro); libreria, biblioteca, palestra e commercialista sono di Easton, in
+    /// dollari.
+    /// </summary>
+    static List<(string Folder, MimeMessage Message, string Flags)> FotoMailEn(string mailbox, string me) => mailbox switch
+    {
+        "studio" =>
+        [
+            ("INBOX", FotoMessage("Emma Collins", "emma.collins@northlight.example", me, "Monday's meeting at 10", FotoWhen(0, 18.6),
+                FotoPageEn("<p>Hi Ada,</p><p>Just confirming Monday's meeting at 10 in the big conference room for the library project. I'll bring the updated drawings and the cost estimate.</p><p>If you can, take a look at the council's comments beforehand: we'll go over them there.</p><p>Emma</p>")), "\\Flagged"),
+            ("INBOX", FotoMessage("Hannah Wright", "hannah.wright@easton-council.example", me, "Library project: committee comments", FotoWhen(1, 15.7),
+                FotoPageEn("<p>Dear Ms. Galli,</p><p>Please find attached the committee's comments on the preliminary design for the new neighborhood library. In short: more seats in the reading room and a separate entrance for the children's room.</p><p>Kind regards,<br>Hannah Wright<br>Public Works Department</p>"),
+                ("Committee comments.pdf", FotoPdf("City of Easton, Public Works Department", "", "Comments on the preliminary design", "of the neighborhood library", "", "1. Increase the number of seats in the reading room.", "2. Provide a separate entrance for the children's room.", "3. Check the natural light on the north side."), "application/pdf")), "\\Seen Clients"),
+            ("INBOX", FotoMessage("David Clarke", "david.clarke@clarkehale.example", me, "September invoice", FotoWhen(8, 17.6),
+                FotoPageEn("<p>Good morning Ada,</p><p>Attached is the September invoice for our accounting services. Payment is due within 30 days, as usual.</p><p>Best regards,<br>David Clarke</p>"),
+                ("September invoice.pdf", FotoPdf("Clarke & Hale Accountants", "", "Invoice no. 118, September 30, 2026", "", "Tax and accounting services, September 2026", "Services: $600.00", "Total due: $600.00"), "application/pdf")), "\\Seen Accounting"),
+            ("INBOX", FotoMessage("Sam Turner", "sam.turner@turner-build.example", me, "Site visit on Thursday", FotoWhen(8, 9.3),
+                FotoPageEn("<p>Hi Ada,</p><p>Let's meet at the site on Thursday at 2 p.m. for the inspection: the mezzanine structure has arrived and I'd like your opinion before we close the floors.</p><p>Sam</p>")), "\\Seen"),
+            ("INBOX", FotoMessage("Priya Shah", "priya.shah@northlight.example", me, "Minutes of Tuesday's meeting", FotoWhen(8, 16.2),
+                FotoPageEn("<p>Hi all,</p><p>Here are the minutes of Tuesday's meeting, with the deadlines for the next two months. Let me know by Friday if anything needs correcting.</p><p>Priya</p>")), "\\Seen"),
+            ("INBOX", FotoMessage("Institute of Architects", "events@architects-institute.example", me, "November training course", FotoWhen(9, 11.0),
+                FotoPageEn("<p>Dear members,</p><p>Registration is open for the training course on energy efficiency in buildings, in four sessions in November. The course counts for 12 continuing education hours.</p><p>The Institute office</p>")), "\\Seen"),
+            ("Sent", FotoMessage(FotoName, me, "emma.collins@northlight.example", "RE: Project drawings", FotoWhen(2, 10.5),
+                FotoPageEn("<p>Hi Emma, the drawings look great. I'll just add the dimensions of the children's room.</p><p>Ada</p>"), toName: "Emma Collins"), "\\Seen"),
+        ],
+        "personale" =>
+        [
+            ("INBOX", FotoNewsletter(me, english: true), ""),
+            ("INBOX", FotoMessage("Luca Bianchi", "luca.bianchi@bianchi-kitchens.example", me, "Kitchen quote", FotoWhen(0, 17.4),
+                FotoPageEn("<p>Hi Ada,</p><p>As promised, here's the quote for the kitchen, with the measurements we took during the visit. You'll also find the two options for the countertop.</p><p>If it works for you, we can schedule the installation for the first week of November.</p><p>Best,<br>Luca Bianchi<br>Bianchi Kitchens</p>"),
+                ("Kitchen quote.pdf", FotoPdf("Bianchi Kitchens (Cucine Bianchi S.r.l.)", "", "Quote no. 42 for Ada Galli", "", "Custom modular kitchen, 3.60 m: EUR 3,900.00", "Laminate countertop: EUR 450.00", "Delivery and installation: EUR 500.00", "", "Total: EUR 4,850.00, VAT included"), "application/pdf")), "Home"),
+            ("INBOX", FotoFraud(me, english: true), ""),
+            ("INBOX", FotoMessage("Chloe Fontaine", "chloe.fontaine@homemail.example", me, "Photos from the lake trip", FotoWhen(7, 18.5),
+                FotoPageEn("<p>Hi Ada!</p><p>Here are the photos from our trip: the second one is the sunset you wanted. Next time, lunch is on me.</p><p>Hugs,<br>Chloe</p>"),
+                ("Lake in the morning.jpg", FotoLake(sunset: false), "image/jpeg"), ("Sunset on the lake.jpg", FotoLake(sunset: true), "image/jpeg")), "\\Seen \\Flagged"),
+            ("INBOX", FotoMessage("Easton Public Library", "holds@easton-library.example", me, "Your hold is ready for pickup", FotoWhen(8, 10.4),
+                FotoPageEn("<p>Dear reader,</p><p>The book you reserved is waiting for you at the circulation desk until Saturday, October 24.</p><p>Easton Public Library</p>")), "\\Seen"),
+            ("INBOX", FotoMessage("Riverside Gym", "info@riverside-gym.example", me, "November class schedule", FotoWhen(10, 18.0),
+                FotoPageEn("<p>Hi,</p><p>Starting in November, the Tuesday Pilates class moves to 7 p.m. All other times stay the same.</p><p>See you at the gym!</p>")), "\\Seen"),
+            // Come in italiano: a Luca Bianchi Ada ha già scritto, e la frode con il suo nome da un altro indirizzo accende l'avviso del sosia.
+            ("Sent", FotoMessage(FotoName, me, "luca.bianchi@bianchi-kitchens.example", "RE: Kitchen measuring visit", FotoWhen(6, 9.0),
+                FotoPageEn("<p>Hi Luca, Thursday at 6 p.m. works for me. See you at my place.</p><p>Ada</p>"), toName: "Luca Bianchi"), "\\Seen"),
+        ],
+        _ => FotoPecMail(me, english: true),
+    };
+
+    /// <summary>
     /// Un giorno e un'ora relativi a oggi (0 è oggi, 1 ieri). Un'ora di oggi non ancora arrivata (le foto fatte al mattino)
     /// diventa qualche minuto fa, tenendo l'ordine: più tardi nella giornata, più vicino ad adesso.
     /// </summary>
@@ -106,7 +175,10 @@ static partial class ProvaBozze
         return new DateTimeOffset(at);
     }
 
-    /// <summary>Un'email in HTML (una pagina intera: l'anteprima dell'elenco la legge solo dentro il body) con gli allegati dati.</summary>
+    /// <summary>
+    /// Un'email in HTML (una pagina intera: l'anteprima dell'elenco la legge solo dentro il body) con gli allegati dati. Un
+    /// testo che è già una pagina intera (FotoPageEn, le foto inglesi) resta com'è; gli altri diventano una pagina italiana.
+    /// </summary>
     static MimeMessage FotoMessage(string fromName, string fromEmail, string to, string subject, DateTimeOffset date, string html,
                                    params (string Name, byte[] Data, string Type)[] files) => FotoMessage(fromName, fromEmail, to, subject, date, html, FotoName, files);
 
@@ -117,7 +189,7 @@ static partial class ProvaBozze
         var message = new MimeMessage { Subject = subject, Date = date, MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(fromEmail[(fromEmail.IndexOf('@') + 1)..]) };
         message.From.Add(new MailboxAddress(fromName, fromEmail));
         message.To.Add(new MailboxAddress(toName, to));
-        var builder = new BodyBuilder { HtmlBody = FotoPage(html) };
+        var builder = new BodyBuilder { HtmlBody = html.StartsWith("<!DOCTYPE", StringComparison.Ordinal) ? html : FotoPage(html) };
         foreach (var (name, data, type) in files) builder.Attachments.Add(name, data, ContentType.Parse(type));
         message.Body = builder.ToMessageBody();
         return message;
@@ -126,27 +198,41 @@ static partial class ProvaBozze
     static string FotoPage(string body) =>
         $"<!DOCTYPE html><html lang=\"it\"><head><meta charset=\"utf-8\"></head><body style=\"font-family:'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.5;color:#242424;\">{body}</body></html>";
 
+    /// <summary>La pagina di un'email delle foto inglesi: come FotoPage, con lang="en".</summary>
+    static string FotoPageEn(string body) => FotoPage(body).Replace("<html lang=\"it\">", "<html lang=\"en\">");
+
     // ---------------------------------------------------------------- la newsletter
 
     /// <summary>
     /// La newsletter di una libreria inventata: la testata e le tre copertine sono immagini dentro il messaggio (cid:),
-    /// disegnate qui; List-Unsubscribe per la riga "Annulla iscrizione"; DMARC superato per il suo dominio.
+    /// disegnate qui; List-Unsubscribe per la riga "Annulla iscrizione"; DMARC superato per il suo dominio. In inglese la
+    /// stessa, di Greenleaf Books, con i libri e i testi in inglese.
     /// </summary>
-    static MimeMessage FotoNewsletter(string me)
+    static MimeMessage FotoNewsletter(string me, bool english = false)
     {
-        const string domain = "libreria-verdi.example";
-        var message = new MimeMessage { Subject = "Libreria Verdi: le novità di ottobre", Date = FotoWhen(0, 19.0), MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(domain) };
-        message.From.Add(new MailboxAddress("Libreria Verdi", "novita@" + domain));
+        string L(string italian, string inEnglish) => english ? inEnglish : italian;
+        string domain = L("libreria-verdi.example", "greenleaf-books.example");
+        var message = new MimeMessage { Subject = L("Libreria Verdi: le novità di ottobre", "Greenleaf Books: new in October"), Date = FotoWhen(0, 19.0), MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(domain) };
+        message.From.Add(new MailboxAddress(L("Libreria Verdi", "Greenleaf Books"), L("novita@", "news@") + domain));
         message.To.Add(new MailboxAddress(FotoName, me));
-        message.Headers.Add("Authentication-Results", $"mx.posta-esempio.example; dkim=pass header.i=@{domain}; spf=pass smtp.mailfrom={domain}; dmarc=pass header.from={domain}");
-        message.Headers.Add("List-Unsubscribe", $"<https://www.{domain}/newsletter/annulla?id=2718>, <mailto:annulla@{domain}?subject=annulla>");
+        message.Headers.Add("Authentication-Results", $"{L("mx.posta-esempio.example", "mx.homemail.example")}; dkim=pass header.i=@{domain}; spf=pass smtp.mailfrom={domain}; dmarc=pass header.from={domain}");
+        message.Headers.Add("List-Unsubscribe", english
+            ? $"<https://www.{domain}/newsletter/unsubscribe?id=2718>, <mailto:unsubscribe@{domain}?subject=unsubscribe>"
+            : $"<https://www.{domain}/newsletter/annulla?id=2718>, <mailto:annulla@{domain}?subject=annulla>");
         message.Headers.Add("List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
-        var books = new[]
-        {
-            ("Il faro di Levante", "Marta Ferri", "18,50 €", "Un romanzo di mare e di famiglia, su un'isola dove tutti si conoscono."),
-            ("Cucinare con l'autunno", "Giorgio Lanza", "24,00 €", "Sessanta ricette di stagione, dalle zucche alle castagne."),
-            ("La mappa delle stelle", "Sara Moretti", "16,90 €", "Il cielo di notte spiegato ai ragazzi dai nove anni."),
-        };
+        var books = english
+            ? new[]
+            {
+                ("The Harbor Light", "Clara Fenn", "$18.50", "A novel of the sea and of family, on an island where everyone knows everyone."),
+                ("Autumn Kitchen", "George Lane", "$24.00", "Sixty seasonal recipes, from pumpkins to chestnuts."),
+                ("A Map of the Stars", "Sarah Moore", "$16.90", "The night sky explained for kids ages nine and up."),
+            }
+            : new[]
+            {
+                ("Il faro di Levante", "Marta Ferri", "18,50 €", "Un romanzo di mare e di famiglia, su un'isola dove tutti si conoscono."),
+                ("Cucinare con l'autunno", "Giorgio Lanza", "24,00 €", "Sessanta ricette di stagione, dalle zucche alle castagne."),
+                ("La mappa delle stelle", "Sara Moretti", "16,90 €", "Il cielo di notte spiegato ai ragazzi dai nove anni."),
+            };
         var cells = new StringBuilder();
         for (int i = 0; i < books.Length; i++)
         {
@@ -162,27 +248,29 @@ static partial class ProvaBozze
                 """);
         }
         var html = $"""
-            <!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><title>Le novità di ottobre</title></head>
+            <!DOCTYPE html><html lang="{L("it", "en")}"><head><meta charset="utf-8"><title>{L("Le novità di ottobre", "New in October")}</title></head>
             <body style="margin:0;padding:0;background:#f3efe6;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3efe6;"><tr><td align="center" style="padding:20px 10px;">
             <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:8px;font-family:'Segoe UI',Arial,sans-serif;color:#2b2b2b;">
               <tr><td><img src="cid:testata@{domain}" width="600" alt="" style="display:block;width:100%;height:auto;border:0;border-radius:8px 8px 0 0;"></td></tr>
               <tr><td style="padding:26px 34px 6px 34px;font-family:Georgia,serif;font-size:17px;line-height:1.6;">
-                <p style="margin:0 0 12px 0;">Cara Ada,</p>
-                <p style="margin:0;">ottobre porta le prime sere lunghe e una pila di libri nuovi sul nostro bancone. Ne abbiamo scelti tre da consigliarti, e sabato 24 ti aspettiamo per l'incontro con l'autrice del romanzo del mese.</p>
+                <p style="margin:0 0 12px 0;">{L("Cara Ada,", "Dear Ada,")}</p>
+                <p style="margin:0;">{L("ottobre porta le prime sere lunghe e una pila di libri nuovi sul nostro bancone. Ne abbiamo scelti tre da consigliarti, e sabato 24 ti aspettiamo per l'incontro con l'autrice del romanzo del mese.",
+                    "October brings the first long evenings and a stack of new books on our counter. We've picked three to recommend, and on Saturday the 24th we hope to see you at our talk with the author of this month's novel.")}</p>
               </td></tr>
               <tr><td style="padding:10px 24px 0 24px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>{cells}</tr></table></td></tr>
               <tr><td align="center" style="padding:18px 34px 24px 34px;">
-                <a href="https://www.{domain}/novita" style="display:inline-block;background:#2e6e52;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;padding:12px 30px;border-radius:24px;">Scopri tutte le novità</a>
+                <a href="https://www.{domain}/{L("novita", "new")}" style="display:inline-block;background:#2e6e52;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;padding:12px 30px;border-radius:24px;">{L("Scopri tutte le novità", "See all the new books")}</a>
               </td></tr>
               <tr><td style="padding:0 34px 26px 34px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f1e7;border-radius:6px;"><tr><td style="padding:16px 20px;font-size:15px;line-height:1.5;">
-                  <b>Sabato 24 ottobre, alle 17</b><br>Marta Ferri presenta <i>Il faro di Levante</i>. Ingresso libero, con un tè caldo per tutti.
+                  {L("<b>Sabato 24 ottobre, alle 17</b><br>Marta Ferri presenta <i>Il faro di Levante</i>. Ingresso libero, con un tè caldo per tutti.",
+                       "<b>Saturday, October 24, at 5 p.m.</b><br>Clara Fenn presents <i>The Harbor Light</i>. Free admission, with hot tea for everyone.")}
                 </td></tr></table>
               </td></tr>
               <tr><td style="padding:16px 34px 24px 34px;border-top:1px solid #e8e2d6;font-size:12px;line-height:1.5;color:#8a8478;">
-                Libreria Verdi, via dei Librai 21. Aperta dal martedì alla domenica, dalle 9 alle 19.<br>
-                Ricevi questa email perché sei iscritta alla nostra newsletter. <a href="https://www.{domain}/newsletter/annulla?id=2718" style="color:#2e6e52;">Annulla l'iscrizione</a>
+                {L("Libreria Verdi, via dei Librai 21. Aperta dal martedì alla domenica, dalle 9 alle 19.", "Greenleaf Books, 21 Booksellers Row. Open Tuesday to Sunday, 9 a.m. to 7 p.m.")}<br>
+                {L("Ricevi questa email perché sei iscritta alla nostra newsletter.", "You're receiving this email because you signed up for our newsletter.")} <a href="https://www.{domain}/newsletter/{L("annulla", "unsubscribe")}?id=2718" style="color:#2e6e52;">{L("Annulla l'iscrizione", "Unsubscribe")}</a>
               </td></tr>
             </table>
             </td></tr></table>
@@ -194,10 +282,10 @@ static partial class ProvaBozze
             var part = builder.LinkedResources.Add(id + ".png", png, new ContentType("image", "png"));
             part.ContentId = $"{id}@{domain}";
         }
-        Inline("testata", FotoHeader());
-        Inline("libro1", FotoCover(0));
-        Inline("libro2", FotoCover(1));
-        Inline("libro3", FotoCover(2));
+        Inline("testata", FotoHeader(english));
+        Inline("libro1", FotoCover(0, english));
+        Inline("libro2", FotoCover(1, english));
+        Inline("libro3", FotoCover(2, english));
         message.Body = builder.ToMessageBody();
         return message;
     }
@@ -207,18 +295,30 @@ static partial class ProvaBozze
     /// <summary>
     /// La truffa delle coordinate bancarie: il nome di Luca Bianchi (a cui Ada ha scritto) da un altro indirizzo, le
     /// risposte verso un terzo dominio, DMARC fallito secondo il server della casella, un logo da Internet (bloccato) e un
-    /// link che mostra un sito e porta altrove. Tutto su domini .example, che non esistono.
+    /// link che mostra un sito e porta altrove. Tutto su domini .example, che non esistono. In inglese la stessa, con
+    /// Bianchi Kitchens.
     /// </summary>
-    static MimeMessage FotoFraud(string me)
+    static MimeMessage FotoFraud(string me, bool english = false)
     {
-        var message = new MimeMessage { Subject = "Nuove coordinate per il pagamento", Date = FotoWhen(0, 16.2), MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId("cucine-bianchi-pagamenti.example") };
-        message.From.Add(new MailboxAddress("Luca Bianchi", "amministrazione@cucine-bianchi-pagamenti.example"));
-        message.ReplyTo.Add(new MailboxAddress("Ufficio pagamenti", "pagamenti@conto-veloce.example"));
+        string L(string italian, string inEnglish) => english ? inEnglish : italian;
+        var message = new MimeMessage { Subject = L("Nuove coordinate per il pagamento", "New payment details"), Date = FotoWhen(0, 16.2), MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(L("cucine-bianchi-pagamenti.example", "bianchi-kitchens-payments.example")) };
+        message.From.Add(new MailboxAddress("Luca Bianchi", L("amministrazione@cucine-bianchi-pagamenti.example", "accounts@bianchi-kitchens-payments.example")));
+        message.ReplyTo.Add(new MailboxAddress(L("Ufficio pagamenti", "Payments Office"), L("pagamenti@conto-veloce.example", "payments@quickpay-account.example")));
         message.To.Add(new MailboxAddress(FotoName, me));
-        message.Headers.Add("Authentication-Results", "mx.posta-esempio.example; dkim=none; spf=fail smtp.mailfrom=conto-veloce.example; dmarc=fail header.from=cucine-bianchi-pagamenti.example");
+        message.Headers.Add("Authentication-Results", english
+            ? "mx.homemail.example; dkim=none; spf=fail smtp.mailfrom=quickpay-account.example; dmarc=fail header.from=bianchi-kitchens-payments.example"
+            : "mx.posta-esempio.example; dkim=none; spf=fail smtp.mailfrom=conto-veloce.example; dmarc=fail header.from=cucine-bianchi-pagamenti.example");
         message.Body = new BodyBuilder
         {
-            HtmlBody = FotoPage("""
+            HtmlBody = english ? FotoPageEn("""
+                <p><img src="https://cdn.bianchi-kitchens-payments.example/img/logo.png" alt="Bianchi Kitchens" width="220" height="70"></p>
+                <p>Dear customer,</p>
+                <p>Because we've changed banks, from today payments must be made to the new account below: the one on your quote is no longer active.</p>
+                <p><b>IBAN: IT00 X000 0000 0000 0000 0000 000</b><br>Account holder: Bianchi Kitchens</p>
+                <p>To keep your installation date, please pay the deposit of <b>€1,450</b> by today. The updated invoice is here:
+                <a href="https://quickpay-account.example/invoice?id=8812">www.bianchi-kitchens.example/invoices</a></p>
+                <p>Kind regards,<br>Luca Bianchi<br>Bianchi Kitchens</p>
+                """) : FotoPage("""
                 <p><img src="https://cdn.cucine-bianchi-pagamenti.example/img/logo.png" alt="Cucine Bianchi" width="220" height="70"></p>
                 <p>Gentile cliente,</p>
                 <p>per un cambio di banca, da oggi i pagamenti vanno fatti sul nuovo conto qui sotto: quello indicato nel preventivo non è più attivo.</p>
@@ -237,8 +337,11 @@ static partial class ProvaBozze
     /// La casella PEC: una fattura elettronica arrivata per posta certificata (la busta firmata dal gestore finto, dentro
     /// il messaggio vero con la fattura .p7m firmata da Luca Bianchi), le ricevute di accettazione e di consegna di un
     /// messaggio mandato da Ada, e un'altra posta certificata della settimana scorsa. La radice di prova resta in fotoRoot.
+    /// In inglese i messaggi dentro le buste (oggetto e testo) sono in inglese, di Bianchi Kitchens; la busta del gestore
+    /// (testo, daticert.xml, prefissi dell'oggetto, "Per conto di") e la fattura elettronica restano italiane, come le
+    /// scrivono il gestore e il Sistema di Interscambio.
     /// </summary>
-    static List<(string Folder, MimeMessage Message, string Flags)> FotoPecMail(string me)
+    static List<(string Folder, MimeMessage Message, string Flags)> FotoPecMail(string me, bool english = false)
     {
         var now = DateTimeOffset.Now;
         using var rootKey = RSA.Create(2048);
@@ -248,7 +351,7 @@ static partial class ProvaBozze
         using var root = rootRequest.CreateSelfSigned(now.AddDays(-30), now.AddYears(1));
         fotoRoot = root.Export(X509ContentType.Cert);
         var gestore = PecKeys.Leaf("CN=Gestore PEC Esempio S.p.A., O=Gestore PEC Esempio, C=IT", root, now, "posta-certificata@pec-esempio.example");
-        var luca = PecKeys.Leaf("CN=Luca Bianchi, O=Cucine Bianchi S.r.l., C=IT", root, now, "luca.bianchi@cucine-bianchi.example");
+        var luca = PecKeys.Leaf("CN=Luca Bianchi, O=Cucine Bianchi S.r.l., C=IT", root, now, english ? "luca.bianchi@bianchi-kitchens.example" : "luca.bianchi@cucine-bianchi.example");
 
         // La fattura elettronica (un XML come quelli del Sistema di Interscambio, semplificato e senza dati veri), firmata.
         const string invoice = """
@@ -261,12 +364,22 @@ static partial class ProvaBozze
         cms.ComputeSignature(signer);
         var p7m = cms.Encode();
 
-        var fattura = FotoMessage("Cucine Bianchi S.r.l.", "cucine.bianchi@pec-esempio.example", me, "Fattura n. 42, acconto per la cucina", FotoWhen(0, 10.3),
+        var fattura = english
+            ? FotoMessage("Bianchi Kitchens", "bianchi.kitchens@pec-esempio.example", me, "Invoice no. 42, kitchen deposit", FotoWhen(0, 10.3),
+                FotoPageEn("<p>Dear customer,</p><p>Please find attached e-invoice no. 42 for the deposit on your custom kitchen. The signed file is the one sent to the Italian e-invoicing system (SdI).</p><p>Kind regards,<br>Accounts, Bianchi Kitchens (Cucine Bianchi S.r.l.)</p>"),
+                ("IT00000000001_00042.xml.p7m", p7m, "application/pkcs7-mime"))
+            : FotoMessage("Cucine Bianchi S.r.l.", "cucine.bianchi@pec-esempio.example", me, "Fattura n. 42, acconto per la cucina", FotoWhen(0, 10.3),
             "<p>Gentile cliente,</p><p>le inviamo la fattura elettronica n. 42 per l'acconto sulla cucina su misura. Il file firmato è quello trasmesso al Sistema di Interscambio.</p><p>Cordiali saluti,<br>Amministrazione, Cucine Bianchi S.r.l.</p>",
             ("IT00000000001_00042.xml.p7m", p7m, "application/pkcs7-mime"));
-        var condominio = FotoMessage("Studio Amministrazioni Esempio", "amministrazioni.esempio@pec-esempio.example", me, "Convocazione dell'assemblea di condominio", FotoWhen(7, 11.5),
+        var condominio = english
+            ? FotoMessage("Harbor Property Management", "harbor.property@pec-esempio.example", me, "Notice of the condominium meeting", FotoWhen(7, 11.5),
+                FotoPageEn("<p>Dear owners,</p><p>The annual meeting is called for Thursday, October 29 at 6 p.m., in the common room. On the agenda: the budget and the renovation of the façade.</p><p>The property manager</p>"))
+            : FotoMessage("Studio Amministrazioni Esempio", "amministrazioni.esempio@pec-esempio.example", me, "Convocazione dell'assemblea di condominio", FotoWhen(7, 11.5),
             "<p>Gentili condomini,</p><p>l'assemblea ordinaria è convocata per giovedì 29 ottobre alle 18, nella sala comune. All'ordine del giorno il bilancio e il rifacimento della facciata.</p><p>L'amministratore</p>");
-        var domanda = FotoMessage(FotoName, me, "protocollo@pec-comune-esempio.example", "Richiesta di permesso di costruire", FotoWhen(1, 12.0),
+        var domanda = english
+            ? FotoMessage(FotoName, me, "bianchi.kitchens@pec-esempio.example", "Kitchen order confirmation", FotoWhen(1, 12.0),
+                FotoPageEn("<p>Hello,</p><p>As agreed, I confirm the order for the kitchen in quote no. 42.</p><p>Ada Galli</p>"), "Bianchi Kitchens")
+            : FotoMessage(FotoName, me, "protocollo@pec-comune-esempio.example", "Richiesta di permesso di costruire", FotoWhen(1, 12.0),
             "<p>Si trasmette la richiesta di permesso di costruire con i documenti allegati.</p><p>Arch. Ada Galli</p>", "Comune di Esempio");
 
         return
@@ -400,8 +513,8 @@ static partial class ProvaBozze
         return geometry;
     }
 
-    /// <summary>La testata della newsletter: verde scuro, foglie d'autunno, una mensola di libri e il titolo.</summary>
-    static byte[] FotoHeader() => FotoDrawn(1200, 420, dc =>
+    /// <summary>La testata della newsletter: verde scuro, foglie d'autunno, una mensola di libri e il titolo (in inglese, di Greenleaf Books).</summary>
+    static byte[] FotoHeader(bool english = false) => FotoDrawn(1200, 420, dc =>
     {
         dc.DrawRectangle(new LinearGradientBrush(Color.FromRgb(0x1C, 0x46, 0x37), Color.FromRgb(0x2F, 0x6E, 0x52), 20), null, new Rect(0, 0, 1200, 420));
         var random = new Random(24);
@@ -426,13 +539,13 @@ static partial class ProvaBozze
             x += w + 5;
         }
         dc.DrawRoundedRectangle(FotoBrush(0x8B5E3C), null, new Rect(720, 352, 420, 16), 3, 3);
-        dc.DrawText(FotoText("LIBRERIA VERDI", "Segoe UI Semibold", 24, FotoBrush(0xFFFFFF, 200)), new Point(80, 96));
-        dc.DrawText(FotoText("Le novità", "Georgia", 80, Brushes.White), new Point(74, 132));
-        dc.DrawText(FotoText("di ottobre", "Georgia", 80, FotoBrush(0xF4D9A6), italic: true), new Point(74, 226));
+        dc.DrawText(FotoText(english ? "GREENLEAF BOOKS" : "LIBRERIA VERDI", "Segoe UI Semibold", 24, FotoBrush(0xFFFFFF, 200)), new Point(80, 96));
+        dc.DrawText(FotoText(english ? "New in" : "Le novità", "Georgia", 80, Brushes.White), new Point(74, 132));
+        dc.DrawText(FotoText(english ? "October" : "di ottobre", "Georgia", 80, FotoBrush(0xF4D9A6), italic: true), new Point(74, 226));
     });
 
-    /// <summary>Le copertine dei tre libri inventati della newsletter.</summary>
-    static byte[] FotoCover(int which) => FotoDrawn(360, 540, dc =>
+    /// <summary>Le copertine dei tre libri inventati della newsletter (in inglese con i titoli e gli autori inglesi).</summary>
+    static byte[] FotoCover(int which, bool english = false) => FotoDrawn(360, 540, dc =>
     {
         var rect = new Rect(0, 0, 360, 540);
         switch (which)
@@ -447,8 +560,8 @@ static partial class ProvaBozze
                 dc.DrawGeometry(FotoBrush(0x2B3A55), null, FotoShape(new(178, 230), new(200, 206), new(222, 230)));
                 for (int i = 0; i < 4; i++)
                     dc.DrawRectangle(FotoBrush(0x0E1E35, (byte)(170 + i * 20)), null, new Rect(0, 400 + i * 35, 360, 35));
-                dc.DrawText(FotoText("Il faro di Levante", "Georgia", 40, Brushes.White, maxWidth: 300), new Point(30, 34));
-                dc.DrawText(FotoText("Marta Ferri", "Segoe UI", 20, FotoBrush(0xFFFFFF, 210)), new Point(30, 490));
+                dc.DrawText(FotoText(english ? "The Harbor Light" : "Il faro di Levante", "Georgia", 40, Brushes.White, maxWidth: 300), new Point(30, 34));
+                dc.DrawText(FotoText(english ? "Clara Fenn" : "Marta Ferri", "Segoe UI", 20, FotoBrush(0xFFFFFF, 210)), new Point(30, 490));
                 break;
             case 1: // Cucinare con l'autunno: una zucca su fondo arancio
                 dc.DrawRectangle(FotoBrush(0xF0A04B), null, rect);
@@ -459,8 +572,8 @@ static partial class ProvaBozze
                 dc.PushTransform(new RotateTransform(-30, 210, 240));
                 dc.DrawEllipse(FotoBrush(0x7E9B3A), null, new Point(215, 240), 28, 12);
                 dc.Pop();
-                dc.DrawText(FotoText("Cucinare con l'autunno", "Georgia", 38, FotoBrush(0x4A2511), bold: true, maxWidth: 300), new Point(30, 34));
-                dc.DrawText(FotoText("Giorgio Lanza", "Segoe UI", 20, FotoBrush(0x4A2511, 220)), new Point(30, 490));
+                dc.DrawText(FotoText(english ? "Autumn Kitchen" : "Cucinare con l'autunno", "Georgia", 38, FotoBrush(0x4A2511), bold: true, maxWidth: 300), new Point(30, 34));
+                dc.DrawText(FotoText(english ? "George Lane" : "Giorgio Lanza", "Segoe UI", 20, FotoBrush(0x4A2511, 220)), new Point(30, 490));
                 break;
             default: // La mappa delle stelle: un cielo viola con la luna
                 dc.DrawRectangle(new LinearGradientBrush(Color.FromRgb(0x2A, 0x1B, 0x4D), Color.FromRgb(0x4B, 0x2E, 0x7A), 90), null, rect);
@@ -473,8 +586,8 @@ static partial class ProvaBozze
                 dc.DrawLine(pen, new Point(60, 330), new Point(110, 300));
                 dc.DrawLine(pen, new Point(110, 300), new Point(150, 350));
                 dc.DrawLine(pen, new Point(150, 350), new Point(95, 400));
-                dc.DrawText(FotoText("La mappa delle stelle", "Georgia", 40, FotoBrush(0xF7D774), maxWidth: 300), new Point(30, 34));
-                dc.DrawText(FotoText("Sara Moretti", "Segoe UI", 20, FotoBrush(0xFFFFFF, 210)), new Point(30, 490));
+                dc.DrawText(FotoText(english ? "A Map of the Stars" : "La mappa delle stelle", "Georgia", 40, FotoBrush(0xF7D774), maxWidth: 300), new Point(30, 34));
+                dc.DrawText(FotoText(english ? "Sarah Moore" : "Sara Moretti", "Segoe UI", 20, FotoBrush(0xFFFFFF, 210)), new Point(30, 490));
                 break;
         }
     });
@@ -532,54 +645,231 @@ static partial class ProvaBozze
     }
 
     /// <summary>
+    /// L'impronta dei dati delle foto in una lingua: delle tre caselle cartelle, segni, mittenti, destinatari, oggetti, le
+    /// intestazioni che contano (autenticazione, annullamento dell'iscrizione, posta certificata), i testi (con le cifre al
+    /// posto delle date, che cambiano ogni giorno) e i PDF; dei contatti e degli eventi di una settimana fissa tutti i
+    /// campi; il testo della foto della scrittura. Fuori le date, gli identificativi, le firme e le immagini disegnate: cambiano
+    /// a ogni giro. Serve a dire che i dati italiani sono rimasti quelli di prima dell'inglese (FotoItalianPrint).
+    /// </summary>
+    static string FotoPrint(bool english)
+    {
+        var b = new StringBuilder();
+        static string Digits(string? text) => System.Text.RegularExpressions.Regex.Replace(text ?? "", "[0-9]", "#");
+        void Message(MimeMessage m)
+        {
+            b.Append("\n<").Append(m.Subject).Append('|').Append(m.From).Append('|').Append(m.To).Append('|').Append(m.ReplyTo).Append('>');
+            foreach (var name in new[] { "Authentication-Results", "List-Unsubscribe", "List-Unsubscribe-Post", "X-Trasporto", "X-Ricevuta" })
+                if (m.Headers[name] is { } value) b.Append('{').Append(name).Append('=').Append(value).Append('}');
+            if (m.Body is { } body) Part(body);
+        }
+        void Part(MimeEntity entity)
+        {
+            b.Append('[').Append(entity.ContentType.MimeType).Append('|').Append(entity.ContentDisposition?.FileName).Append('|').Append(entity.ContentId).Append(']');
+            switch (entity)
+            {
+                case Multipart multi:
+                    foreach (var child in multi) Part(child);
+                    break;
+                case MessagePart { Message: { } inner }:
+                    Message(inner);
+                    break;
+                case TextPart text:
+                    b.Append(Digits(text.Text));
+                    break;
+                case MimePart { Content: { } content } when entity.ContentType.MimeType == "application/pdf":
+                    using (var ms = new MemoryStream())
+                    {
+                        content.DecodeTo(ms);
+                        b.Append(Convert.ToHexString(SHA256.HashData(ms.ToArray())));
+                    }
+                    break;
+            }
+        }
+        foreach (var (box, address) in FotoBoxes(english))
+        {
+            b.Append("\n== ").Append(box).Append(' ').Append(address);
+            foreach (var (folder, message, flags) in FotoMail(box, address, english))
+            {
+                b.Append("\n# ").Append(folder).Append(' ').Append(flags);
+                Message(message);
+            }
+        }
+        var account = new MailAccount { Id = "foto", Kind = AccountKind.Microsoft, Email = FotoBoxes(english)["studio"] };
+        foreach (var c in ContactSamples.Photo(account, english).Concat(ContactSamples.PhotoLocal(english)))
+            b.Append("\n@ ").AppendJoin('|', c.Source, c.ServerId, c.DisplayName, c.GivenName, c.Surname, string.Join(",", c.Emails), c.Mobile, c.BusinessPhone, c.HomePhone,
+                                        c.Company, c.JobTitle, c.Address, c.Website, c.Notes);
+        var monday = new DateTime(2026, 10, 12);
+        var calendar = CalendarSamples.Photo(account, monday, monday.AddDays(7), english);
+        foreach (var c in calendar.Calendars) b.Append("\n% ").Append(c);
+        foreach (var e in calendar.Events)
+            b.Append("\n& ").AppendJoin('|', e.Id, e.CalendarId, e.Subject, e.Location, (e.Start - monday).TotalHours, (e.End - monday).TotalHours, e.AllDay, e.IsRecurring,
+                                        e.Response, e.IsOrganizer, e.Organizer, e.SeriesMasterId, e.Preview, e.ShowAs, e.ReminderOn,
+                                        string.Join(",", e.Attendees.Select(a => $"{a.Person}:{a.Response}:{a.Optional}")));
+        var draft = UI.ComposeWindow.PhotoContent(english);
+        b.Append("\n! ").AppendJoin('|', draft.FromDomain, draft.To, draft.Subject, draft.Greeting, draft.Intro, string.Join(",", draft.Items), draft.Before, draft.Bold,
+                                    draft.Middle, draft.Highlighted, draft.After, draft.Closing, draft.Name, draft.Firm);
+        var text = b.ToString();
+        if (Environment.GetEnvironmentVariable("MISSIVA_PROVA_FOTO_DATI") is { Length: > 0 } dump) File.WriteAllText(Path.Combine(dump, $"dati-foto-{(english ? "en" : "it")}.txt"), text);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
+    }
+
+    /// <summary>L'impronta (FotoPrint) dei dati italiani delle foto come erano prima delle foto inglesi (22 ottobre 2026).</summary>
+    const string FotoItalianPrint = "FA04AC61563D1AD4";
+
+    /// <summary>
     /// Le caselle, i contatti e gli eventi delle foto della pagina GitHub: solo indirizzi .example (anche dentro la posta
     /// certificata e nei Message-ID, dove MimeKit di serie mette il nome del PC), nessun promemoria; le immagini della
     /// newsletter arrivano nel corpo letto da ImapProvider come immagini nel testo solo dal server con TrueTypes (quello di
-    /// sempre resta com'era); la posta certificata è verde solo con la radice di prova, come la fattura firmata.
+    /// sempre resta com'era); la posta certificata è verde solo con la radice di prova, come la fattura firmata. Dal 22
+    /// ottobre 2026 anche le foto inglesi: i dati italiani sono quelli di prima (FotoItalianPrint), quelli inglesi hanno la
+    /// stessa forma (caselle, cartelle, segni, ore, allegati, contatti, eventi: lo strumento delle foto apre le righe per
+    /// numero) e nessuna parola italiana fuori dalla busta della posta certificata e dalla fattura elettronica.
     /// </summary>
     static async Task PhotoDataTestsAsync()
     {
         Report.Add("--- Foto della pagina GitHub: dati finti, immagini nel testo dal server IMAP finto, posta certificata");
+        var italianPrint = FotoPrint(english: false);
+        Check(italianPrint == FotoItalianPrint, $"foto: i dati italiani delle foto sono quelli di prima dell'inglese (impronta {italianPrint}, attesa {FotoItalianPrint})");
         // Tutto quello che si disegna (WPF) prima del primo await: sul thread STA di Main.
+        var mailEn = FotoMailboxesEn.ToDictionary(b => b.Key, b => FotoMail(b.Key, b.Value, english: true));
+        var rootEn = X509CertificateLoader.LoadCertificate(fotoRoot!);
         var mail = FotoMailboxes.ToDictionary(b => b.Key, b => FotoMail(b.Key, b.Value));
         var root = X509CertificateLoader.LoadCertificate(fotoRoot!);
         using var withTypes = new FakeImap(new Flavor(Gmail: false)) { TrueTypes = true };
+        using var withTypesEn = new FakeImap(new Flavor(Gmail: false)) { TrueTypes = true };
         using var plain = new FakeImap(new Flavor(Gmail: false));
         var newsletter = mail["personale"].First(m => m.Message.Subject?.StartsWith("Libreria Verdi") == true).Message;
         withTypes.Add("INBOX", newsletter);
         plain.Add("INBOX", newsletter);
+        withTypesEn.Add("INBOX", mailEn["personale"].First(m => m.Message.Subject?.StartsWith("Greenleaf Books") == true).Message);
 
-        var domains = mail.Values.SelectMany(list => list).SelectMany(m => FotoDomains(m.Message)).ToList();
-        var wrong = domains.Where(d => !d.EndsWith(".example", StringComparison.OrdinalIgnoreCase)).Distinct().ToList();
-        Check(domains.Count > 50 && wrong.Count == 0 && mail.Values.All(list => list.Count >= 5),
-              $"foto: {domains.Count} indirizzi, siti e domini nelle tre caselle ({string.Join(", ", mail.Select(b => $"{b.Key} {b.Value.Count}"))} messaggi), tutti .example{(wrong.Count > 0 ? "; fuori: " + string.Join(", ", wrong) : "")}");
+        void Domains(Dictionary<string, List<(string Folder, MimeMessage Message, string Flags)>> boxes, string label)
+        {
+            var domains = boxes.Values.SelectMany(list => list).SelectMany(m => FotoDomains(m.Message)).ToList();
+            var wrong = domains.Where(d => !d.EndsWith(".example", StringComparison.OrdinalIgnoreCase)).Distinct().ToList();
+            Check(domains.Count > 50 && wrong.Count == 0 && boxes.Values.All(list => list.Count >= 5),
+                  $"foto{label}: {domains.Count} indirizzi, siti e domini nelle tre caselle ({string.Join(", ", boxes.Select(b => $"{b.Key} {b.Value.Count}"))} messaggi), tutti .example{(wrong.Count > 0 ? "; fuori: " + string.Join(", ", wrong) : "")}");
+        }
+        Domains(mail, "");
+        Domains(mailEn, " (inglese)");
 
         var account = new MailAccount { Kind = AccountKind.Microsoft, Email = FotoMailboxes["studio"] };
-        var contacts = ContactSamples.Photo(account).Concat(ContactSamples.PhotoLocal()).ToList();
-        var calendar = CalendarSamples.Photo(account, DateTime.Today.AddDays(-7), DateTime.Today.AddDays(7));
-        var people = contacts.SelectMany(c => c.Emails).Concat(calendar.Events.SelectMany(e => e.Attendees.Select(a => a.Person.Email).Append(e.Organizer?.Email ?? "x@vuoto.example"))).ToList();
-        Check(contacts.Count >= 8 && calendar.Events.Count >= 20 && people.All(e => e.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
-              && contacts.All(c => c.Website.Length == 0 || c.Website.EndsWith(".example", StringComparison.OrdinalIgnoreCase)) && !calendar.Events.Any(e => e.ReminderOn),
-              $"foto: {contacts.Count} contatti e {calendar.Events.Count} eventi di due settimane, persone e siti .example, nessun promemoria (nessuna notifica dalle foto)");
+        var accountEn = new MailAccount { Kind = AccountKind.Microsoft, Email = FotoMailboxesEn["studio"] };
+        var contacts = ContactSamples.Photo(account, english: false).Concat(ContactSamples.PhotoLocal(english: false)).ToList();
+        var contactsEn = ContactSamples.Photo(accountEn, english: true).Concat(ContactSamples.PhotoLocal(english: true)).ToList();
+        var calendar = CalendarSamples.Photo(account, DateTime.Today.AddDays(-7), DateTime.Today.AddDays(7), english: false);
+        var calendarEn = CalendarSamples.Photo(accountEn, DateTime.Today.AddDays(-7), DateTime.Today.AddDays(7), english: true);
+        void People(List<Contact> list, CalendarData events, string label)
+        {
+            var people = list.SelectMany(c => c.Emails).Concat(events.Events.SelectMany(e => e.Attendees.Select(a => a.Person.Email).Append(e.Organizer?.Email ?? "x@vuoto.example"))).ToList();
+            Check(list.Count >= 8 && events.Events.Count >= 20 && people.All(e => e.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
+                  && list.All(c => c.Website.Length == 0 || c.Website.EndsWith(".example", StringComparison.OrdinalIgnoreCase)) && !events.Events.Any(e => e.ReminderOn),
+                  $"foto{label}: {list.Count} contatti e {events.Events.Count} eventi di due settimane, persone e siti .example, nessun promemoria (nessuna notifica dalle foto)");
+        }
+        People(contacts, calendar, "");
+        People(contactsEn, calendarEn, " (inglese)");
 
-        Pec.TestRoots = [root];
-        try
+        void Certified(Dictionary<string, List<(string Folder, MimeMessage Message, string Flags)>> boxes, X509Certificate2 testRoot, string subject, string label)
         {
-            var pec = mail["pec"].First(m => m.Message.Subject?.StartsWith("POSTA CERTIFICATA: Fattura") == true).Message;
-            using var raw = new MemoryStream();
-            pec.WriteTo(raw);
-            var opened = Pec.Open(raw.ToArray(), EmlProvider.BodyOf(MimeMessage.Load(new MemoryStream(raw.ToArray()))));
-            var (band, tone) = Pec.Band(opened.Pec!);
-            var p7m = opened.Attachments.Single(a => a.Name.EndsWith(".p7m", StringComparison.Ordinal));
-            var invoice = P7m.Open(p7m.Content!, p7m.Name);
-            Check(tone == "ok" && band.Contains("firma del gestore verificata (Gestore PEC Esempio)") && invoice.Signature == SignatureState.Verified && invoice.Signer.Contains("Luca Bianchi"),
-                  $"foto: la fattura per posta certificata con la radice di prova, fascia verde (\"{band}\") e .p7m firmato da {invoice.Signer}, verificato");
+            Pec.TestRoots = [testRoot];
+            try
+            {
+                var pec = boxes["pec"].First(m => m.Message.Subject?.StartsWith("POSTA CERTIFICATA: " + subject) == true).Message;
+                using var raw = new MemoryStream();
+                pec.WriteTo(raw);
+                var opened = Pec.Open(raw.ToArray(), EmlProvider.BodyOf(MimeMessage.Load(new MemoryStream(raw.ToArray()))));
+                var (band, tone) = Pec.Band(opened.Pec!);
+                var p7m = opened.Attachments.Single(a => a.Name.EndsWith(".p7m", StringComparison.Ordinal));
+                var invoice = P7m.Open(p7m.Content!, p7m.Name);
+                Check(tone == "ok" && band.Contains("firma del gestore verificata (Gestore PEC Esempio)") && invoice.Signature == SignatureState.Verified && invoice.Signer.Contains("Luca Bianchi"),
+                      $"foto{label}: la fattura per posta certificata con la radice di prova, fascia verde (\"{band}\") e .p7m firmato da {invoice.Signer}, verificato");
+            }
+            finally
+            {
+                Pec.TestRoots = null;
+            }
         }
-        finally
-        {
-            Pec.TestRoots = null;
-        }
+        Certified(mail, root, "Fattura", "");
+        Certified(mailEn, rootEn, "Invoice", " (inglese)");
         Check(Pec.GestoreOf("pec-esempio.example") == null, "foto: senza la radice di prova il gestore delle foto non è un gestore noto");
+
+        // La stessa forma: lo strumento delle foto apre le righe per numero ("clic 3" è la frode) e le categorie per nome.
+        var categories = new Dictionary<string, string> { ["Clienti"] = "Clients", ["Amministrazione"] = "Accounting", ["Casa"] = "Home" };
+        string Flags(string flags) => string.Join(' ', flags.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(f => categories.GetValueOrDefault(f, f)));
+        static string Parts(MimeMessage m) => string.Join(",", m.BodyParts.Select(p => p.ContentType.MimeType));
+        var shapeProblems = new List<string>();
+        foreach (var box in FotoMailboxes.Keys)
+        {
+            var (it, en) = (mail[box], mailEn[box]);
+            if (it.Count != en.Count) { shapeProblems.Add($"{box}: {it.Count} messaggi in italiano, {en.Count} in inglese"); continue; }
+            for (int i = 0; i < it.Count; i++)
+            {
+                if (it[i].Folder != en[i].Folder || Flags(it[i].Flags) != en[i].Flags) shapeProblems.Add($"{box} {i}: cartella o segni {it[i].Folder} {it[i].Flags} / {en[i].Folder} {en[i].Flags}");
+                if (Math.Abs((it[i].Message.Date - en[i].Message.Date).TotalMinutes) > 1) shapeProblems.Add($"{box} {i}: ora {it[i].Message.Date:g} / {en[i].Message.Date:g}");
+                if (Parts(it[i].Message) != Parts(en[i].Message)) shapeProblems.Add($"{box} {i}: parti {Parts(it[i].Message)} / {Parts(en[i].Message)}");
+            }
+        }
+        var monday = new DateTime(2026, 10, 12);
+        var weekIt = CalendarSamples.Photo(account, monday, monday.AddDays(7), english: false);
+        var weekEn = CalendarSamples.Photo(accountEn, monday, monday.AddDays(7), english: true);
+        static string When(CalendarData d) => string.Join(";", d.Events.Select(e => $"{e.CalendarId} {e.Start:ddd HH:mm}-{e.End:ddd HH:mm} {e.AllDay} {e.Response} {e.Attendees.Count} {e.Location.Length > 0}"));
+        if (When(weekIt) != When(weekEn)) shapeProblems.Add("gli eventi della settimana hanno altri orari, calendari o partecipanti");
+        if (weekIt.Calendars.Count != weekEn.Calendars.Count) shapeProblems.Add("i calendari sono di più o di meno");
+        if (contacts.Count != contactsEn.Count) shapeProblems.Add($"contatti: {contacts.Count} in italiano, {contactsEn.Count} in inglese");
+        Check(shapeProblems.Count == 0,
+              $"foto (inglese): le caselle, i contatti e gli eventi inglesi hanno la forma di quelli italiani (stessi messaggi per cartella, segni con le categorie Clients, Accounting e Home, ore, parti, orari degli eventi){(shapeProblems.Count > 0 ? ": " + string.Join("; ", shapeProblems.Take(6)) : "")}");
+
+        // Nessuna parola italiana nei dati inglesi: la busta della posta certificata (testo del gestore, daticert.xml, i
+        // prefissi dell'oggetto, "Per conto di") e la fattura elettronica restano italiane apposta.
+        var italian = new System.Text.RegularExpressions.Regex(
+            @"\b(il|lo|la|gli|le|di|del|della|delle|dei|degli|che|con|una|sono|ciao|grazie|gentile|cordiali|saluti|buongiorno|allegato|fattura|riunione|progetto|biblioteca|nella|nel|alle|questo|questa|ti|ci|più|perché|anche|sul|sulla)\b|è",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var found = new List<string>();
+        void Look(string where, string? text)
+        {
+            if (text != null && italian.Match(text) is { Success: true } m) found.Add($"{where}: \"{m.Value}\" in \"{text[..Math.Min(80, text.Length)]}\"");
+        }
+        void LookMessage(string where, MimeMessage m)
+        {
+            bool envelope = m.Headers.Contains("X-Trasporto") || m.Headers.Contains("X-Ricevuta");
+            var subject = m.Subject ?? "";
+            foreach (var prefix in new[] { "POSTA CERTIFICATA: ", "ACCETTAZIONE: ", "CONSEGNA: " })
+                if (envelope && subject.StartsWith(prefix, StringComparison.Ordinal)) subject = subject[prefix.Length..];
+            Look(where + ", oggetto", subject);
+            if (!envelope)
+            {
+                foreach (var address in m.From.Mailboxes.Concat(m.To.Mailboxes).Concat(m.ReplyTo.Mailboxes)) Look(where + ", nome", address.Name);
+                Look(where + ", dominio", string.Join(" ", FotoDomains(m).Where(d => d.Contains("-esempio.", StringComparison.Ordinal) && d != "pec-esempio.example").Select(d => "di " + d)));
+            }
+            foreach (var part in m.BodyParts)
+            {
+                if (part is MessagePart { Message: { } inner }) LookMessage(where + ", postacert.eml", inner);
+                else if (envelope) continue;
+                else if (part is TextPart text)
+                    Look(where + ", testo", System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(text.Text, "<[^>]+>", " ")));
+                else if (part is MimePart { FileName: { } name, Content: { } content })
+                {
+                    Look(where + ", allegato", name);
+                    if (part.ContentType.MimeType == "application/pdf")
+                    {
+                        using var ms = new MemoryStream();
+                        content.DecodeTo(ms);
+                        Look(where + ", PDF", Encoding.Latin1.GetString(ms.ToArray()));
+                    }
+                }
+            }
+        }
+        foreach (var (box, list) in mailEn)
+            for (int i = 0; i < list.Count; i++) LookMessage($"{box} {i}", list[i].Message);
+        foreach (var c in contactsEn) foreach (var text in new[] { c.DisplayName, c.Company, c.JobTitle, c.Address, c.Notes }) Look("contatto " + c.DisplayName, text);
+        foreach (var c in calendarEn.Calendars) Look("calendario", c.Name);
+        foreach (var e in calendarEn.Events) foreach (var text in new[] { e.Subject, e.Location, e.Preview }) Look("evento " + e.Subject, text);
+        var draft = UI.ComposeWindow.PhotoContent(english: true);
+        foreach (var text in new[] { draft.To, draft.Subject, draft.Greeting, draft.Intro, draft.Before, draft.Bold, draft.Middle, draft.Highlighted, draft.After, draft.Closing, draft.Firm }.Concat(draft.Items))
+            Look("scrittura", text);
+        Check(found.Count == 0 && draft.Subject.StartsWith("RE: ", StringComparison.Ordinal) && draft.To.EndsWith(".example>", StringComparison.Ordinal)
+              && FotoMailboxesEn["studio"].EndsWith(draft.FromDomain, StringComparison.Ordinal),
+              $"foto (inglese): nessuna parola italiana in messaggi, nomi, allegati, PDF, contatti, eventi e scrittura delle foto inglesi (fuori la busta della posta certificata e la fattura elettronica), la risposta della scrittura con RE: come la scrive Missiva in inglese dalla casella di lavoro inglese{(found.Count > 0 ? ": " + string.Join("; ", found.Take(5)) : "")}");
 
         ImapProvider.TestPlain = true;
         try
@@ -597,11 +887,17 @@ static partial class ProvaBozze
                 var previews = await imap.GetPreviewsAsync(inbox, [row]);
                 return (previews.GetValueOrDefault(row.Id, ""), await imap.GetBodyAsync(row));
             }
+            void Newsletter(string preview, MessageBody body, string start, string label)
+            {
+                var inline = body.Attachments.Where(a => a.IsInline && a.Content is { Length: > 0 }).ToList();
+                Check(inline.Count == 4 && inline.All(a => a.ContentType == "image/png" && body.Html.Contains("cid:" + a.ContentId)) && !body.Attachments.Any(a => !a.IsInline)
+                      && preview.StartsWith(start, StringComparison.Ordinal),
+                      $"foto{label}: dal server con TrueTypes la newsletter ha {inline.Count} immagini nel testo (cid:) con il contenuto e nessun allegato, e l'anteprima \"{preview[..Math.Min(30, preview.Length)]}...\" (una pagina intera: l'anteprima di MailKit legge solo dentro il body)");
+            }
             var (preview, body) = await Read(withTypes);
-            var inline = body.Attachments.Where(a => a.IsInline && a.Content is { Length: > 0 }).ToList();
-            Check(inline.Count == 4 && inline.All(a => a.ContentType == "image/png" && body.Html.Contains("cid:" + a.ContentId)) && !body.Attachments.Any(a => !a.IsInline)
-                  && preview.StartsWith("Cara Ada", StringComparison.Ordinal),
-                  $"foto: dal server con TrueTypes la newsletter ha {inline.Count} immagini nel testo (cid:) con il contenuto e nessun allegato, e l'anteprima \"{preview[..Math.Min(30, preview.Length)]}...\" (una pagina intera: l'anteprima di MailKit legge solo dentro il body)");
+            Newsletter(preview, body, "Cara Ada", "");
+            var (previewEn, bodyEn) = await Read(withTypesEn);
+            Newsletter(previewEn, bodyEn, "Dear Ada", " (inglese)");
             var (_, before) = await Read(plain);
             Check(before.Attachments.Count == 0 && before.Html.Contains("cid:testata@"),
                   "foto: dal server di sempre (senza TrueTypes) la stessa newsletter ha la struttura di prima: nessuna immagine nel testo, come le prove si aspettano");

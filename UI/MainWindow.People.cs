@@ -126,7 +126,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("consenso ai contatti", ex);
-            ReadingView.ShowConsentError(this, write ? "Modifica dei contatti non consentita" : "Accesso ai contatti non consentito", ex, provider.Account, write ? "modificare i contatti" : "usare i contatti");
+            ReadingView.ShowConsentError(this, write ? T("Modifica dei contatti non consentita") : T("Accesso ai contatti non consentito"), ex, provider.Account, write ? T("modificare i contatti") : T("usare i contatti"));
             return false;
         }
     }

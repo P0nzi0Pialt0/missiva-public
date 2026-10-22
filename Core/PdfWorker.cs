@@ -114,16 +114,18 @@ public static class PdfRender
 
     [DllImport("user32.dll")] static extern uint GetDpiForSystem();
 
-    /// <summary>Perché il PDF non si mostra.</summary>
+    /// <summary>
+    /// Perché il PDF non si mostra, nella lingua di Missiva. I testi che riconosce ("troppo grande", "troppe pagine") sono
+    /// quelli del processo dell'anteprima, che non sceglie la lingua: restano in italiano.
+    /// </summary>
     public static string Explain(Exception ex) =>
-        ex is Sandbox.SandboxException ? "L'anteprima protetta non si è potuta avviare su questo PC, e senza protezione Missiva non apre il PDF: " +
-                                         "aprilo con il programma di Windows (Apri) o scaricalo."
-        : ex is TimeoutException ? "Il PDF non si è disegnato in tempo: forse è rovinato. Puoi scaricarlo e aprirlo con un altro programma."
-        : ex.Message.Contains("troppo grande") ? "Il PDF è troppo grande per l'anteprima (oltre 100 MB): scaricalo o aprilo con il programma di Windows."
-        : ex.Message.Contains("troppe pagine") ? $"Il PDF ha troppe pagine per l'anteprima (oltre {MaxPages}): scaricalo o aprilo con il programma di Windows."
+        ex is Sandbox.SandboxException ? T("L'anteprima protetta non si è potuta avviare su questo PC, e senza protezione Missiva non apre il PDF: aprilo con il programma di Windows (Apri) o scaricalo.")
+        : ex is TimeoutException ? T("Il PDF non si è disegnato in tempo: forse è rovinato. Puoi scaricarlo e aprirlo con un altro programma.")
+        : ex.Message.Contains("troppo grande") ? T("Il PDF è troppo grande per l'anteprima (oltre 100 MB): scaricalo o aprilo con il programma di Windows.")
+        : ex.Message.Contains("troppe pagine") ? T("Il PDF ha troppe pagine per l'anteprima (oltre {0}): scaricalo o aprilo con il programma di Windows.", MaxPages)
         : (uint)ex.HResult == 0x8007052B || ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase)
-            ? "Il PDF è protetto da una password: aprilo con il programma di Windows (Apri)."
-            : "Il PDF è rovinato o incompleto, e non si può mostrare. Puoi scaricarlo e provare con un altro programma.";
+            ? T("Il PDF è protetto da una password: aprilo con il programma di Windows (Apri).")
+            : T("Il PDF è rovinato o incompleto, e non si può mostrare. Puoi scaricarlo e provare con un altro programma.");
 }
 
 /// <summary>

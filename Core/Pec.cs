@@ -421,51 +421,72 @@ public static class Pec
     /// </summary>
     public static (string Text, string Tone) Band(PecInfo pec)
     {
-        var when = pec.When is { } w ? $" il {w:dd/MM/yyyy} alle {w:HH:mm}" : "";
-        var provider = pec.Provider.Length > 0 ? $", gestore {pec.Provider}" : "";
+        // Le frasi passano da T (Lingua): una frase intera per chiave, con i pezzi che possono mancare (data, gestore,
+        // oggetto, errore) come valori senza parole o con la loro piccola chiave; in italiano il testo è quello di sempre.
+        var when = pec.When is { } w ? When(w) : "";
+        var provider = pec.Provider.Length > 0 ? T(", gestore {0}", pec.Provider) : "";
         var subject = pec.Subject.Length > 0 ? $" \"{pec.Subject}\"" : "";
-        var who = pec.SignerEmail.Length > 0 ? pec.SignerEmail : pec.Signer.Length > 0 ? pec.Signer : "chi ha firmato";
+        var error = pec.Error != null ? " (" + pec.Error + ")" : "";
+        var who = pec.SignerEmail.Length > 0 ? pec.SignerEmail : pec.Signer.Length > 0 ? pec.Signer : T("chi ha firmato");
         if (!pec.IsPec)
             return pec.Signature switch
             {
-                SignatureState.Verified => ($"Messaggio firmato da {pec.Signer}{(pec.SignerEmail.Length > 0 ? $" ({pec.SignerEmail})" : "")}: firma verificata.", "ok"),
-                SignatureState.Untrusted => ($"Messaggio firmato da {pec.Signer}: firma integra, ma il certificato non è fra quelli riconosciuti da Windows.", "warn"),
-                SignatureState.Invalid => ("Messaggio firmato, ma alterato dopo la firma: non fidarti del contenuto.", "danger"),
-                SignatureState.Unsuitable => ($"Messaggio firmato con il certificato di {who}, che non è quello del mittente {pec.Sender} o non serve a firmare la posta: " +
-                                              "non fidarti del mittente.", "danger"),
-                _ => ("Messaggio firmato.", "warn"),
+                SignatureState.Verified => (T("Messaggio firmato da {0}{1}: firma verificata.", pec.Signer, pec.SignerEmail.Length > 0 ? $" ({pec.SignerEmail})" : ""), "ok"),
+                SignatureState.Untrusted => (T("Messaggio firmato da {0}: firma integra, ma il certificato non è fra quelli riconosciuti da Windows.", pec.Signer), "warn"),
+                SignatureState.Invalid => (T("Messaggio firmato, ma alterato dopo la firma: non fidarti del contenuto."), "danger"),
+                SignatureState.Unsuitable => (T("Messaggio firmato con il certificato di {0}, che non è quello del mittente {1} o non serve a firmare la posta: non fidarti del mittente.", who, pec.Sender), "danger"),
+                _ => (T("Messaggio firmato."), "warn"),
             };
         // Una busta senza la firma di un gestore non è posta certificata, qualunque cosa dica: le vere sono tutte firmate.
         if (pec.Signature is SignatureState.Unsuitable or SignatureState.Missing)
-            return ($"Sembra posta certificata{(pec.Sender.Length > 0 ? " di " + pec.Sender : "")}, ma " +
-                    (pec.Signature == SignatureState.Missing ? "la busta non ha la firma del gestore"
-                        : $"non è firmata da un gestore riconosciuto (il certificato è di {who})") +
-                    ": non fidarti del mittente né del contenuto.", "danger");
+            return ((pec.Signature == SignatureState.Missing, pec.Sender.Length > 0) switch
+            {
+                (true, true) => T("Sembra posta certificata di {0}, ma la busta non ha la firma del gestore: non fidarti del mittente né del contenuto.", pec.Sender),
+                (true, false) => T("Sembra posta certificata, ma la busta non ha la firma del gestore: non fidarti del mittente né del contenuto."),
+                (false, true) => T("Sembra posta certificata di {0}, ma non è firmata da un gestore riconosciuto (il certificato è di {1}): non fidarti del mittente né del contenuto.", pec.Sender, who),
+                (false, false) => T("Sembra posta certificata, ma non è firmata da un gestore riconosciuto (il certificato è di {0}): non fidarti del mittente né del contenuto.", who),
+            }, "danger");
         var firm = pec.Signature switch
         {
-            SignatureState.Verified when pec.Gestore != null => $"firma del gestore verificata ({pec.Gestore})",
-            SignatureState.Verified => $"firma di {who} verificata, ma {(who.Contains('@') ? who[(who.IndexOf('@') + 1)..] : "chi ha firmato")} non è fra i gestori PEC che Missiva conosce: " +
-                                       "controlla che sia nell'elenco dei gestori dell'AgID",
-            SignatureState.Untrusted => $"firma integra, ma il certificato di {(pec.Signer.Length > 0 ? pec.Signer : "chi ha firmato")} non è fra quelli riconosciuti da Windows",
-            _ => "la busta è stata alterata dopo la firma del gestore: non fidarti del contenuto",
+            SignatureState.Verified when pec.Gestore != null => T("firma del gestore verificata ({0})", pec.Gestore),
+            SignatureState.Verified => T("firma di {0} verificata, ma {1} non è fra i gestori PEC che Missiva conosce: controlla che sia nell'elenco dei gestori dell'AgID",
+                                         who, who.Contains('@') ? who[(who.IndexOf('@') + 1)..] : T("chi ha firmato")),
+            SignatureState.Untrusted => T("firma integra, ma il certificato di {0} non è fra quelli riconosciuti da Windows", pec.Signer.Length > 0 ? pec.Signer : T("chi ha firmato")),
+            _ => T("la busta è stata alterata dopo la firma del gestore: non fidarti del contenuto"),
         };
         string tone = pec.Signature == SignatureState.Invalid || pec.Failed ? "danger"
             : pec.Signature == SignatureState.Verified && pec.Gestore != null && pec.Kind != "anomalia" ? "ok" : "warn";
+        var to = pec.DeliveredTo ?? string.Join(", ", pec.Recipients);
         var text = pec.Kind switch
         {
-            "posta-certificata" => $"Posta certificata: inviata da {pec.Sender}{when}{provider}; {firm}.",
-            "accettazione" => $"Ricevuta di accettazione: il tuo gestore ha accettato il messaggio{subject}{when}; {firm}.",
-            "avvenuta-consegna" => $"Ricevuta di consegna: il messaggio{subject} è stato consegnato a {pec.DeliveredTo ?? string.Join(", ", pec.Recipients)}{when}; {firm}.",
-            "presa-in-carico" => $"Presa in carico: il gestore del destinatario ha ricevuto il messaggio{subject}{when}; {firm}.",
-            "non-accettazione" => $"Mancata accettazione: il messaggio{subject} non è partito{(pec.Error != null ? " (" + pec.Error + ")" : "")}; {firm}.",
-            "rilevazione-virus" => $"Virus: il messaggio{subject} non è stato consegnato perché contiene un virus; {firm}.",
-            "errore-consegna" or "preavviso-errore-consegna" =>
-                $"Mancata consegna: il messaggio{subject} non è stato consegnato a {pec.DeliveredTo ?? string.Join(", ", pec.Recipients)}" +
-                $"{(pec.Error != null ? " (" + pec.Error + ")" : "")}{when}; {firm}.",
-            "anomalia" => $"Anomalia: il messaggio{subject}{(pec.Sender.Length > 0 ? " di " + pec.Sender : "")} è arrivato nella casella di posta certificata, " +
-                          $"ma non è certificato (posta ordinaria o busta non valida): l'originale è allegato, non fidarti del mittente; {firm}.",
-            _ => $"Posta certificata ({pec.Kind}){when}{provider}; {firm}.",
+            "posta-certificata" => T("Posta certificata: inviata da {0}{1}{2}; {3}.", pec.Sender, when, provider, firm),
+            "accettazione" => T("Ricevuta di accettazione: il tuo gestore ha accettato il messaggio{0}{1}; {2}.", subject, when, firm),
+            "avvenuta-consegna" => T("Ricevuta di consegna: il messaggio{0} è stato consegnato a {1}{2}; {3}.", subject, to, when, firm),
+            "presa-in-carico" => T("Presa in carico: il gestore del destinatario ha ricevuto il messaggio{0}{1}; {2}.", subject, when, firm),
+            "non-accettazione" => T("Mancata accettazione: il messaggio{0} non è partito{1}; {2}.", subject, error, firm),
+            "rilevazione-virus" => T("Virus: il messaggio{0} non è stato consegnato perché contiene un virus; {1}.", subject, firm),
+            "errore-consegna" or "preavviso-errore-consegna" => T("Mancata consegna: il messaggio{0} non è stato consegnato a {1}{2}{3}; {4}.", subject, to, error, when, firm),
+            "anomalia" when pec.Sender.Length > 0 =>
+                T("Anomalia: il messaggio{0} di {1} è arrivato nella casella di posta certificata, ma non è certificato (posta ordinaria o busta non valida): l'originale è allegato, non fidarti del mittente; {2}.", subject, pec.Sender, firm),
+            "anomalia" =>
+                T("Anomalia: il messaggio{0} è arrivato nella casella di posta certificata, ma non è certificato (posta ordinaria o busta non valida): l'originale è allegato, non fidarti del mittente; {1}.", subject, firm),
+            _ => T("Posta certificata ({0}){1}{2}; {3}.", pec.Kind, when, provider, firm),
         };
         return (text, tone);
     }
+
+    /// <summary>
+    /// " il 21/10/2026 alle 14:30" dopo un verbo delle fasce (Pec.Band, P7m.Band): in italiano giorno e ora scritti come
+    /// sempre (dd/MM/yyyy, HH:mm); in inglese la data e l'ora brevi della cultura di Missiva (Lingua.Culture).
+    /// </summary>
+    internal static string When(DateTime w) => T(" il {0} alle {1}", Day(w), Time(w));
+
+    /// <summary>
+    /// Il giorno di una fascia (questa, P7m e "Non in linea: copia del ..." del riquadro): 21/10/2026 in italiano, come
+    /// sempre; in inglese la data breve di Lingua.Culture (21/10/2026 in en-GB, 10/21/2026 in en-US).
+    /// </summary>
+    internal static string Day(DateTime d) => d.ToString(Lingua.English ? "d" : "dd/MM/yyyy", Lingua.Culture);
+
+    /// <summary>L'ora di una fascia: 14:30 in italiano, come sempre; in inglese l'ora breve di Lingua.Culture (14:30, 2:30 PM).</summary>
+    internal static string Time(DateTime d) => d.ToString(Lingua.English ? "t" : "HH:mm", Lingua.Culture);
 }

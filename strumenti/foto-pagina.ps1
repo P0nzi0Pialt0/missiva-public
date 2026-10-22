@@ -1,23 +1,38 @@
-param([string[]]$Solo = @("principale", "scuro", "scrittura", "pec", "calendario", "persone"), [string]$Uscita = "", [string]$Lavoro = "")
+param([string[]]$Solo = @("principale", "scuro", "scrittura", "pec", "calendario", "persone"), [string]$Uscita = "", [string]$Lavoro = "",
+      [ValidateSet("it", "en")][string]$Lingua = "it")
 # Le foto della pagina GitHub (README.md, docs\immagini) con i dati finti di Core\ProvaBozze.Foto.cs: account, persone e
 # messaggi inventati, domini .example, server IMAP finti su 127.0.0.1 (--imap-finto porta foto studio|personale|pec), mai
 # la posta vera né la rete. Va compilata prima la versione di Debug (dotnet build). Uso:
-#   pwsh -File strumenti\foto-pagina.ps1 [-Solo principale,scuro,scrittura,pec,calendario,persone] [-Uscita cartella] [-Lavoro cartella]
+#   pwsh -File strumenti\foto-pagina.ps1 [-Solo principale,scuro,scrittura,pec,calendario,persone] [-Uscita cartella] [-Lavoro cartella] [-Lingua it|en]
+# Con -Lingua en le foto della pagina inglese (README.en.md): Missiva in inglese (--lingua en), i server finti con le
+# caselle inglesi (foto studio en), le foto in docs\immagini\en con i nomi inglesi (main-light.png, main-dark.png,
+# compose.png, calendar.png, people.png, security.png, certified-email.png).
 # Ogni foto ha la sua prova, avviata con --foto su una cartella dei dati nuova e chiusa appena fatta la foto: la finestra
 # nasce fuori dallo schermo, senza il fuoco e senza pulsante nella barra delle applicazioni (l'icona nell'area di
 # notifica c'è finché la prova è aperta); notifiche, loghi e aggiornamenti spenti nelle impostazioni finte.
 # La foto è quello che PrintWindow vede (sfondo di Windows, pulsanti della finestra, WebView2) con sopra la parte di WPF
 # che la prova scrive da sé ("foto cartella" in MISSIVA_KEYS): fuori dallo schermo WPF non la mostra a DWM.
-# Le foto vanno in -Uscita (di base docs\immagini), larghe al più 1600 pixel; quelle intere della finestra (2640 pixel
-# sullo schermo dell'autore, al 200%) e i dati delle prove restano in una cartella nuova dentro -Lavoro (di base i
-# file temporanei).
+# Le foto vanno in -Uscita (di base docs\immagini, o docs\immagini\en con -Lingua en), larghe al più 1600 pixel; quelle
+# intere della finestra (2640 pixel sullo schermo dell'autore, al 200%) e i dati delle prove restano in una cartella
+# nuova dentro -Lavoro (di base i file temporanei).
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot
 $exe = Join-Path $root "bin\Debug\net10.0-windows10.0.19041.0\win-x64\Missiva.exe"
 if (-not (Test-Path $exe)) { throw "manca la versione di Debug: dotnet build" }
-if (-not $Uscita) { $Uscita = Join-Path $root "docs\immagini" }
+if (-not $Uscita) { $Uscita = Join-Path $root ($Lingua -eq "en" ? "docs\immagini\en" : "docs\immagini") }
+$english = $Lingua -eq "en"
+# I nomi delle foto nella lingua della pagina: il README italiano usa i nomi italiani, quello inglese i nomi inglesi.
+$nomi = $english ? @{ "principale-chiaro.png" = "main-light.png"; "principale-scuro.png" = "main-dark.png"; "scrittura.png" = "compose.png"; "calendario.png" = "calendar.png"
+                      "persone.png" = "people.png"; "sicurezza.png" = "security.png"; "posta-certificata.png" = "certified-email.png" } : @{}
+function Get-Nome([string]$Nome) { $nomi.ContainsKey($Nome) ? $nomi[$Nome] : $Nome }
+# Le caselle delle foto (come ProvaBozze.FotoMailboxes e FotoMailboxesEn) e le categorie dei loro messaggi.
+$domini = $english ? @{ studio = "northlight"; personale = "homemail"; pec = "pec-esempio" } : @{ studio = "studio-esempio"; personale = "posta-esempio"; pec = "pec-esempio" }
+$categorie = $english ? @{ studio = @("Clients", "Accounting"); personale = @("Home") } : @{ studio = @("Clienti", "Amministrazione"); personale = @("Casa") }
+# La domanda di una scrittura aperta all'uscita, e il suo pulsante Scarta, come li scrive Missiva (Assets\lingue\en).
+$domanda = $english ? "Save the draft?" : "Salvare la bozza?"
+$scarta = $english ? "Discard" : "Scarta"
 New-Item -ItemType Directory -Force $Uscita | Out-Null
-$work = Join-Path ($Lavoro ? $Lavoro : [IO.Path]::GetTempPath()) ("missiva-foto-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+$work = Join-Path ($Lavoro ? $Lavoro : [IO.Path]::GetTempPath()) ("missiva-foto-$Lingua-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 New-Item -ItemType Directory $work | Out-Null
 Add-Type -AssemblyName System.Drawing, UIAutomationClient, UIAutomationTypes
 Add-Type @"
@@ -76,7 +91,7 @@ function Start-Foto([string]$Nome, [string[]]$Caselle = @(), [switch]$Microsoft,
     foreach ($c in $Caselle) {
         $env:MISSIVA_DATA = Join-Path $script:data "server-$c"
         New-Item -ItemType Directory $env:MISSIVA_DATA | Out-Null
-        Start-Process $exe -ArgumentList "--imap-finto", $ports[$c], "foto", $c -WindowStyle Hidden | Out-Null
+        Start-Process $exe -ArgumentList (@("--imap-finto", $ports[$c], "foto", $c) + ($english ? @("en") : @())) -WindowStyle Hidden | Out-Null
     }
     foreach ($c in $Caselle) {
         for ($i = 0; $i -lt 100; $i++) {
@@ -86,17 +101,17 @@ function Start-Foto([string]$Nome, [string[]]$Caselle = @(), [switch]$Microsoft,
     }
     $password = [Convert]::ToBase64String([System.Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes("foto"), $null, 'CurrentUser'))
     $accounts = @()
-    if ($Microsoft) { $accounts += [ordered]@{ Id = $ids.microsoft; Kind = "Microsoft"; Email = "ada.galli@studio-esempio.example"; DisplayName = "Ada Galli" } }
+    if ($Microsoft) { $accounts += [ordered]@{ Id = $ids.microsoft; Kind = "Microsoft"; Email = "ada.galli@$($domini.studio).example"; DisplayName = "Ada Galli" } }
     foreach ($c in $Caselle) {
-        $email = "ada.galli@$(@{ studio = 'studio-esempio'; personale = 'posta-esempio'; pec = 'pec-esempio' }[$c]).example"
+        $email = "ada.galli@$($domini[$c]).example"
         $accounts += [ordered]@{ Id = $ids[$c]; Kind = "Imap"; Email = $email; DisplayName = "Ada Galli"
             Imap = [ordered]@{ ImapHost = "127.0.0.1"; ImapPort = $ports[$c]; ImapSecurity = "Ssl"; SmtpHost = "127.0.0.1"; SmtpPort = $ports[$c] + 1; SmtpSecurity = "StartTls"; UserName = $email; ProtectedPassword = $password } }
     }
     $settings = [ordered]@{
         Accounts = $accounts; Theme = $Tema; NotificationsOff = @($accounts | ForEach-Object { $_.Id }); NotificationSound = $false
         KeepInTray = $false; TrayExplained = $true; UpdatesAuto = $false; ShowSenderLogos = $false; StartWithWindows = $false
-        LocalCategories = @{ ($ids.studio) = @("Clienti", "Amministrazione"); ($ids.personale) = @("Casa") }
-        CategoryColors = @{ "$($ids.studio)|Clienti" = 7; "$($ids.studio)|Amministrazione" = 4; "$($ids.personale)|Casa" = 1 }
+        LocalCategories = @{ ($ids.studio) = $categorie.studio; ($ids.personale) = $categorie.personale }
+        CategoryColors = @{ "$($ids.studio)|$($categorie.studio[0])" = 7; "$($ids.studio)|$($categorie.studio[1])" = 4; "$($ids.personale)|$($categorie.personale[0])" = 1 }
     }
     $settings | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $script:data "impostazioni.json") -Encoding utf8NoBOM
     if ($Caselle -contains "pec") {
@@ -106,7 +121,7 @@ function Start-Foto([string]$Nome, [string[]]$Caselle = @(), [switch]$Microsoft,
     }
     $env:MISSIVA_DATA = $script:data
     $env:MISSIVA_KEYS = Join-Path $script:data "tasti.txt"
-    $script:app = Start-Process $exe -ArgumentList "--foto $Argomenti".Trim() -PassThru
+    $script:app = Start-Process $exe -ArgumentList "--foto --lingua $Lingua $Argomenti".Trim() -PassThru
     for ($i = 0; $i -lt 200 -and -not (Get-Finestra "Missiva" -Quiet); $i++) { Start-Sleep -Milliseconds 50 }
     Start-Sleep 5 # account, cartelle, elenco e WebView2
 }
@@ -170,10 +185,10 @@ function Stop-Foto {
             $A = [System.Windows.Automation.AutomationElement]; $T = [System.Windows.Automation.TreeScope]
             $question = $A::RootElement.FindAll($T::Children, (New-Object System.Windows.Automation.PropertyCondition $A::ProcessIdProperty, $script:app.Id)) |
                 ForEach-Object { $_; $_.FindAll($T::Descendants, (New-Object System.Windows.Automation.PropertyCondition $A::ControlTypeProperty, ([System.Windows.Automation.ControlType]::Window))) } |
-                Where-Object { $_.Current.Name -eq "Missiva" -and $_.FindFirst($T::Descendants, (New-Object System.Windows.Automation.PropertyCondition $A::NameProperty, "Salvare la bozza?")) } | Select-Object -First 1
+                Where-Object { $_.Current.Name -eq "Missiva" -and $_.FindFirst($T::Descendants, (New-Object System.Windows.Automation.PropertyCondition $A::NameProperty, $domanda)) } | Select-Object -First 1
             $discard = if ($question) {
                 $question.FindAll($T::Descendants, (New-Object System.Windows.Automation.PropertyCondition $A::ControlTypeProperty, ([System.Windows.Automation.ControlType]::Button))) |
-                    Where-Object { $_.Current.Name -eq "Scarta" } | Select-Object -First 1
+                    Where-Object { $_.Current.Name -eq $scarta } | Select-Object -First 1
             }
             if ($discard) { $discard.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
             for ($i = 0; $i -lt 28 -and -not $script:app.HasExited; $i++) { Start-Sleep -Milliseconds 250 }
@@ -211,7 +226,7 @@ function Save-Pagina([string]$Grezza, [string]$Nome, [double[]]$Ritaglio = @()) 
         $area = New-Object System.Drawing.Rectangle ([int]($Ritaglio[0] * $b.Width)), ([int]($Ritaglio[1] * $b.Height)), ([int]($Ritaglio[2] * $b.Width)), ([int]($Ritaglio[3] * $b.Height))
         $c = $b.Clone($area, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb); $b.Dispose(); $b = $c
     }
-    Save-Ridotta $b (Join-Path $Uscita $Nome)
+    Save-Ridotta $b (Join-Path $Uscita (Get-Nome $Nome))
     $b.Dispose()
 }
 
@@ -237,7 +252,7 @@ function Save-Sopra([string]$Sotto, [string]$Sopra, [string]$Nome, [double]$Sini
     $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(60, 0, 0, 0)), 2
     $g.DrawPath($pen, $path)
     $g.Dispose(); $top.Dispose()
-    Save-Ridotta $back (Join-Path $Uscita $Nome)
+    Save-Ridotta $back (Join-Path $Uscita (Get-Nome $Nome))
     $back.Dispose()
 }
 
@@ -251,7 +266,7 @@ try {
         Send-Tasto "apri tutti"; Send-Tasto "clic 0" 5
         Save-Finestra "Missiva" "$work\principale-chiaro.png"
         $log = Join-Path $script:data "missiva.log"
-        for ($i = 0; $i -lt 60 -and -not (Select-String -Path $log -Pattern "rubrica: .* posta-esempio" -Quiet); $i++) { Start-Sleep -Milliseconds 500 }
+        for ($i = 0; $i -lt 60 -and -not (Select-String -Path $log -Pattern "rubrica: .* $($domini.personale)" -Quiet); $i++) { Start-Sleep -Milliseconds 500 }
         Send-Tasto "clic 3" 5
         Save-Finestra "Missiva" "$work\sicurezza.png"
         Stop-Foto
@@ -291,7 +306,8 @@ try {
         Save-Pagina "$work\calendario.png" "calendario.png"
     }
     if ($Solo -contains "persone") {
-        Start-Foto persone -Microsoft -Argomenti "--persone --contatti-finti --persona 5"
+        # Luca Bianchi, la scheda più ricca: in italiano la sesta persona dell'elenco, in inglese la settima (ContactSamples.Photo).
+        Start-Foto persone -Microsoft -Argomenti "--persone --contatti-finti --persona $($english ? 6 : 5)"
         Start-Sleep 2
         Save-Finestra "Missiva" "$work\persone.png"
         Stop-Foto

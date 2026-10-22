@@ -68,6 +68,8 @@ static partial class ProvaBozze
         Keep("UnreadSync.Settle", () => UnreadSync.Settle, v => UnreadSync.Settle = v),
         Keep("MessageItem.TestToday", () => UI.MessageItem.TestToday, v => UI.MessageItem.TestToday = v),
         Keep("ReadingView.TestDark", () => UI.ReadingView.TestDark, v => UI.ReadingView.TestDark = v),
+        // La lingua (Lingua.Force): l'italiano, sempre, qualunque sia quella di Windows; un gruppo che lascia l'inglese è detto.
+        new("Lingua", () => Lingua.Code == "it", () => Lingua.Force("it")),
     ];
 
     /// <summary>

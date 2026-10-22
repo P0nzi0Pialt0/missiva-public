@@ -39,7 +39,8 @@ static class Sandbox
     internal static SecurityIdentifier Sid()
     {
         if (sid != null) return sid;
-        int result = CreateAppContainerProfile(Name, "Missiva, anteprima degli allegati", "Il processo che disegna i PDF e le immagini degli allegati, senza rete né file dell'utente",
+        // Nome e descrizione li mostra Windows (il profilo nasce una volta, nella lingua di quel momento).
+        int result = CreateAppContainerProfile(Name, T("Missiva, anteprima degli allegati"), T("Il processo che disegna i PDF e le immagini degli allegati, senza rete né file dell'utente"),
                                                IntPtr.Zero, 0, out var pointer);
         if (result == unchecked((int)0x800700B7)) result = DeriveAppContainerSidFromAppContainerName(Name, out pointer); // il profilo c'è già
         else if (result == 0) Log.Write("profilo dell'anteprima protetta creato (AppContainer " + Name + ")");

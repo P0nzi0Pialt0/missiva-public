@@ -1,5 +1,7 @@
 # Gmail: registrare la tua app su Google Cloud
 
+[English](gmail.en.md)
+
 Con Gmail l'accesso è come nel nuovo Outlook: si apre il browser, scegli l'account Google e consenti a Missiva di
 usare la posta. Google però lo permette solo alle app registrate su Google Cloud, e una registrazione unica dentro
 Missiva, valida per tutti, dovrebbe prima passare la verifica che Google chiede alle app che leggono la posta.

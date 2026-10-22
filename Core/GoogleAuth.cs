@@ -86,10 +86,10 @@ public static class GoogleAuth
         static HashSet<string> Set(string? scopes) => (scopes ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
         HashSet<string> was = Set(before), now = Set(after);
         var lost = new List<string>();
-        if (was.Contains(CalendarScope) && !now.Contains(CalendarScope)) lost.Add("il calendario");
+        if (was.Contains(CalendarScope) && !now.Contains(CalendarScope)) lost.Add(T("il calendario"));
         bool read = now.Contains(ContactsScope) || now.Contains(ContactsWriteScope);
-        if ((was.Contains(ContactsScope) || was.Contains(ContactsWriteScope)) && !read) lost.Add("i contatti");
-        else if (was.Contains(ContactsWriteScope) && !now.Contains(ContactsWriteScope)) lost.Add("la modifica dei contatti (restano in sola lettura)");
+        if ((was.Contains(ContactsScope) || was.Contains(ContactsWriteScope)) && !read) lost.Add(T("i contatti"));
+        else if (was.Contains(ContactsWriteScope) && !now.Contains(ContactsWriteScope)) lost.Add(T("la modifica dei contatti (restano in sola lettura)"));
         return lost;
     }
 
@@ -104,9 +104,10 @@ public static class GoogleAuth
         var lost = Lost(account.GoogleScopes, granted);
         account.GoogleScopes = granted;
         if (lost.Count == 0) return null;
-        var notice = $"Con il nuovo accesso Google non ha più dato a Missiva il permesso per {string.Join(" e ", lost)} di {account.Email}: nella pagina di Google la casella " +
-                     "non era spuntata, oppure l'account è stato aggiunto di nuovo senza chiederlo. La posta funziona come prima.\n\nPer riaverlo premi di nuovo " +
-                     "\"Consenti l'accesso\" nel calendario o in Persone, e nella pagina di Google lascia spuntate tutte le caselle.";
+        // Al più due permessi (il calendario, e i contatti o la loro modifica): "il calendario e i contatti".
+        var what = lost.Count == 1 ? lost[0] : T("{0} e {1}", lost[0], lost[1]);
+        var notice = T("Con il nuovo accesso Google non ha più dato a Missiva il permesso per {0} di {1}: nella pagina di Google la casella non era spuntata, oppure l'account è stato aggiunto di nuovo senza chiederlo. La posta funziona come prima.\n\nPer riaverlo premi di nuovo \"Consenti l'accesso\" nel calendario o in Persone, e nella pagina di Google lascia spuntate tutte le caselle.",
+                       what, account.Email);
         Log.Write($"nuovo accesso di {account.Email}: Google non ha più dato {string.Join(" e ", lost)}");
         try { PermissionsLost?.Invoke(account, notice); } catch (Exception ex) { Log.Error("avviso dei permessi di Google tolti", ex); }
         return notice;
@@ -222,10 +223,9 @@ public static class GoogleAuth
         !string.IsNullOrWhiteSpace(Store.Settings.GoogleClientId) && !string.IsNullOrWhiteSpace(Store.Settings.ProtectedGoogleClientSecret);
 
     static (string Id, string Secret) Client() => !IsConfigured
-        ? throw new MailException("Manca l'app Google di Missiva: inseriscila aggiungendo un account Gmail.")
+        ? throw new MailException(T("Manca l'app Google di Missiva: inseriscila aggiungendo un account Gmail."))
         : Store.TryUnprotect(Store.Settings.ProtectedGoogleClientSecret, out var secret) ? (Store.Settings.GoogleClientId!, secret)
-        : throw new MailException("Il segreto dell'app Google di Missiva salvato su questo PC non si legge più (profilo di Windows cambiato, o impostazioni " +
-                                  "copiate da un altro PC): inseriscilo di nuovo da Aggiungi account, Gmail, App Google.");
+        : throw new MailException(T("Il segreto dell'app Google di Missiva salvato su questo PC non si legge più (profilo di Windows cambiato, o impostazioni copiate da un altro PC): inseriscilo di nuovo da Aggiungi account, Gmail, App Google."));
 
     /// <summary>
     /// Nuovo accesso: apre il browser e aspetta che l'utente autorizzi Missiva. Per Google Workspace (loginHint, l'indirizzo
@@ -274,9 +274,9 @@ public static class GoogleAuth
 
             // Nella pagina di consenso si possono togliere i singoli permessi: senza quello della posta non si va avanti.
             if (!(json.GetProperty("scope").GetString() ?? "").Split(' ').Contains(MailScope))
-                throw new MailException("Non hai dato a Missiva il permesso di usare Gmail. Riprova e lascia spuntata la casella della posta.");
+                throw new MailException(T("Non hai dato a Missiva il permesso di usare Gmail. Riprova e lascia spuntata la casella della posta."));
             var refresh = json.TryGetProperty("refresh_token", out var r) ? r.GetString() : null;
-            if (string.IsNullOrEmpty(refresh)) throw new MailException("Google non ha restituito il token di aggiornamento. Riprova.");
+            if (string.IsNullOrEmpty(refresh)) throw new MailException(T("Google non ha restituito il token di aggiornamento. Riprova."));
 
             // L'id_token arriva direttamente da Google su HTTPS: per leggerne indirizzo e nome non serve verificarne la firma.
             var payload = json.GetProperty("id_token").GetString()!.Split('.')[1];
@@ -288,8 +288,8 @@ public static class GoogleAuth
         catch (TokenError ex)
         {
             throw new MailException(ex.Code == "invalid_client"
-                ? "Google non riconosce ID client e client secret dell'app: ricontrollali."
-                : "Accesso non riuscito: " + ex.Message, ex);
+                ? T("Google non riconosce ID client e client secret dell'app: ricontrollali.")
+                : T("Accesso non riuscito: {0}", ex.Message), ex);
         }
         finally
         {
@@ -314,12 +314,12 @@ public static class GoogleAuth
             }
             // Senza accesso salvato: un account arrivato con una copia di sicurezza, che non porta gli accessi (Backup).
             if (account.ProtectedRefreshToken == null)
-                throw new MailException($"Su questo PC manca l'accesso a Google di {account.Email}: Accedi di nuovo (Impostazioni, Account, Gestisci).") { Fix = AccountFix.SignIn };
+                throw new MailException(T("Su questo PC manca l'accesso a Google di {0}: Accedi di nuovo (Impostazioni, Account, Gestisci).", account.Email)) { Fix = AccountFix.SignIn };
             var (clientId, secret) = Client();
             // L'accesso salvato che non si decifra più: Accedi di nuovo, non l'errore di Windows (audit, F-44 punto 4).
             if (!Store.TryUnprotect(account.ProtectedRefreshToken, out var refresh))
-                throw new MailException($"L'accesso a Google di {account.Email} salvato su questo PC non si legge più (profilo di Windows cambiato, o impostazioni " +
-                                        "copiate da un altro PC): Accedi di nuovo (Impostazioni, Account, Gestisci).") { Fix = AccountFix.SignIn };
+                throw new MailException(T("L'accesso a Google di {0} salvato su questo PC non si legge più (profilo di Windows cambiato, o impostazioni copiate da un altro PC): Accedi di nuovo (Impostazioni, Account, Gestisci).",
+                                          account.Email)) { Fix = AccountFix.SignIn };
             // La rete non rispondeva un attimo fa a chi era davanti in fila: lo stesso errore, senza un altro tempo scaduto.
             if (networkFailure is { } failed && DateTime.UtcNow - failed.At < FailureMemory)
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed.Error);
@@ -360,25 +360,23 @@ public static class GoogleAuth
     }
 
     /// <summary>
-    /// Il rifiuto di Google tornato al browser, in italiano. Con Google Workspace l'amministratore può bloccare le app non
+    /// Il rifiuto di Google tornato al browser, nella lingua di Missiva. Con Google Workspace l'amministratore può bloccare le app non
     /// rese attendibili (admin_policy_enforced) o lasciare solo quelle della propria organizzazione (org_internal).
     /// </summary>
     public static string Refused(string error, string clientId) => error switch
     {
-        "access_denied" => "Accesso annullato nel browser.",
+        "access_denied" => T("Accesso annullato nel browser."),
         "admin_policy_enforced" => AdminBlocked(clientId),
-        "org_internal" => "L'app Google di Missiva è riservata agli utenti dell'organizzazione che l'ha creata su Google Cloud: con un altro " +
-                          "account serve un'app di tipo Esterno.",
-        _ => "Google ha rifiutato l'accesso: " + error,
+        "org_internal" => T("L'app Google di Missiva è riservata agli utenti dell'organizzazione che l'ha creata su Google Cloud: con un altro account serve un'app di tipo Esterno."),
+        _ => T("Google ha rifiutato l'accesso: {0}", error),
     };
 
     /// <summary>L'amministratore di Google Workspace non ha reso attendibile Missiva: cosa deve fare.</summary>
     public static string AdminBlocked(string clientId) =>
-        "L'amministratore di Google Workspace della tua organizzazione non ha reso attendibile Missiva. Nella Console di amministrazione " +
-        $"(Sicurezza, Accesso e controllo dei dati, Controlli API) può consentire l'app con l'ID client {clientId}; poi riprova.";
+        T("L'amministratore di Google Workspace della tua organizzazione non ha reso attendibile Missiva. Nella Console di amministrazione (Sicurezza, Accesso e controllo dei dati, Controlli API) può consentire l'app con l'ID client {0}; poi riprova.", clientId);
 
     static string SignInAgain(MailAccount account) =>
-        $"Google chiede di rifare l'accesso a {account.Email}: Accedi di nuovo (Impostazioni, Account, Gestisci).";
+        T("Google chiede di rifare l'accesso a {0}: Accedi di nuovo (Impostazioni, Account, Gestisci).", account.Email);
 
 #if DEBUG
     /// <summary>
@@ -500,9 +498,9 @@ public static class GoogleAuth
     /// </summary>
     public static (string Heading, string Body)? RevocationNotice(MailAccount account, GoogleRevocation outcome) =>
         outcome != GoogleRevocation.Failed ? null
-        : ("Account rimosso, ma l'accesso di Google può restare",
-           $"{account.Email} è uscito da Missiva, ma Google non ha confermato la revoca dell'accesso dato a Missiva: presso Google può restare valido. " +
-           $"Si toglie a mano dalla pagina dell'account Google, fra le app e i servizi di terze parti collegati: {PermissionsPage}");
+        : (T("Account rimosso, ma l'accesso di Google può restare"),
+           T("{0} è uscito da Missiva, ma Google non ha confermato la revoca dell'accesso dato a Missiva: presso Google può restare valido. Si toglie a mano dalla pagina dell'account Google, fra le app e i servizi di terze parti collegati: {1}",
+             account.Email, PermissionsPage));
 
     sealed class TokenError(string code, string message) : Exception(message)
     {
@@ -519,7 +517,7 @@ public static class GoogleAuth
         var text = await response.Content.ReadAsStringAsync(cancel);
         JsonElement json;
         try { json = JsonDocument.Parse(text).RootElement; }
-        catch (JsonException) { throw new TokenError("", $"risposta inattesa da Google ({(int)response.StatusCode})"); }
+        catch (JsonException) { throw new TokenError("", T("risposta inattesa da Google ({0})", (int)response.StatusCode)); }
         if (response.IsSuccessStatusCode) return json;
         var code = json.TryGetProperty("error", out var e) ? e.GetString() ?? "" : "";
         var description = json.TryGetProperty("error_description", out var d) ? d.GetString() : null;
@@ -618,7 +616,7 @@ public static class GoogleAuth
     }
 
     static string Page(string title, string text) => $$"""
-        <!doctype html><html lang="it"><head><meta charset="utf-8"><title>Missiva</title>
+        <!doctype html><html lang="{{Lingua.Tag}}"><head><meta charset="utf-8"><title>Missiva</title>
         <style>
           body { font-family: "Segoe UI Variable", "Segoe UI", sans-serif; background: #f3f3f3; color: #1b1b1b;
                  display: grid; place-items: center; height: 100vh; margin: 0; }
@@ -630,6 +628,7 @@ public static class GoogleAuth
         <body><div><h1>{{title}}</h1><p>{{text}}</p></div></body></html>
         """;
 
-    static readonly string DonePage = Page("Accesso completato", "Puoi chiudere questa scheda e tornare a Missiva.");
-    static readonly string CanceledPage = Page("Accesso annullato", "Missiva non ha ricevuto l'autorizzazione. Puoi chiudere questa scheda.");
+    // Le pagine che il browser mostra dopo l'accesso, nella lingua di Missiva: calcolate quando servono, non all'avvio.
+    static string DonePage => Page(T("Accesso completato"), T("Puoi chiudere questa scheda e tornare a Missiva."));
+    static string CanceledPage => Page(T("Accesso annullato"), T("Missiva non ha ricevuto l'autorizzazione. Puoi chiudere questa scheda."));
 }

@@ -7,6 +7,13 @@
 $ErrorActionPreference = "Stop"
 $dir = Join-Path $env:LOCALAPPDATA "Programs\Missiva"
 
+# I messaggi in italiano se la lingua di visualizzazione di Windows è l'italiano, altrimenti in inglese, come Missiva con
+# "Come Windows" (Missiva in inglese, 21 ottobre 2026). Solo per provare lo script: MISSIVA_PROVA_LINGUA=it o en sceglie
+# la lingua dei messaggi senza toccare le impostazioni di Windows.
+$italiano = (Get-UICulture).TwoLetterISOLanguageName -eq "it"
+if ($env:MISSIVA_PROVA_LINGUA -in "it", "en") { $italiano = $env:MISSIVA_PROVA_LINGUA -eq "it" }
+function Testo([string]$it, [string]$en) { if ($italiano) { $it } else { $en } }
+
 # Lo script sta nella cartella da cancellare: si copia altrove e riparte da lì, con lo stesso PowerShell che lo sta eseguendo.
 if ($PSCommandPath -like "$dir\*") {
     $copy = Join-Path $env:TEMP "missiva-disinstalla.ps1"
@@ -51,5 +58,5 @@ try {
     [MissivaDisinstalla.Profilo]::DeleteAppContainerProfile("Missiva.Anteprima") | Out-Null
 } catch { }
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "Missiva è stata disinstallata. Le impostazioni restano in $env:LOCALAPPDATA\Missiva."
+Write-Host (Testo "Missiva è stata disinstallata. Le impostazioni restano in $env:LOCALAPPDATA\Missiva." "Missiva has been uninstalled. Its settings remain in $env:LOCALAPPDATA\Missiva.")
 Start-Sleep -Seconds 3

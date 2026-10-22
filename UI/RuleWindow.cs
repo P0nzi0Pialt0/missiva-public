@@ -22,20 +22,20 @@ public sealed class RuleWindow : Window
     List<MailRule>? known;
 
     readonly TextBox name = new();
-    readonly CheckBox fromCheck = Box("Da"), toMe = Box("Inviato a me (sono fra i destinatari A)"), ccMe = Box("Sono in Cc"),
-        subjectCheck = Box("L'oggetto contiene"), bodyCheck = Box("Il testo contiene"), attachments = Box("Ha allegati"), importanceCheck = Box("Importanza");
-    readonly TextBox from = Field("Indirizzi o parole del mittente"), subject = Field("Parole dell'oggetto"), body = Field("Parole del testo");
-    readonly ComboBox importance = new() { Width = 140, Items = { "Alta", "Bassa" }, SelectedIndex = 0 };
-    readonly CheckBox moveCheck = Box("Sposta in"), copyCheck = Box("Copia in"), delete = Box("Elimina (nel Cestino)"), markRead = Box("Segna come letto"),
-        flag = Box("Contrassegna"), categoryCheck = Box("Categoria"), forwardCheck = Box("Inoltra a"), stop = Box("Non applicare altre regole");
+    readonly CheckBox fromCheck = Box(T("Da")), toMe = Box(T("Inviato a me (sono fra i destinatari A)")), ccMe = Box(T("Sono in Cc")),
+        subjectCheck = Box(T("L'oggetto contiene")), bodyCheck = Box(T("Il testo contiene")), attachments = Box(T("Ha allegati")), importanceCheck = Box(T("Importanza"));
+    readonly TextBox from = Field(T("Indirizzi o parole del mittente")), subject = Field(T("Parole dell'oggetto")), body = Field(T("Parole del testo"));
+    readonly ComboBox importance = new() { Width = 140, Items = { T("Alta"), T("Bassa") }, SelectedIndex = 0 };
+    readonly CheckBox moveCheck = Box(T("Sposta in")), copyCheck = Box(T("Copia in")), delete = Box(T("Elimina (nel Cestino)")), markRead = Box(T("Segna come letto")),
+        flag = Box(T("Contrassegna")), categoryCheck = Box(T("Categoria")), forwardCheck = Box(T("Inoltra a")), stop = Box(T("Non applicare altre regole"));
     readonly ComboBox moveTo = new() { Width = 260 }, copyTo = new() { Width = 260 };
     readonly ComboBox category = new() { Width = 260, IsEditable = true };
-    readonly TextBox forward = Field("Indirizzi a cui inoltrare");
+    readonly TextBox forward = Field(T("Indirizzi a cui inoltrare"));
     readonly StackPanel form = new();
     readonly StackPanel consent = new() { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 14, 0, 0) };
     readonly TextBlock status = Secondary("");
     readonly TextBlock error = Dialog.ErrorText(12);
-    readonly Button save = new() { Content = "Salva", MinWidth = 100, IsDefault = true };
+    readonly Button save = new() { Content = T("Salva"), MinWidth = 100, IsDefault = true };
 
     /// <summary>La regola salvata (con l'id del server per Outlook).</summary>
     public MailRule? Saved { get; private set; }
@@ -52,7 +52,7 @@ public sealed class RuleWindow : Window
         this.editing = editing;
         this.known = known;
         server = provider.HasServerRules;
-        Title = editing == null ? "Nuova regola" : "Modifica regola";
+        Title = editing == null ? T("Nuova regola") : T("Modifica regola");
         Width = 640;
         Height = 760;
         MinHeight = 420;
@@ -61,9 +61,9 @@ public sealed class RuleWindow : Window
 
         var panel = new StackPanel { Margin = new Thickness(28, 22, 28, 12) };
         panel.Children.Add(new TextBlock { Text = Title, FontSize = 22, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
-        panel.Children.Add(Secondary(provider.Account.Email + (server
-            ? ": la regola si salva in Outlook e gira sul server, anche a Missiva chiusa."
-            : ": è una regola di Missiva. Gira solo quando Missiva è aperta, anche nell'area di notifica, sui nuovi messaggi della Posta in arrivo.")));
+        panel.Children.Add(Secondary(server
+            ? T("{0}: la regola si salva in Outlook e gira sul server, anche a Missiva chiusa.", provider.Account.Email)
+            : T("{0}: è una regola di Missiva. Gira solo quando Missiva è aperta, anche nell'area di notifica, sui nuovi messaggi della Posta in arrivo.", provider.Account.Email)));
         status.Margin = new Thickness(0, 10, 0, 0);
         panel.Children.Add(status);
         BuildConsent();
@@ -75,7 +75,7 @@ public sealed class RuleWindow : Window
         var buttons = new DockPanel { Margin = new Thickness(28, 8, 28, 20), LastChildFill = false };
         save.SetResourceReference(StyleProperty, "AccentButtonStyle");
         save.Click += async (_, _) => await SaveAsync();
-        var cancel = new Button { Content = "Annulla", MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+        var cancel = new Button { Content = T("Annulla"), MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
         DockPanel.SetDock(save, Dock.Right);
         DockPanel.SetDock(cancel, Dock.Right);
         buttons.Children.Add(save);
@@ -89,6 +89,9 @@ public sealed class RuleWindow : Window
 
         Fill(editing ?? prefill ?? new MailRule { AccountId = provider.Account.Id });
         Loaded += async (_, _) => await LoadAsync();
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto, anche in inglese): fuori dallo schermo, senza il fuoco
+#endif
     }
 
     // ---------------------------------------------------------------- pezzi
@@ -157,45 +160,44 @@ public sealed class RuleWindow : Window
 
     void BuildConsent()
     {
-        consent.Children.Add(Secondary("Le regole di Outlook stanno nelle impostazioni della casella: per leggerle e cambiarle Missiva deve poterci " +
-                                       "accedere (il permesso MailboxSettings, lo stesso delle risposte automatiche, che l'accesso di base non chiede)."));
-        var allow = new Button { Content = "Consenti l'accesso alle impostazioni della casella", Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+        consent.Children.Add(Secondary(T("Le regole di Outlook stanno nelle impostazioni della casella: per leggerle e cambiarle Missiva deve poterci accedere (il permesso MailboxSettings, lo stesso delle risposte automatiche, che l'accesso di base non chiede).")));
+        var allow = new Button { Content = T("Consenti l'accesso alle impostazioni della casella"), Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
         allow.SetResourceReference(StyleProperty, "AccentButtonStyle");
-        AutomationProperties.SetName(allow, "Consenti l'accesso alle impostazioni della casella");
+        AutomationProperties.SetName(allow, T("Consenti l'accesso alle impostazioni della casella"));
         allow.Click += async (_, _) => await AllowAsync();
         consent.Children.Add(allow);
     }
 
     void BuildForm()
     {
-        form.Children.Add(Section("Nome"));
-        AutomationProperties.SetName(name, "Nome della regola");
+        form.Children.Add(Section(T("Nome")));
+        AutomationProperties.SetName(name, T("Nome della regola"));
         form.Children.Add(name);
 
-        form.Children.Add(Section("Quando arriva un messaggio che"));
-        form.Children.Add(Secondary("Devono valere tutte le condizioni scelte. Nelle caselle più parole o indirizzi si separano con il punto e virgola: ne basta uno."));
+        form.Children.Add(Section(T("Quando arriva un messaggio che")));
+        form.Children.Add(Secondary(T("Devono valere tutte le condizioni scelte. Nelle caselle più parole o indirizzi si separano con il punto e virgola: ne basta uno.")));
         form.Children.Add(Row(fromCheck, from));
         form.Children.Add(Row(toMe));
         form.Children.Add(Row(ccMe));
         form.Children.Add(Row(subjectCheck, subject));
         form.Children.Add(Row(bodyCheck, body));
         form.Children.Add(Row(attachments));
-        AutomationProperties.SetName(importance, "Importanza del messaggio");
+        AutomationProperties.SetName(importance, T("Importanza del messaggio"));
         form.Children.Add(Row(importanceCheck, importance));
         if (!server) importance.Items.RemoveAt(1); // l'elenco di Gmail e IMAP sa solo dell'importanza alta
 
-        form.Children.Add(Section("Fai questo"));
+        form.Children.Add(Section(T("Fai questo")));
         var choices = FolderChoices();
         moveTo.ItemsSource = choices;
         copyTo.ItemsSource = choices;
-        AutomationProperties.SetName(moveTo, "Cartella in cui spostare");
-        AutomationProperties.SetName(copyTo, "Cartella in cui copiare");
+        AutomationProperties.SetName(moveTo, T("Cartella in cui spostare"));
+        AutomationProperties.SetName(copyTo, T("Cartella in cui copiare"));
         form.Children.Add(Row(moveCheck, moveTo));
         form.Children.Add(Row(copyCheck, copyTo));
         form.Children.Add(Row(delete));
         form.Children.Add(Row(markRead));
         if (!server) form.Children.Add(Row(flag)); // le regole di Outlook non contrassegnano
-        AutomationProperties.SetName(category, "Categoria da mettere");
+        AutomationProperties.SetName(category, T("Categoria da mettere"));
         form.Children.Add(Row(categoryCheck, category));
         if (server) form.Children.Add(Row(forwardCheck, forward));
         form.Children.Add(Row(stop));
@@ -231,9 +233,9 @@ public sealed class RuleWindow : Window
         if (r.RedirectTo.Count + r.ForwardAsAttachmentTo.Count > 0 || r.Hidden.Count > 0)
         {
             var more = r.Hidden.ToList();
-            if (r.RedirectTo.Count > 0) more.Add("reindirizza a " + string.Join(", ", r.RedirectTo.Select(a => a.Email)));
-            if (r.ForwardAsAttachmentTo.Count > 0) more.Add("inoltra come allegato a " + string.Join(", ", r.ForwardAsAttachmentTo.Select(a => a.Email)));
-            form.Children.Insert(2, Secondary("Questa regola di Outlook fa anche cose che Missiva non mostra (" + string.Join(", ", more) + "): restano come sono."));
+            if (r.RedirectTo.Count > 0) more.Add(T("reindirizza a {0}", string.Join(", ", r.RedirectTo.Select(a => a.Email))));
+            if (r.ForwardAsAttachmentTo.Count > 0) more.Add(T("inoltra come allegato a {0}", string.Join(", ", r.ForwardAsAttachmentTo.Select(a => a.Email))));
+            form.Children.Insert(2, Secondary(T("Questa regola di Outlook fa anche cose che Missiva non mostra ({0}): restano come sono.", string.Join(", ", more))));
         }
     }
 
@@ -265,7 +267,7 @@ public sealed class RuleWindow : Window
     {
         _ = LoadCategoriesAsync();
         if (!server || known != null) return;
-        status.Text = "Caricamento delle regole di Outlook…";
+        status.Text = T("Caricamento delle regole di Outlook…");
         form.IsEnabled = save.IsEnabled = false;
         try
         {
@@ -275,7 +277,7 @@ public sealed class RuleWindow : Window
         {
             Log.Error("regole di Outlook", ex);
             status.Text = "";
-            ShowError("Le regole di Outlook non si leggono: " + ex.Message);
+            ShowError(T("Le regole di Outlook non si leggono: {0}", ex.Message));
             return;
         }
         status.Text = "";
@@ -290,7 +292,7 @@ public sealed class RuleWindow : Window
         if (MainWindow.Testing)
         {
             await provider.AllowMailboxSettingsAsync(); // TestingProvider: solo "prova: chiederei il consenso ..." nel registro
-            status.Text = "Nella versione di prova la finestra di Microsoft non si apre.";
+            status.Text = T("Nella versione di prova la finestra di Microsoft non si apre.");
             return;
         }
         consent.IsEnabled = false;
@@ -308,7 +310,7 @@ public sealed class RuleWindow : Window
         catch (Exception ex)
         {
             Log.Error("consenso alle impostazioni della casella (regole)", ex);
-            ReadingView.ShowConsentError(this, "Accesso alle impostazioni non consentito", ex, provider.Account, "leggere e cambiare le regole di Outlook");
+            ReadingView.ShowConsentError(this, T("Accesso alle impostazioni non consentito"), ex, provider.Account, T("leggere e cambiare le regole di Outlook"));
         }
         finally
         {
@@ -333,8 +335,8 @@ public sealed class RuleWindow : Window
         r.WithImportance = importanceCheck.IsChecked == true ? importance.SelectedIndex == 1 ? Importance.Low : Importance.High : null;
         var moveFolder = moveCheck.IsChecked == true ? (moveTo.SelectedItem as FolderChoice)?.Folder : null;
         var copyFolder = copyCheck.IsChecked == true ? (copyTo.SelectedItem as FolderChoice)?.Folder : null;
-        if (moveCheck.IsChecked == true && moveFolder == null) { ShowError("Scegli la cartella in cui spostare i messaggi."); return null; }
-        if (copyCheck.IsChecked == true && copyFolder == null) { ShowError("Scegli la cartella in cui copiare i messaggi."); return null; }
+        if (moveCheck.IsChecked == true && moveFolder == null) { ShowError(T("Scegli la cartella in cui spostare i messaggi.")); return null; }
+        if (copyCheck.IsChecked == true && copyFolder == null) { ShowError(T("Scegli la cartella in cui copiare i messaggi.")); return null; }
         (r.MoveTo, r.MoveToName) = (moveFolder?.Id ?? "", moveFolder?.Name ?? "");
         (r.CopyTo, r.CopyToName) = (copyFolder?.Id ?? "", copyFolder?.Name ?? "");
         r.Delete = delete.IsChecked == true;
@@ -345,20 +347,20 @@ public sealed class RuleWindow : Window
         if (server)
         {
             var addresses = forwardCheck.IsChecked == true ? Rules.Words(forward.Text) : [];
-            if (addresses.FirstOrDefault(a => !AccountTypes.LooksValid(a)) is { } wrong) { ShowError($"\"{wrong}\" non è un indirizzo valido."); return null; }
+            if (addresses.FirstOrDefault(a => !AccountTypes.LooksValid(a)) is { } wrong) { ShowError(T("\"{0}\" non è un indirizzo valido.", wrong)); return null; }
             r.ForwardTo = addresses.Select(a => r.ForwardTo.FirstOrDefault(x => x.Email.Equals(a, StringComparison.OrdinalIgnoreCase)) ?? new Address { Email = a }).ToList();
         }
-        if (r.MoveTo.Length > 0 && r.Delete) { ShowError("Scegli Sposta in oppure Elimina, non tutte e due."); return null; }
-        if (!r.HasActions) { ShowError("Scegli almeno un'azione: che cosa deve fare la regola."); return null; }
+        if (r.MoveTo.Length > 0 && r.Delete) { ShowError(T("Scegli Sposta in oppure Elimina, non tutte e due.")); return null; }
+        if (!r.HasActions) { ShowError(T("Scegli almeno un'azione: che cosa deve fare la regola.")); return null; }
         if (fromCheck.IsChecked == true && sender.Count == 0 || subjectCheck.IsChecked == true && r.SubjectContains.Count == 0 || bodyCheck.IsChecked == true && r.BodyContains.Count == 0)
         {
-            ShowError("Scrivi le parole della condizione scelta, o togli la spunta.");
+            ShowError(T("Scrivi le parole della condizione scelta, o togli la spunta."));
             return null;
         }
         r.Name = name.Text.Trim();
         if (r.Name.Length == 0)
-            r.Name = r.FromAddresses.Concat(r.SenderContains).FirstOrDefault() is { } who ? "Da " + who
-                   : r.SubjectContains.FirstOrDefault() is { } word ? "Oggetto: " + word : "Nuova regola";
+            r.Name = r.FromAddresses.Concat(r.SenderContains).FirstOrDefault() is { } who ? T("Da {0}", who)
+                   : r.SubjectContains.FirstOrDefault() is { } word ? T("Oggetto: {0}", word) : T("Nuova regola");
         return r;
     }
 
@@ -397,7 +399,7 @@ public sealed class RuleWindow : Window
         catch (Exception ex)
         {
             Log.Error("regola non salvata", ex);
-            ShowError("La regola non è stata salvata: " + ex.Message);
+            ShowError(T("La regola non è stata salvata: {0}", ex.Message));
             form.IsEnabled = save.IsEnabled = true;
         }
     }

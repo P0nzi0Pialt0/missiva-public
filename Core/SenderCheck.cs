@@ -314,9 +314,8 @@ public static class SenderCheck
         if (Own(account, body.AuthenticationResults) is { } r && Failed(r))
         {
             unverified = domain.Length > 0 ? domain : summary.From.Email;
-            why = $"Il server della tua casella non ha potuto verificare il mittente (DMARC {r.Dmarc ?? "assente"}, SPF {r.Spf ?? "assente"}, " +
-                  $"DKIM {(r.Dkim.Count == 0 ? "assente" : string.Join(", ", r.Dkim))}). Il messaggio potrebbe non venire da chi dice: " +
-                  "non aprire link o allegati e non fare pagamenti senza una conferma per un'altra strada.";
+            why = T("Il server della tua casella non ha potuto verificare il mittente (DMARC {0}, SPF {1}, DKIM {2}). Il messaggio potrebbe non venire da chi dice: non aprire link o allegati e non fare pagamenti senza una conferma per un'altra strada.",
+                    r.Dmarc ?? T("assente"), r.Spf ?? T("assente"), r.Dkim.Count == 0 ? T("assente") : string.Join(", ", r.Dkim));
         }
         bool external = AccountTypes.IsWork(account) && domain.Length > 0 && !SameOrganization(domain, AccountTypes.DomainOf(account.Email));
         return new SenderNotes(unverified, why, external, AddressBook.LookAlike(summary.From)) { NameAddress = NameAddress(summary.From) };
@@ -332,11 +331,11 @@ public static class SenderCheck
     {
         var domain = AccountTypes.DomainOf(message.From.Email);
         if (message.ReplyTo.Any(a => !SameOrganization(AccountTypes.DomainOf(a.Email), domain)))
-            return "le risposte vanno a un dominio diverso da quello del mittente";
+            return T("le risposte vanno a un dominio diverso da quello del mittente");
         var notes = Of(account, message, new MessageBody());
-        if (notes.External) return "mittente esterno all'organizzazione";
-        if (notes.LookAlike != null) return "nome di un contatto con un altro indirizzo";
-        if (notes.NameAddress != null) return "nome del mittente con l'indirizzo di un altro";
+        if (notes.External) return T("mittente esterno all'organizzazione");
+        if (notes.LookAlike != null) return T("nome di un contatto con un altro indirizzo");
+        if (notes.NameAddress != null) return T("nome del mittente con l'indirizzo di un altro");
         return null;
     }
 

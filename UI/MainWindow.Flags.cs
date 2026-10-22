@@ -15,7 +15,7 @@ public partial class MainWindow
     MenuItem FlagMenu(List<MessageItem> items)
     {
         bool allFlagged = items.All(m => m.IsFlagged);
-        var menu = MenuEntry(allFlagged ? "Contrassegno" : "Contrassegna", "", ContextMenus.Brush(ContextMenus.Tone.Red));
+        var menu = MenuEntry(allFlagged ? T("Contrassegno") : T("Contrassegna"), "", ContextMenus.Brush(ContextMenus.Tone.Red));
         void Option(string text, string? when, Func<Task> action)
         {
             var header = new DockPanel();
@@ -32,29 +32,35 @@ public partial class MainWindow
             item.Click += async (_, _) => await action();
             menu.Items.Add(item);
         }
-        var it = new System.Globalization.CultureInfo("it-IT");
         foreach (var choice in Flags.Choices(DateTime.Now))
-            Option(choice.Name, choice.Due.ToString("ddd d/MM", it), () => FlagWithDueAsync(items, choice.Start, choice.Due, choice.Name));
-        Option("Nessuna data", null, () => FlagWithDueAsync(items, null, null, "Nessuna data"));
-        Option("Data personalizzata…", null, async () =>
+            Option(choice.Name, FlagDay(choice.Due), () => FlagWithDueAsync(items, choice.Start, choice.Due, choice.Name)); // già nella lingua di Missiva (Flags.Choices)
+        Option(T("Nessuna data"), null, () => FlagWithDueAsync(items, null, null, "Nessuna data"));
+        Option(T("Data personalizzata…"), null, async () =>
         {
-            var dialog = new SnoozeWindow("Scadenza", "Scadenza il", "Contrassegna", withTime: false) { Owner = this };
+            var dialog = new SnoozeWindow(T("Scadenza"), T("Scadenza il"), T("Contrassegna"), withTime: false) { Owner = this };
             if (dialog.ShowDialog() == true) await FlagWithDueAsync(items, null, dialog.Until.Date, "Data personalizzata");
         });
         menu.Items.Add(new Separator());
-        Option("Imposta promemoria…", null, async () =>
+        Option(T("Imposta promemoria…"), null, async () =>
         {
-            var dialog = new SnoozeWindow("Promemoria", "Promemoria il", "Imposta") { Owner = this };
+            var dialog = new SnoozeWindow(T("Promemoria"), T("Promemoria il"), T("Imposta")) { Owner = this };
             if (dialog.ShowDialog() == true) await SetFlagReminderAsync(items, dialog.Until);
         });
         if (items.Any(m => m.IsFlagged))
         {
             menu.Items.Add(new Separator());
-            Option("Segna come completato", null, () => CompleteFlagsAsync(items));
-            Option("Cancella contrassegno", null, () => ClearFlagsAsync(items));
+            Option(T("Segna come completato"), null, () => CompleteFlagsAsync(items));
+            Option(T("Cancella contrassegno"), null, () => ClearFlagsAsync(items));
         }
         return menu;
     }
+
+    /// <summary>
+    /// Il giorno accanto a una scelta di Contrassegna: in italiano "mar 21/10", come sempre; in inglese con il mese in lettere,
+    /// nell'ordine della cultura ("Tue 21 Oct", "Tue Oct 21"), perché 21/10 e 10/21 non si confondano.
+    /// </summary>
+    internal static string FlagDay(DateTime due) =>
+        due.ToString(Lingua.English ? "ddd " + Lingua.Culture.DateTimeFormat.MonthDayPattern.Replace("MMMM", "MMM") : "ddd d/MM", Lingua.Culture);
 
     /// <summary>Contrassegnati con una scadenza (o senza data): Graph la scrive nel contrassegno, per Gmail e IMAP la tiene Missiva.</summary>
     async Task FlagWithDueAsync(List<MessageItem> items, DateTime? start, DateTime? due, string choice)
@@ -158,7 +164,7 @@ public partial class MainWindow
         foreach (var f in due)
         {
             var account = accounts.First(a => a.Provider.Account.Id == f.AccountId);
-            var when = f.Due is { } d ? Flags.DueText(d, DateTime.Today).ToLowerInvariant() : "senza scadenza";
+            var when = f.Due is { } d ? Flags.DueText(d, DateTime.Today).ToLowerInvariant() : T("senza scadenza");
             if (Testing)
             {
                 Log.Write($"prova: notificherei il promemoria del contrassegno \"{f.Subject}\" di {f.From} ({when}, {account.Header})");
@@ -168,11 +174,11 @@ public partial class MainWindow
             {
                 var toast = new Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder()
                     .AddArgument("account", f.AccountId).AddArgument("flag", f.Key).AddArgument("flagmessage", f.MessageId).AddArgument("flagfolder", f.FolderId)
-                    .AddText(f.Subject.Length > 0 ? f.Subject : "(nessun oggetto)")
+                    .AddText(f.Subject.Length > 0 ? f.Subject : T("(nessun oggetto)"))
                     .AddText($"{f.From} · {when}")
                     .AddAttributionText(account.Header)
-                    .AddButton(new Microsoft.Toolkit.Uwp.Notifications.ToastButton().SetContent("Posponi promemoria").AddArgument("action", "flagsnooze").SetBackgroundActivation())
-                    .AddButton(new Microsoft.Toolkit.Uwp.Notifications.ToastButton().SetContent("Segna come completato").AddArgument("action", "flagdone").SetBackgroundActivation());
+                    .AddButton(new Microsoft.Toolkit.Uwp.Notifications.ToastButton().SetContent(T("Posponi promemoria")).AddArgument("action", "flagsnooze").SetBackgroundActivation())
+                    .AddButton(new Microsoft.Toolkit.Uwp.Notifications.ToastButton().SetContent(T("Segna come completato")).AddArgument("action", "flagdone").SetBackgroundActivation());
                 App.Show(toast);
                 Log.Write($"promemoria del contrassegno di {Log.Private(f.Subject)} ({account.Header})");
             }

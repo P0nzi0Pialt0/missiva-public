@@ -63,8 +63,8 @@ public partial class MainWindow
     /// </summary>
     internal async Task<string> CheckUpdatesAsync(bool automatic)
     {
-        if (updateChecking) return "Un controllo è già in corso.";
-        if (updating) return "Un aggiornamento è già in corso.";
+        if (updateChecking) return T("Un controllo è già in corso.");
+        if (updating) return T("Un aggiornamento è già in corso.");
         updateChecking = true;
         try
         {
@@ -72,7 +72,13 @@ public partial class MainWindow
                 ? await Updates.AutomaticAsync(S.UpdatesAuto, Updates.Repository, UpdateKey.PublicKey, Updates.CurrentNumber, Updates.Http)
                 : await Updates.CheckAsync(Updates.Repository, UpdateKey.PublicKey, Updates.CurrentNumber, Updates.Http);
             if (outcome.Kind != Updates.CheckKind.Off || !automatic)
-                LastUpdateLine = $"{outcome.Line} (alle {DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture)} del {DateTime.Now.ToString("dd'/'MM", CultureInfo.InvariantCulture)})";
+            {
+                // In italiano "alle 14:05 del 21/10", come sempre; in inglese l'ora e il giorno della cultura ("2:05 PM", "21 Oct").
+                var now = DateTime.Now;
+                LastUpdateLine = T("{0} (alle {1} del {2})", outcome.Line,
+                                   Lingua.English ? now.ToString("t", Lingua.Culture) : now.ToString("HH:mm", CultureInfo.InvariantCulture),
+                                   Lingua.English ? now.ToString("d MMM", Lingua.Culture) : now.ToString("dd'/'MM", CultureInfo.InvariantCulture));
+            }
             if (outcome.Offer is { } offer && !updating)
             {
                 updateOffer = offer;
@@ -83,7 +89,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("controllo degli aggiornamenti", ex);
-            return "Il controllo non è riuscito: " + ex.Message;
+            return T("Il controllo non è riuscito: {0}", ex.Message);
         }
         finally
         {
@@ -165,33 +171,33 @@ public partial class MainWindow
     /// <summary>Il testo del pulsante: "Aggiornamento", "Aggiornamento 42%", "Aggiornamento non riuscito".</summary>
     internal static string UpdateButtonText(UpdateLook look, int percent) => look switch
     {
-        UpdateLook.Downloading => $"Aggiornamento {percent}%",
-        UpdateLook.Busy => "Aggiornamento…",
-        UpdateLook.Failed => "Aggiornamento non riuscito",
-        _ => "Aggiornamento",
+        UpdateLook.Downloading => T("Aggiornamento {0}%", percent),
+        UpdateLook.Busy => T("Aggiornamento…"),
+        UpdateLook.Failed => T("Aggiornamento non riuscito"),
+        _ => T("Aggiornamento"),
     };
 
     /// <summary>Il suggerimento del pulsante, che dice anche con la finestra stretta (solo l'icona) che cosa c'è.</summary>
     internal static string UpdateButtonTip(UpdateLook look, Updates.Manifest? manifest, long done, string? line) => look switch
     {
-        UpdateLook.Offer when manifest != null => $"È disponibile {manifest.Title}: le novità e Aggiorna",
+        UpdateLook.Offer when manifest != null => T("È disponibile {0}: le novità e Aggiorna", manifest.Title),
         UpdateLook.Downloading when manifest != null => UpdateProgressText(manifest.Number, done, manifest.Size),
-        UpdateLook.Failed => "Aggiornamento non riuscito" + (line is { Length: > 0 } ? ": " + line : ""),
-        _ => line ?? "Aggiornamento di Missiva",
+        UpdateLook.Failed => T("Aggiornamento non riuscito") + (line is { Length: > 0 } ? ": " + line : ""),
+        _ => line ?? T("Aggiornamento di Missiva"),
     };
 
     /// <summary>Le novità di un manifesto, una riga per punto.</summary>
     internal static string UpdateNews(Updates.Manifest manifest) =>
-        manifest.News.Count == 0 ? "Il rilascio non dice che cosa cambia." : string.Join("\n", manifest.News.Select(line => "• " + line));
+        manifest.News.Count == 0 ? T("Il rilascio non dice che cosa cambia.") : string.Join("\n", manifest.News.Select(line => "• " + line));
 
     /// <summary>"Scarico Missiva 0.3.530: 12,4 di 98,0 MB", nel pannellino e nel suggerimento durante lo scaricamento.</summary>
     internal static string UpdateProgressText(Version number, long done, long total) =>
-        $"Scarico Missiva {number}: {done / 1048576.0:0.0} di {total / 1048576.0:0.0} MB";
+        T("Scarico Missiva {0}: {1:0.0} di {2:0.0} MB", number, done / 1048576.0, total / 1048576.0);
 
     /// <summary>Il clic sul pulsante: il pannellino, che si apre e si chiude.</summary>
     void OnUpdateButton(object sender, RoutedEventArgs e)
     {
-        updateFlyout ??= new TitleFlyout(this, UpdateButton, "Aggiornamento di Missiva", 380);
+        updateFlyout ??= new TitleFlyout(this, UpdateButton, T("Aggiornamento di Missiva"), 380);
         updateFlyout.Toggle(UpdatePanel);
     }
 
@@ -207,7 +213,7 @@ public partial class MainWindow
         var manifest = updateOffer?.Manifest;
         panel.Children.Add(new TextBlock
         {
-            Text = updateLook == UpdateLook.Failed && manifest == null ? "Aggiornamento non riuscito" : manifest?.Title ?? "Aggiornamento di Missiva",
+            Text = updateLook == UpdateLook.Failed && manifest == null ? T("Aggiornamento non riuscito") : manifest?.Title ?? T("Aggiornamento di Missiva"),
             FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8),
         });
         TextBlock Text(string text, bool secondary = false)
@@ -228,31 +234,31 @@ public partial class MainWindow
         switch (updateLook)
         {
             case UpdateLook.Offer when manifest != null:
-                panel.Children.Add(Text("Novità", secondary: true));
+                panel.Children.Add(Text(T("Novità"), secondary: true));
                 panel.Children.Add(Text(UpdateNews(manifest)));
                 if (updateLine is { Length: > 0 } note) panel.Children.Add(Text(note, secondary: true));
-                Add("Più tardi", OnUpdateLater, help: "Per questa versione il pulsante torna domani");
-                Add("Aggiorna", OnUpdateNow, accent: true, help: "Scarica la versione nuova e la controlla; poi, dopo una domanda, Missiva si chiude e si riapre aggiornata");
+                Add(T("Più tardi"), OnUpdateLater, help: T("Per questa versione il pulsante torna domani"));
+                Add(T("Aggiorna"), OnUpdateNow, accent: true, help: T("Scarica la versione nuova e la controlla; poi, dopo una domanda, Missiva si chiude e si riapre aggiornata"));
                 break;
             case UpdateLook.Downloading when manifest != null:
                 panel.Children.Add(updateFlyText = Text(UpdateProgressText(manifest.Number, updateDone, manifest.Size)));
                 panel.Children.Add(updateFlyBar = new ProgressBar { Height = 4, Maximum = 100, Value = UpdatePercent(updateDone, manifest.Size), Margin = new Thickness(0, 0, 0, 8) });
-                AutomationProperties.SetName(updateFlyBar, "Avanzamento dello scaricamento dell'aggiornamento");
-                Add("Annulla", OnUpdateCancel, help: "Ferma lo scaricamento: Missiva resta com'è");
+                AutomationProperties.SetName(updateFlyBar, T("Avanzamento dello scaricamento dell'aggiornamento"));
+                Add(T("Annulla"), OnUpdateCancel, help: T("Ferma lo scaricamento: Missiva resta com'è"));
                 break;
             case UpdateLook.Busy:
-                panel.Children.Add(Text(updateLine ?? "Un momento…"));
+                panel.Children.Add(Text(updateLine ?? T("Un momento…")));
                 break;
             case UpdateLook.Failed:
-                var why = Text(updateLine ?? "Il motivo non si conosce.");
+                var why = Text(updateLine ?? T("Il motivo non si conosce."));
                 why.SetResourceReference(TextBlock.ForegroundProperty, "CriticalBrush");
                 panel.Children.Add(why);
                 if (manifest != null)
                 {
-                    Add("Più tardi", OnUpdateLater, help: "Per questa versione il pulsante torna domani");
-                    Add("Riprova", OnUpdateNow, accent: true, help: "Scarica di nuovo la versione nuova e la controlla");
+                    Add(T("Più tardi"), OnUpdateLater, help: T("Per questa versione il pulsante torna domani"));
+                    Add(T("Riprova"), OnUpdateNow, accent: true, help: T("Scarica di nuovo la versione nuova e la controlla"));
                 }
-                else Add("Chiudi", OnUpdateLater);
+                else Add(T("Chiudi"), OnUpdateLater);
                 break;
         }
         if (buttons.Children.Count > 0) panel.Children.Add(buttons);
@@ -316,8 +322,8 @@ public partial class MainWindow
             catch (Exception ex)
             {
                 SetUpdateLook(UpdateLook.Failed, ex is Updates.Refused
-                    ? $"Missiva {number} non è stata accettata: {ex.Message}"
-                    : $"Lo scaricamento di Missiva {number} non è riuscito: {ex.Message}");
+                    ? T("Missiva {0} non è stata accettata: {1}", number, ex.Message)
+                    : T("Lo scaricamento di Missiva {0} non è riuscito: {1}", number, ex.Message));
                 return;
             }
             finally
@@ -325,23 +331,23 @@ public partial class MainWindow
                 ticker.Stop();
                 updateDownload = null;
             }
-            SetUpdateLook(UpdateLook.Busy, $"Provo Missiva {number}…");
+            SetUpdateLook(UpdateLook.Busy, T("Provo Missiva {0}…", number));
             if (await Updates.TryRunAsync(prepared) is { } problem)
             {
                 Log.Write($"aggiornamenti: il nuovo eseguibile {number} non parte ({problem}): resta {AppVersion.Number}");
                 Updates.Remove(prepared.Folder);
-                SetUpdateLook(UpdateLook.Failed, $"Missiva {number} è stata scaricata ma su questo PC non parte ({problem}): resta questa.");
+                SetUpdateLook(UpdateLook.Failed, T("Missiva {0} è stata scaricata ma su questo PC non parte ({1}): resta questa.", number, problem));
                 return;
             }
             updateFlyout?.Close("domanda di conferma");
-            if (Dialog.Ask(this, $"Aggiornare a Missiva {number}?",
-                           "Missiva si chiude e si riapre aggiornata. Se stai scrivendo un messaggio, prima ti chiede se salvare la bozza.", "Aggiorna") != Choice.Primary)
+            if (Dialog.Ask(this, T("Aggiornare a Missiva {0}?", number),
+                           T("Missiva si chiude e si riapre aggiornata. Se stai scrivendo un messaggio, prima ti chiede se salvare la bozza."), T("Aggiorna")) != Choice.Primary)
             {
                 Updates.Remove(prepared.Folder);
                 ShowUpdateOffer();
                 return;
             }
-            SetUpdateLook(UpdateLook.Busy, $"Aggiorno a Missiva {number}…");
+            SetUpdateLook(UpdateLook.Busy, T("Aggiorno a Missiva {0}…", number));
             App.Current.UpdateOnExit(prepared);
         }
         finally
@@ -356,7 +362,7 @@ public partial class MainWindow
     internal void UpdateCancelled(Updates.Prepared prepared)
     {
         Updates.Remove(prepared.Folder);
-        ShowUpdateOffer($"Aggiornamento a Missiva {prepared.Manifest.Number} annullato: resta questa.");
+        ShowUpdateOffer(T("Aggiornamento a Missiva {0} annullato: resta questa.", prepared.Manifest.Number));
     }
 
     // ---------------------------------------------------------------- la barra del titolo
@@ -408,7 +414,8 @@ public partial class MainWindow
     internal void TestUpdate(string what)
     {
         updateOffer ??= new Updates.Offer(new Updates.Manifest(new Version(0, 3, 999), "0.3.999 di prova", DateOnly.FromDateTime(DateTime.Today), "0000000", "Missiva-0.3.999.zip",
-            102_760_448, new string('0', 64), ["Il numero sull'icona a scelta", "L'aggiornamento nella barra del titolo", "Gli scaricamenti degli allegati"]),
+            102_760_448, new string('0', 64), ["Il numero sull'icona a scelta", "L'aggiornamento nella barra del titolo", "Gli scaricamenti degli allegati"],
+            ["Choose the number on the icon", "Updates in the title bar", "Attachment downloads"]),
             new Uri("https://example.com/Missiva-0.3.999.zip"));
         var parts = what.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         switch (parts[0])
@@ -421,10 +428,11 @@ public partial class MainWindow
                 SetUpdateLook(UpdateLook.Downloading);
                 break;
             case "prova":
-                SetUpdateLook(UpdateLook.Busy, $"Provo Missiva {updateOffer.Manifest.Number}…");
+                SetUpdateLook(UpdateLook.Busy, T("Provo Missiva {0}…", updateOffer.Manifest.Number));
                 break;
             case "errore":
-                SetUpdateLook(UpdateLook.Failed, $"Lo scaricamento di Missiva {updateOffer.Manifest.Number} non è riuscito: la connessione si è interrotta.");
+                // Come UpdateNowAsync: la frase della finestra, con il motivo come lo darebbe la rete (DownloadList.Reason).
+                SetUpdateLook(UpdateLook.Failed, T("Lo scaricamento di Missiva {0} non è riuscito: {1}", updateOffer.Manifest.Number, T("la connessione si è interrotta.")));
                 break;
             case "pannello":
                 OnUpdateButton(this, new RoutedEventArgs());

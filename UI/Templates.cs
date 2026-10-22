@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Windows.Documents;
 
 namespace Missiva.UI;
@@ -7,12 +6,11 @@ namespace Missiva.UI;
 /// I modelli di risposta, come I miei modelli del nuovo Outlook, le Parti rapide dell'Outlook classico e i Modelli di
 /// Thunderbird: nome, oggetto facoltativo e testo scritto con l'editor delle firme (RTF), per tutti gli account o per uno
 /// (Settings.Templates, cifrati con DPAPI: dentro ci possono essere IBAN e dati dei clienti; mai nel registro). Nel testo e
-/// nell'oggetto {nome} diventa il nome del primo destinatario e {data} la data di oggi.
+/// nell'oggetto {nome} diventa il nome del primo destinatario e {data} la data di oggi; in tutte e due le lingue valgono
+/// anche {name} e {date} (Missiva in inglese, 21 ottobre 2026), e la data è scritta nella lingua di Missiva.
 /// </summary>
 public static class Templates
 {
-    static readonly CultureInfo Italian = new("it-IT");
-
     static bool Of(MailTemplate template, MailAccount? account) => template.AccountId == null || template.AccountId == account?.Id;
 
     /// <summary>
@@ -39,15 +37,15 @@ public static class Templates
     public static string PanelNote(int all, int shown, int hidden, bool searching)
     {
         if (all == 0)
-            return "Nessun modello. Scrivi il testo e premi \"Salva come modello\", oppure crealo in Impostazioni, Posta, Modelli. {nome} diventa il nome del primo destinatario, {data} la data di oggi.";
+            return T("Nessun modello. Scrivi il testo e premi \"Salva come modello\", oppure crealo in Impostazioni, Posta, Modelli. {nome} diventa il nome del primo destinatario, {data} la data di oggi.");
         string unreadable = hidden switch
         {
             <= 0 => "",
-            1 => "Un modello non è in elenco perché su questo PC non si legge: è cifrato per un altro utente di Windows. In Impostazioni, Posta, Modelli c'è ancora, e lì si elimina.",
-            _ => $"{hidden} modelli non sono in elenco perché su questo PC non si leggono: sono cifrati per un altro utente di Windows. In Impostazioni, Posta, Modelli ci sono ancora, e lì si eliminano.",
+            1 => T("Un modello non è in elenco perché su questo PC non si legge: è cifrato per un altro utente di Windows. In Impostazioni, Posta, Modelli c'è ancora, e lì si elimina."),
+            _ => T("{0} modelli non sono in elenco perché su questo PC non si leggono: sono cifrati per un altro utente di Windows. In Impostazioni, Posta, Modelli ci sono ancora, e lì si eliminano.", hidden),
         };
         if (shown > 0) return searching ? "" : unreadable;
-        return searching || hidden == 0 ? "Nessun modello con queste parole." : unreadable;
+        return searching || hidden == 0 ? T("Nessun modello con queste parole.") : unreadable;
     }
 
     /// <summary>
@@ -57,11 +55,17 @@ public static class Templates
     public static string? FirstName(Address? person) =>
         person?.Name.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(w => w.Any(char.IsLetter));
 
-    /// <summary>I segnaposto di un testo: {nome} (se si sa) e {data}, "27 settembre 2026".</summary>
+    /// <summary>
+    /// I segnaposto di un testo: {nome} o {name} (se si sa) e {data} o {date}, "27 settembre 2026" in italiano e
+    /// "27 September 2026" in inglese (Lingua.Culture). Le due forme valgono in tutte e due le lingue: un modello scritto
+    /// con Missiva in italiano funziona anche dopo il passaggio all'inglese, e il contrario.
+    /// </summary>
     public static string Fill(string text, string? name, DateTime today)
     {
-        if (name != null) text = text.Replace("{nome}", name, StringComparison.OrdinalIgnoreCase);
-        return text.Replace("{data}", today.ToString("d MMMM yyyy", Italian), StringComparison.OrdinalIgnoreCase);
+        if (name != null)
+            text = text.Replace("{nome}", name, StringComparison.OrdinalIgnoreCase).Replace("{name}", name, StringComparison.OrdinalIgnoreCase);
+        var date = today.ToString("d MMMM yyyy", Lingua.Culture);
+        return text.Replace("{data}", date, StringComparison.OrdinalIgnoreCase).Replace("{date}", date, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -155,40 +155,42 @@ public static class Rules
         text.Split([';', ',', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
 
-    static string Quoted(IEnumerable<string> words, string or = " o ") => string.Join(or, words.Select(w => $"\"{w}\""));
+    /// <summary>Le parole fra virgolette, unite da " o " (in inglese " or ") o dal separatore dato.</summary>
+    static string Quoted(IEnumerable<string> words, string? or = null) => string.Join(or ?? T(" o "), words.Select(w => $"\"{w}\""));
 
     /// <summary>
     /// La regola in una riga, come l'elenco delle regole del nuovo Outlook: "Se il mittente è x@y e l'oggetto contiene
-    /// "fattura": sposta in Fatture, segna come letto".
+    /// "fattura": sposta in Fatture, segna come letto". Ogni condizione e ogni azione è un pezzo intero con i suoi valori
+    /// ({0}), uniti da " e " e da virgole; in inglese "If the sender is x@y and the subject contains ...: move to ...".
     /// </summary>
     public static string Describe(MailRule r, Func<string, string?>? folderName = null)
     {
         var when = new List<string>();
         var from = r.FromAddresses.Concat(r.SenderContains.Select(w => $"\"{w}\"")).ToList();
-        if (from.Count > 0) when.Add((r.SenderContains.Count == 0 ? "il mittente è " : "il mittente è o contiene ") + string.Join(" o ", from));
-        if (r.SentToMe) when.Add("è inviato a me");
-        if (r.SentCcMe) when.Add("sono in Cc");
-        if (r.SubjectContains.Count > 0) when.Add("l'oggetto contiene " + Quoted(r.SubjectContains));
-        if (r.BodyContains.Count > 0) when.Add("il testo contiene " + Quoted(r.BodyContains));
-        if (r.HasAttachments) when.Add("ha allegati");
-        if (r.WithImportance is { } importance) when.Add(importance == Importance.Low ? "l'importanza è bassa" : "l'importanza è alta");
-        if (r.HiddenConditions.Count > 0) when.Add("altre condizioni di Outlook (" + string.Join(", ", r.HiddenConditions) + ")");
+        if (from.Count > 0) when.Add(r.SenderContains.Count == 0 ? T("il mittente è {0}", string.Join(T(" o "), from)) : T("il mittente è o contiene {0}", string.Join(T(" o "), from)));
+        if (r.SentToMe) when.Add(T("è inviato a me"));
+        if (r.SentCcMe) when.Add(T("sono in Cc"));
+        if (r.SubjectContains.Count > 0) when.Add(T("l'oggetto contiene {0}", Quoted(r.SubjectContains)));
+        if (r.BodyContains.Count > 0) when.Add(T("il testo contiene {0}", Quoted(r.BodyContains)));
+        if (r.HasAttachments) when.Add(T("ha allegati"));
+        if (r.WithImportance is { } importance) when.Add(importance == Importance.Low ? T("l'importanza è bassa") : T("l'importanza è alta"));
+        if (r.HiddenConditions.Count > 0) when.Add(T("altre condizioni di Outlook ({0})", string.Join(", ", r.HiddenConditions)));
 
-        string Folder(string id, string name) => folderName?.Invoke(id) ?? (name.Length > 0 ? name : "una cartella");
+        string Folder(string id, string name) => folderName?.Invoke(id) ?? (name.Length > 0 ? name : T("una cartella"));
         var then = new List<string>();
-        if (r.MoveTo.Length > 0) then.Add("sposta in " + Folder(r.MoveTo, r.MoveToName));
-        if (r.CopyTo.Length > 0) then.Add("copia in " + Folder(r.CopyTo, r.CopyToName));
-        if (r.Delete) then.Add("elimina (nel Cestino)");
-        if (r.MarkRead) then.Add("segna come letto");
-        if (r.Flag) then.Add("contrassegna");
-        if (r.Categories.Count > 0) then.Add("categoria " + Quoted(r.Categories, ", "));
-        if (r.ForwardTo.Count > 0) then.Add("inoltra a " + string.Join(", ", r.ForwardTo.Select(a => a.Email)));
-        if (r.RedirectTo.Count > 0) then.Add("reindirizza a " + string.Join(", ", r.RedirectTo.Select(a => a.Email)));
-        if (r.ForwardAsAttachmentTo.Count > 0) then.Add("inoltra come allegato a " + string.Join(", ", r.ForwardAsAttachmentTo.Select(a => a.Email)));
-        if (r.Hidden.Except(r.HiddenConditions).Any()) then.Add("altre azioni di Outlook (" + string.Join(", ", r.Hidden.Except(r.HiddenConditions)) + ")");
-        if (r.StopProcessing) then.Add("non applicare altre regole");
-        if (then.Count == 0) then.Add("nessuna azione");
-        return (when.Count == 0 ? "Per tutti i messaggi" : "Se " + string.Join(" e ", when)) + ": " + string.Join(", ", then);
+        if (r.MoveTo.Length > 0) then.Add(T("sposta in {0}", Folder(r.MoveTo, r.MoveToName)));
+        if (r.CopyTo.Length > 0) then.Add(T("copia in {0}", Folder(r.CopyTo, r.CopyToName)));
+        if (r.Delete) then.Add(T("elimina (nel Cestino)"));
+        if (r.MarkRead) then.Add(T("segna come letto"));
+        if (r.Flag) then.Add(T("contrassegna"));
+        if (r.Categories.Count > 0) then.Add(T("categoria {0}", Quoted(r.Categories, ", ")));
+        if (r.ForwardTo.Count > 0) then.Add(T("inoltra a {0}", string.Join(", ", r.ForwardTo.Select(a => a.Email))));
+        if (r.RedirectTo.Count > 0) then.Add(T("reindirizza a {0}", string.Join(", ", r.RedirectTo.Select(a => a.Email))));
+        if (r.ForwardAsAttachmentTo.Count > 0) then.Add(T("inoltra come allegato a {0}", string.Join(", ", r.ForwardAsAttachmentTo.Select(a => a.Email))));
+        if (r.Hidden.Except(r.HiddenConditions).Any()) then.Add(T("altre azioni di Outlook ({0})", string.Join(", ", r.Hidden.Except(r.HiddenConditions))));
+        if (r.StopProcessing) then.Add(T("non applicare altre regole"));
+        if (then.Count == 0) then.Add(T("nessuna azione"));
+        return (when.Count == 0 ? T("Per tutti i messaggi") : T("Se {0}", string.Join(T(" e "), when))) + ": " + string.Join(", ", then);
     }
 
     /// <summary>
@@ -227,20 +229,27 @@ public static class Rules
         List<string> known = before == null || turnedOn ? [] : ExternalForwards(before, account);
         if (!outside.Except(known, StringComparer.OrdinalIgnoreCase).Any()) return null;
         bool all = !after.HasConditions && after.HiddenConditions.Count == 0;
-        string which = all ? "tutti i messaggi che arrivano" : "i messaggi che corrispondono";
-        string sent = $"verranno inoltrati a {string.Join(", ", outside)}, fuori {Outside(account)}, anche quando non guardi";
-        string trusted = outside.Count == 1 ? "l'indirizzo è tuo" : "gli indirizzi sono tuoi";
-        string heading = all && !turnedOn ? "La regola vale per tutti i messaggi e li manda fuori" : "La regola manda la tua posta fuori";
+        // Una frase intera per caso (tutti i messaggi o quelli che corrispondono, un indirizzo o più), con gli indirizzi e
+        // "fuori dalla tua organizzazione" o "fuori dalla tua casella" come valori.
+        string addresses = string.Join(", ", outside), away = Outside(account);
+        bool one = outside.Count == 1;
+        string heading = all && !turnedOn ? T("La regola vale per tutti i messaggi e li manda fuori") : T("La regola manda la tua posta fuori");
         if (turnedOn)
-            return (heading, $"Con la regola \"{after.Name}\" accesa, {which} {sent}. Chi entra di nascosto in una casella lascia proprio regole così: " +
-                             $"accendila solo se l'hai creata tu e {trusted} o di qualcuno di cui ti fidi.", "Accendi la regola");
+            return (heading, (all ? T("Con la regola \"{0}\" accesa, tutti i messaggi che arrivano verranno inoltrati a {1}, {2}, anche quando non guardi.", after.Name, addresses, away)
+                                  : T("Con la regola \"{0}\" accesa, i messaggi che corrispondono verranno inoltrati a {1}, {2}, anche quando non guardi.", after.Name, addresses, away)) + " " +
+                             (one ? T("Chi entra di nascosto in una casella lascia proprio regole così: accendila solo se l'hai creata tu e l'indirizzo è tuo o di qualcuno di cui ti fidi.")
+                                  : T("Chi entra di nascosto in una casella lascia proprio regole così: accendila solo se l'hai creata tu e gli indirizzi sono tuoi o di qualcuno di cui ti fidi.")),
+                    T("Accendi la regola"));
         // Dalla finestra della regola.
-        const string every = "agirà su ogni messaggio che arriva nella Posta in arrivo";
-        string tail = $"Chi entra di nascosto in una casella crea proprio regole così: salvala solo se {trusted} o di qualcuno di cui ti fidi.";
+        string tail = one ? T("Chi entra di nascosto in una casella crea proprio regole così: salvala solo se l'indirizzo è tuo o di qualcuno di cui ti fidi.")
+                          : T("Chi entra di nascosto in una casella crea proprio regole così: salvala solo se gli indirizzi sono tuoi o di qualcuno di cui ti fidi.");
         if (!after.Enabled)
-            return (heading, $"La regola è spenta: quando la accendi, {(all ? $"{every} (non hai scelto condizioni), e tutti" : which)} {sent}. {tail}", "Salva");
-        return (heading, $"{(all ? $"Non hai scelto condizioni: la regola {every}, e tutti" : "I messaggi che corrispondono")} {sent}. {tail}",
-                outside.Count == 1 ? "Inoltra a " + outside[0] : $"Inoltra a {outside.Count} indirizzi");
+            return (heading, (all ? T("La regola è spenta: quando la accendi, agirà su ogni messaggio che arriva nella Posta in arrivo (non hai scelto condizioni), e tutti verranno inoltrati a {0}, {1}, anche quando non guardi.", addresses, away)
+                                  : T("La regola è spenta: quando la accendi, i messaggi che corrispondono verranno inoltrati a {0}, {1}, anche quando non guardi.", addresses, away)) + " " + tail,
+                    T("Salva"));
+        return (heading, (all ? T("Non hai scelto condizioni: la regola agirà su ogni messaggio che arriva nella Posta in arrivo, e tutti verranno inoltrati a {0}, {1}, anche quando non guardi.", addresses, away)
+                              : T("I messaggi che corrispondono verranno inoltrati a {0}, {1}, anche quando non guardi.", addresses, away)) + " " + tail,
+                one ? T("Inoltra a {0}", outside[0]) : T("Inoltra a {0} indirizzi", outside.Count));
     }
 
     /// <summary>
@@ -254,12 +263,18 @@ public static class Rules
     {
         if (rule.HasConditions || rule.HiddenConditions.Count > 0) return null;
         var outside = ExternalForwards(rule, account);
-        string sent = outside.Count == 0 ? "" : $", e lo manderà a {string.Join(", ", outside)}, fuori {Outside(account)}";
-        return ("La regola vale per tutti i messaggi", $"Non hai scelto condizioni: la regola agirà su ogni messaggio che arriva nella Posta in arrivo{sent}. Salvarla lo stesso?", "Salva");
+        return (T("La regola vale per tutti i messaggi"),
+                outside.Count == 0 ? T("Non hai scelto condizioni: la regola agirà su ogni messaggio che arriva nella Posta in arrivo. Salvarla lo stesso?")
+                    : T("Non hai scelto condizioni: la regola agirà su ogni messaggio che arriva nella Posta in arrivo, e lo manderà a {0}, {1}. Salvarla lo stesso?",
+                        string.Join(", ", outside), Outside(account)),
+                T("Salva"));
     }
 
-    /// <summary>Dove va la posta inoltrata fuori: fuori dall'organizzazione per un account di lavoro, dalla casella per uno personale.</summary>
-    static string Outside(MailAccount account) => AccountTypes.IsWork(account) ? "dalla tua organizzazione" : "dalla tua casella";
+    /// <summary>
+    /// Dove va la posta inoltrata fuori: fuori dall'organizzazione per un account di lavoro, dalla casella per uno personale
+    /// ("fuori dalla tua organizzazione", in inglese "outside your organization").
+    /// </summary>
+    static string Outside(MailAccount account) => AccountTypes.IsWork(account) ? T("fuori dalla tua organizzazione") : T("fuori dalla tua casella");
 
     // ---------------------------------------------------------------- regole di Outlook (Graph messageRule)
 
@@ -289,19 +304,19 @@ public static class Rules
         _ => true,
     };
 
-    /// <summary>Le parole con cui l'elenco dice quello che una regola di Outlook fa e Missiva non mostra.</summary>
+    /// <summary>Le parole con cui l'elenco dice quello che una regola di Outlook fa e Missiva non mostra (nella lingua di Missiva).</summary>
     static string HiddenName(string key) => key switch
     {
-        "permanentDelete" => "elimina definitivamente",
-        "markImportance" => "cambia l'importanza",
-        "headerContains" => "intestazioni",
-        "recipientContains" or "sentToAddresses" => "destinatari",
-        "bodyOrSubjectContains" => "oggetto o testo",
-        "withinSizeRange" => "dimensione",
-        "messageActionFlag" => "contrassegno",
-        "sensitivity" => "riservatezza",
-        "notSentToMe" or "sentOnlyToMe" or "sentToOrCcMe" => "a chi è inviato",
-        "isAutomaticReply" or "isAutomaticForward" => "risposte o inoltri automatici",
+        "permanentDelete" => T("elimina definitivamente"),
+        "markImportance" => T("cambia l'importanza"),
+        "headerContains" => T("intestazioni"),
+        "recipientContains" or "sentToAddresses" => T("destinatari"),
+        "bodyOrSubjectContains" => T("oggetto o testo"),
+        "withinSizeRange" => T("dimensione"),
+        "messageActionFlag" => T("contrassegno"),
+        "sensitivity" => T("riservatezza"),
+        "notSentToMe" or "sentOnlyToMe" or "sentToOrCcMe" => T("a chi è inviato"),
+        "isAutomaticReply" or "isAutomaticForward" => T("risposte o inoltri automatici"),
         _ => key,
     };
 
@@ -328,7 +343,7 @@ public static class Rules
         };
         foreach (var (key, value) in conditions ?? new JsonObject())
             if (!KnownConditions.Contains(key) && !key.StartsWith('@') && Set(value)) rule.HiddenConditions.Add(HiddenName(key));
-        if (r?["exceptions"] is JsonObject exceptions && exceptions.Any(x => !x.Key.StartsWith('@') && Set(x.Value))) rule.HiddenConditions.Add("eccezioni");
+        if (r?["exceptions"] is JsonObject exceptions && exceptions.Any(x => !x.Key.StartsWith('@') && Set(x.Value))) rule.HiddenConditions.Add(T("eccezioni"));
         rule.HiddenConditions = rule.HiddenConditions.Distinct().ToList();
         rule.Hidden.AddRange(rule.HiddenConditions);
         foreach (var (key, value) in actions ?? new JsonObject())
@@ -620,7 +635,7 @@ public static class Rules
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 bool again = repeatable || ex is MailException { Repeatable: true };
-                outcome.Errors.Add($"{failure}{(again ? "" : ", e non si riprova")}: {ex.Message}");
+                outcome.Errors.Add(again ? $"{failure}: {ex.Message}" : T("{0}, e non si riprova: {1}", failure, ex.Message));
                 foreach (var m in list)
                 {
                     failed.Add(m);
@@ -632,25 +647,25 @@ public static class Rules
             if (action != null) foreach (var m in list) NotAgain(m).Add(action);
             return true;
         }
-        if (read.Count > 0 && await GroupAsync(ReadAction, read, () => provider.SetReadAsync(read, true), $"{read.Count} non segnati come letti"))
+        if (read.Count > 0 && await GroupAsync(ReadAction, read, () => provider.SetReadAsync(read, true), T("{0} non segnati come letti", read.Count)))
         {
             foreach (var m in read) { m.IsRead = true; outcome.Read.Add(m); }
-            outcome.Done.Add($"{read.Count} segnati come letti");
+            outcome.Done.Add(T("{0} segnati come letti", read.Count));
         }
-        if (flag.Count > 0 && await GroupAsync(FlagAction, flag, () => provider.SetFlagAsync(flag, true), $"{flag.Count} non contrassegnati"))
+        if (flag.Count > 0 && await GroupAsync(FlagAction, flag, () => provider.SetFlagAsync(flag, true), T("{0} non contrassegnati", flag.Count)))
         {
             foreach (var m in flag) { m.IsFlagged = true; outcome.Flagged.Add(m); }
-            outcome.Done.Add($"{flag.Count} contrassegnati");
+            outcome.Done.Add(T("{0} contrassegnati", flag.Count));
         }
         foreach (var (category, list) in categories)
-            if (await GroupAsync(CategoryAction + category.ToUpperInvariant(), list, () => provider.SetCategoryAsync(list, category, true), $"{list.Count} senza la categoria \"{category}\""))
-                outcome.Done.Add($"{list.Count} con la categoria \"{category}\"");
+            if (await GroupAsync(CategoryAction + category.ToUpperInvariant(), list, () => provider.SetCategoryAsync(list, category, true), T("{0} senza la categoria \"{1}\"", list.Count, category)))
+                outcome.Done.Add(T("{0} con la categoria \"{1}\"", list.Count, category));
 
         // Le cartelle dell'account, lette qui la prima volta che servono: se non si leggono, nessuna copia e nessuno
         // spostamento è partito, e quei messaggi si riprovano.
         List<MailFolder> known = [];
         var placed = copies.Values.Concat(moves.Values).SelectMany(l => l).Concat(trash).Distinct().ToList();
-        if (placed.Count > 0 && !await GroupAsync(null, placed, async () => known = await folders(), $"{placed.Count} non copiati né spostati, le cartelle non si sono lette"))
+        if (placed.Count > 0 && !await GroupAsync(null, placed, async () => known = await folders(), T("{0} non copiati né spostati, le cartelle non si sono lette", placed.Count)))
         {
             copies.Clear();
             moves.Clear();
@@ -658,40 +673,41 @@ public static class Rules
         }
         foreach (var (id, list) in copies)
         {
-            if (known.FirstOrDefault(f => f.Id == id) is not { } folder) { outcome.Done.Add($"cartella per la copia non trovata ({list.Count} messaggi)"); continue; }
-            if (await GroupAsync(CopyAction + id, list, () => provider.CopyAsync(list, folder), $"{list.Count} non copiati in {folder.Name}", repeatable: false))
-                outcome.Done.Add($"{list.Count} copiati in {folder.Name}");
+            if (known.FirstOrDefault(f => f.Id == id) is not { } folder) { outcome.Done.Add(T("cartella per la copia non trovata ({0} messaggi)", list.Count)); continue; }
+            if (await GroupAsync(CopyAction + id, list, () => provider.CopyAsync(list, folder), T("{0} non copiati in {1}", list.Count, folder.Name), repeatable: false))
+                outcome.Done.Add(T("{0} copiati in {1}", list.Count, folder.Name));
         }
         // Spostamenti ed eliminazioni solo per i messaggi a cui è riuscito tutto il resto: gli altri restano dove sono, da riprovare.
-        List<MessageSummary> Ready(List<MessageSummary> list, string where)
+        // held dice, in una frase intera, quanti restano e dove non sono andati.
+        List<MessageSummary> Ready(List<MessageSummary> list, Func<int, string> held)
         {
-            var held = list.Where(failed.Contains).ToList();
-            if (held.Count == 0) return list;
-            foreach (var m in held) retry.Add(m);
-            outcome.Errors.Add($"{held.Count} lasciati dove sono, non {where}: un'azione di prima non è riuscita");
-            return list.Except(held).ToList();
+            var kept = list.Where(failed.Contains).ToList();
+            if (kept.Count == 0) return list;
+            foreach (var m in kept) retry.Add(m);
+            outcome.Errors.Add(held(kept.Count));
+            return list.Except(kept).ToList();
         }
         foreach (var (id, list) in moves)
         {
-            if (known.FirstOrDefault(f => f.Id == id) is not { } folder) { outcome.Done.Add($"cartella per lo spostamento non trovata ({list.Count} messaggi)"); continue; }
-            var leaving = Ready(list, $"spostati in {folder.Name}");
-            if (leaving.Count == 0 || !await GroupAsync(MoveAction, leaving, () => provider.MoveAsync(leaving, folder), $"{leaving.Count} non spostati in {folder.Name}", repeatable: false)) continue;
+            if (known.FirstOrDefault(f => f.Id == id) is not { } folder) { outcome.Done.Add(T("cartella per lo spostamento non trovata ({0} messaggi)", list.Count)); continue; }
+            var leaving = Ready(list, n => T("{0} lasciati dove sono, non spostati in {1}: un'azione di prima non è riuscita", n, folder.Name));
+            if (leaving.Count == 0 || !await GroupAsync(MoveAction, leaving, () => provider.MoveAsync(leaving, folder), T("{0} non spostati in {1}", leaving.Count, folder.Name), repeatable: false)) continue;
             foreach (var m in leaving) outcome.Removed.Add(m);
-            outcome.Done.Add($"{leaving.Count} spostati in {folder.Name}");
+            outcome.Done.Add(T("{0} spostati in {1}", leaving.Count, folder.Name));
         }
         if (trash.Count > 0)
         {
             var bin = known.FirstOrDefault(f => f.Kind == FolderKind.Deleted);
-            bool asked = bin != null || await GroupAsync(null, trash, async () => bin = await provider.EnsureTrashAsync(), $"{trash.Count} non eliminati, il Cestino non si è potuto creare");
-            if (asked && bin == null) outcome.Done.Add($"nessun Cestino ({trash.Count} messaggi non eliminati)");
+            bool asked = bin != null || await GroupAsync(null, trash, async () => bin = await provider.EnsureTrashAsync(), T("{0} non eliminati, il Cestino non si è potuto creare", trash.Count));
+            if (asked && bin == null) outcome.Done.Add(T("nessun Cestino ({0} messaggi non eliminati)", trash.Count));
             else if (bin != null)
             {
                 var away = trash.Where(m => m.FolderId != bin.Id).ToList();
-                var leaving = Ready(away, "messi nel Cestino");
-                if (leaving.Count > 0 ? await GroupAsync(MoveAction, leaving, () => provider.MoveAsync(leaving, bin), $"{leaving.Count} non messi nel Cestino", repeatable: false) : away.Count == 0)
+                var leaving = Ready(away, n => T("{0} lasciati dove sono, non messi nel Cestino: un'azione di prima non è riuscita", n));
+                if (leaving.Count > 0 ? await GroupAsync(MoveAction, leaving, () => provider.MoveAsync(leaving, bin), T("{0} non messi nel Cestino", leaving.Count), repeatable: false) : away.Count == 0)
                 {
                     foreach (var m in leaving) outcome.Removed.Add(m);
-                    outcome.Done.Add($"{leaving.Count} nel Cestino");
+                    outcome.Done.Add(T("{0} nel Cestino", leaving.Count));
                 }
             }
         }

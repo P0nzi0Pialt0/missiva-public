@@ -116,7 +116,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("consenso al calendario", ex);
-            ReadingView.ShowConsentError(this, "Accesso al calendario non consentito", ex, provider.Account, "usare il calendario");
+            ReadingView.ShowConsentError(this, T("Accesso al calendario non consentito"), ex, provider.Account, T("usare il calendario"));
             return false;
         }
     }
@@ -236,7 +236,7 @@ public partial class MainWindow
         try
         {
             var toast = new Microsoft.Toolkit.Uwp.Notifications.ToastContentBuilder()
-                .AddText(e.Subject.Length > 0 ? e.Subject : "(nessun titolo)")
+                .AddText(e.Subject.Length > 0 ? e.Subject : T("(nessun titolo)"))
                 .AddText(when + (e.Location.Length > 0 ? " · " + e.Location : ""));
             if (late != null) toast.AddText(late);
             toast.AddAttributionText(email);

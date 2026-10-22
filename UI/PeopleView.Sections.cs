@@ -42,8 +42,8 @@ public sealed partial class PeopleView
     internal sealed record SectionNote(string Text, IMailProvider? Allow, bool Write = false)
     {
         /// <summary>Il pulsante: l'accesso ai contatti (lettura, o Outlook) oppure, per Google già letto, la modifica.</summary>
-        public string ButtonText => Write ? "Consenti la modifica dei contatti" : "Consenti l'accesso ai contatti";
-        public string ButtonName => Allow == null ? "" : ButtonText + " di " + Allow.Account.Email;
+        public string ButtonText => Write ? T("Consenti la modifica dei contatti") : T("Consenti l'accesso ai contatti");
+        public string ButtonName => Allow == null ? "" : Write ? T("Consenti la modifica dei contatti di {0}", Allow.Account.Email) : T("Consenti l'accesso ai contatti di {0}", Allow.Account.Email);
         public override string ToString() => Text;
     }
 
@@ -64,9 +64,9 @@ public sealed partial class PeopleView
             int i = Store.Settings.Accounts.FindIndex(a => a.Id == p.Account.Id);
             return i < 0 ? int.MaxValue : i;
         }
-        var list = new List<ContactOrigin> { new("missiva", "Contatti di Missiva", "Missiva", "su questo PC", null) };
+        var list = new List<ContactOrigin> { new("missiva", T("Contatti di Missiva"), "Missiva", T("su questo PC"), null) };
         list.AddRange(providers.Where(p => p.HasContacts).OrderBy(Position)
-            .Select(p => new ContactOrigin(p.Account.Id, p.Account.Email, Origin(p), p.ContactsReadOnly ? "sola lettura" : "", p)));
+            .Select(p => new ContactOrigin(p.Account.Id, p.Account.Email, Origin(p), p.ContactsReadOnly ? T("sola lettura") : "", p)));
         return list;
     }
 
@@ -94,21 +94,21 @@ public sealed partial class PeopleView
             IReadOnlyList<Contact>? all = provider == null ? local : remote.TryGetValue(provider, out var got) ? got : null;
             var found = all?.Where(c => c.Matches(words)).OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
             if (searching && (found == null || found.Count == 0)) continue;
-            string count = all == null ? "" : searching && found!.Count != all.Count ? $"{found.Count} su {all.Count}" : found!.Count.ToString();
+            string count = all == null ? "" : searching && found!.Count != all.Count ? T("{0} su {1}", found.Count, all.Count) : found!.Count.ToString();
             var detail = origin.Extra.Length > 0 ? origin.Kind + " · " + origin.Extra : origin.Kind;
             entries.Add(new Header(origin.Title, origin.Kind, count, origin.Title + ", " + detail, entries.Count == 0, provider == null ? null : AccountDot(provider), provider == null) { Detail = detail });
             if (!searching)
             {
-                if (provider != null && errors.TryGetValue(provider, out var error)) entries.Add(new SectionNote($"Non disponibili ({error})", null));
-                else if (provider != null && !remote.ContainsKey(provider)) entries.Add(new SectionNote("Caricamento…", null));
-                else if (all == null) entries.Add(new SectionNote(provider?.Account.Kind == AccountKind.Gmail ? "Missiva non ha ancora il permesso di leggere i contatti di Google."
-                                                                  : "Consenti l'accesso ai contatti di Outlook: potrai vederli e modificarli in Missiva.", provider));
+                if (provider != null && errors.TryGetValue(provider, out var error)) entries.Add(new SectionNote(T("Non disponibili ({0})", error), null));
+                else if (provider != null && !remote.ContainsKey(provider)) entries.Add(new SectionNote(T("Caricamento…"), null));
+                else if (all == null) entries.Add(new SectionNote(provider?.Account.Kind == AccountKind.Gmail ? T("Missiva non ha ancora il permesso di leggere i contatti di Google.")
+                                                                  : T("Consenti l'accesso ai contatti di Outlook: potrai vederli e modificarli in Missiva."), provider));
                 else
                 {
                     // Google letto ma non scrivibile: la riga con il pulsante che chiede di poter creare, cambiare ed eliminare.
                     if (provider is { ContactsReadOnly: true, Account.Kind: AccountKind.Gmail })
-                        entries.Add(new SectionNote("Missiva potrà creare, cambiare ed eliminare i tuoi contatti di Google.", provider, true));
-                    if (all.Count == 0) entries.Add(new SectionNote(provider == null ? "Nessun contatto: Nuovo contatto o Importa ne aggiungono." : "Nessun contatto.", null));
+                        entries.Add(new SectionNote(T("Missiva potrà creare, cambiare ed eliminare i tuoi contatti di Google."), provider, true));
+                    if (all.Count == 0) entries.Add(new SectionNote(provider == null ? T("Nessun contatto: Nuovo contatto o Importa ne aggiungono.") : T("Nessun contatto."), null));
                 }
             }
             if (found != null) entries.AddRange(found.Select(c => new Row(c, provider)));
@@ -128,7 +128,7 @@ public sealed partial class PeopleView
 
     List<FilterOption> FilterOptionsOf(IReadOnlyList<ContactOrigin> origins)
     {
-        var options = new List<FilterOption> { new("", "Tutti i contatti", "", null, false) };
+        var options = new List<FilterOption> { new("", T("Tutti i contatti"), "", null, false) };
         options.AddRange(origins.Select(o => new FilterOption(o.Key, o.Title, o.Kind, o.Provider == null ? null : AccountDot(o.Provider), o.Provider == null)));
         return options;
     }
@@ -290,8 +290,8 @@ public sealed partial class PeopleView
     /// <summary>Il filtro per account (una tendina sotto la ricerca) e le righe dell'elenco; chiamato dal costruttore con il pannello sinistro.</summary>
     void SetUpSections(DockPanel left)
     {
-        AutomationProperties.SetName(filter, "Mostra i contatti di");
-        filter.ToolTip = "Tutti i contatti, o solo quelli di Missiva o di un account";
+        AutomationProperties.SetName(filter, T("Mostra i contatti di"));
+        filter.ToolTip = T("Tutti i contatti, o solo quelli di Missiva o di un account");
         var item = new FrameworkElementFactory(typeof(DockPanel));
         var mark = Mark();
         mark.SetValue(DockPanel.DockProperty, Dock.Left);

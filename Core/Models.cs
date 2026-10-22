@@ -34,9 +34,9 @@ public sealed class MailAccount
     /// </summary>
     internal static string? Problem(IReadOnlyList<MailAccount?>? accounts)
     {
-        if (accounts == null || accounts.Any(a => a == null)) return "l'elenco degli account non è valido";
-        if (accounts.Any(a => !ValidId(a!.Id))) return "un account ha un identificativo che Missiva non usa";
-        if (accounts.Select(a => a!.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != accounts.Count) return "due account hanno lo stesso identificativo";
+        if (accounts == null || accounts.Any(a => a == null)) return T("l'elenco degli account non è valido");
+        if (accounts.Any(a => !ValidId(a!.Id))) return T("un account ha un identificativo che Missiva non usa");
+        if (accounts.Select(a => a!.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != accounts.Count) return T("due account hanno lo stesso identificativo");
         return null;
     }
 
@@ -133,6 +133,45 @@ public sealed class MailFolder
     public int Total { get; set; }
     /// <summary>Cartella che la contiene (null se è al primo livello).</summary>
     public string? ParentId { get; init; }
+
+    /// <summary>La stessa cartella con un altro nome (la copia locale, scritta in un'altra lingua: MailCache.LoadFolders).</summary>
+    internal MailFolder Renamed(string name) => new() { Id = Id, Name = name, Kind = Kind, Unread = Unread, Total = Total, ParentId = ParentId };
+
+    /// <summary>
+    /// Il nome che Missiva dà a una cartella speciale, che il server chiama come vuole ("Sent", "[Gmail]/Posta inviata",
+    /// "INBOX.Sent"): la chiave italiana, da mostrare con T (i provider la traducono dove la cartella nasce, e la copia locale
+    /// la ritraduce se è stata scritta in un'altra lingua). Dipende dal tipo di account, come nei siti dei tre servizi:
+    /// Posta eliminata e Archivio di Outlook, Cestino e Tutti i messaggi di Gmail, Spam di Gmail (che in inglese resta Spam).
+    /// Null per le cartelle dell'utente (FolderKind.Other), che tengono il nome del server.
+    /// </summary>
+    public static string? SpecialName(AccountKind account, FolderKind kind) => kind switch
+    {
+        FolderKind.Inbox => N("Posta in arrivo"),
+        FolderKind.Drafts => N("Bozze"),
+        FolderKind.Sent => N("Posta inviata"),
+        FolderKind.Deleted => account == AccountKind.Microsoft ? N("Posta eliminata") : N("Cestino"),
+        FolderKind.Archive => account == AccountKind.Gmail ? N("Tutti i messaggi") : N("Archivio"),
+        FolderKind.Junk => account == AccountKind.Gmail ? N("Spam") : N("Posta indesiderata"),
+        _ => null,
+    };
+
+    /// <summary>
+    /// Il nome di una cartella speciale nella lingua di Missiva (T di SpecialName); per FolderKind.Other vuoto. In inglese gli
+    /// account Gmail hanno i nomi del sito di Gmail (Sent, Trash, All Mail, Spam), Microsoft e IMAP quelli di Outlook (Sent
+    /// Items, Deleted Items, Junk Email): la chiave italiana "Posta inviata" e "Cestino" è la stessa di IMAP, quindi per Gmail
+    /// in inglese il nome si scrive qui. In italiano nulla cambia.
+    /// </summary>
+    public static string SpecialShown(AccountKind account, FolderKind kind) =>
+        account == AccountKind.Gmail && Lingua.English && GmailEnglish(kind) is { } gmail ? gmail
+        : SpecialName(account, kind) is { } key ? T(key) : "";
+
+    /// <summary>I nomi inglesi del sito di Gmail che non sono quelli di Outlook (le altre speciali hanno lo stesso nome nei due).</summary>
+    static string? GmailEnglish(FolderKind kind) => kind switch
+    {
+        FolderKind.Sent => "Sent",
+        FolderKind.Deleted => "Trash",
+        _ => null,
+    };
 }
 
 public sealed class Address
@@ -823,9 +862,9 @@ public sealed class MailException(string message, Exception? inner = null, int s
 
     /// <summary>Il testo dell'errore di un provider chiuso: perché, e che cosa fare.</summary>
     internal static string ClosedText(string email, bool removed) =>
-        $"Il collegamento di {email} usato da questa finestra è stato chiuso: " +
-        (removed ? "l'account è stato rimosso da Missiva. Da questa finestra non si può più leggere né cambiare nulla di quell'account: chiudila; se stavi scrivendo, copia prima il testo."
-                 : "gli account sono stati ricaricati (un account o una casella condivisa aggiunti o rimossi). Chiudi la finestra e riaprila; se stavi scrivendo, copia prima il testo.");
+        removed
+            ? T("Il collegamento di {0} usato da questa finestra è stato chiuso: l'account è stato rimosso da Missiva. Da questa finestra non si può più leggere né cambiare nulla di quell'account: chiudila; se stavi scrivendo, copia prima il testo.", email)
+            : T("Il collegamento di {0} usato da questa finestra è stato chiuso: gli account sono stati ricaricati (un account o una casella condivisa aggiunti o rimossi). Chiudi la finestra e riaprila; se stavi scrivendo, copia prima il testo.", email);
 
     /// <summary>L'errore, o uno di quelli che contiene, dice che il messaggio può essere partito lo stesso (MaybeSent).</summary>
     public static bool MaybeSentOf(Exception? ex)

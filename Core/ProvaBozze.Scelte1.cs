@@ -205,7 +205,7 @@ static partial class ProvaBozze
             int start = settingsPage.IndexOf("StackPanel BackupPage()", StringComparison.Ordinal), end = settingsPage.IndexOf("StackPanel MessageHandlingPage()", StringComparison.Ordinal);
             string page = start >= 0 && end > start ? settingsPage[start..end] : "";
             int At(string text) => page.IndexOf(text, StringComparison.Ordinal);
-            bool onlyIfThere = At("if (Backup.AsideFiles(Store.Dir) is { Count: > 0 } aside)") > 0 && At("Content = \"Elimina i dati di prima…\"") > At("if (Backup.AsideFiles(Store.Dir) is { Count: > 0 } aside)");
+            bool onlyIfThere = At("if (Backup.AsideFiles(Store.Dir) is { Count: > 0 } aside)") > 0 && At("Content = T(\"Elimina i dati di prima…\")") > At("if (Backup.AsideFiles(Store.Dir) is { Count: > 0 } aside)");
             bool asksFirst = At("Dialog.AskCancelFirst(this, heading, body, primary) == Choice.Primary") > At("BackupUi.AsideQuestion(now)") && At("Backup.DeleteAside(Store.Dir)") > At("Dialog.AskCancelFirst(this, heading, body, primary) == Choice.Primary")
                              && At("BackupUi.AsideQuestion(now)") > 0;
             // Nessun altro punto di Missiva li elimina: una sola chiamata, quella del pulsante.

@@ -30,6 +30,10 @@ public partial class AccountWindow : Window
     public AccountWindow()
     {
         InitializeComponent();
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto): nasce fuori dallo schermo e non prende il fuoco
+        if (DevTools.Photos) PhotoNetwork();
+#endif
         ClientIdBox.Text = Store.Settings.MicrosoftClientId ?? MicrosoftAuth.DefaultClientId;
         GoogleIdBox.Text = Store.Settings.GoogleClientId ?? "";
         // Un segreto che non si decifra più (impostazioni di un altro PC) resta vuoto, da riscrivere: prima l'eccezione di
@@ -49,6 +53,27 @@ public partial class AccountWindow : Window
     }
 
     string Email => AddressBox.Text.Trim();
+
+#if DEBUG
+    /// <summary>
+    /// Le foto delle Impostazioni in inglese (--foto): niente rete vera. Il DNS non risponde nulla (il dominio diventa un
+    /// account IMAP), le pagine della configurazione automatica non ci sono, e i collegamenti di prova a imap. e smtp. del
+    /// dominio riescono sulle porte con SSL/TLS: la finestra trova "da sola" i server, senza un pacchetto in rete.
+    /// </summary>
+    static void PhotoNetwork()
+    {
+        MailDns.TestAnswers = (_, _) => [];
+        MailDns.TestTxt = _ => [];
+        MailAutoconfig.UseTestHandler(new NotFoundHandler());
+        MailAutoconfig.TestProbe = (_, port, _, _) => Task.FromResult(port is 993 or 465);
+    }
+
+    sealed class NotFoundHandler : System.Net.Http.HttpMessageHandler
+    {
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancel) =>
+            Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+    }
+#endif
 
     /// <summary>
     /// Senza account (il primo avvio su un PC nuovo): la copia di sicurezza si importa da qui, senza cercare le Impostazioni.
@@ -72,7 +97,7 @@ public partial class AccountWindow : Window
             return;
         }
         ShowAddress(); // senza indirizzo non si cercano i server
-        ShowError("Per un altro account serve l'indirizzo: scrivilo e premi Avanti.");
+        ShowError(T("Per un altro account serve l'indirizzo: scrivilo e premi Avanti."));
     }
 
     /// <summary>Il primo passo: l'indirizzo.</summary>
@@ -82,8 +107,8 @@ public partial class AccountWindow : Window
         HidePanels();
         AddressPanel.Visibility = Visibility.Visible;
         ConfirmButton.Visibility = Visibility.Visible;
-        ConfirmButton.Content = "Avanti";
-        Heading.Text = "Aggiungi un account";
+        ConfirmButton.Content = T("Avanti");
+        Heading.Text = T("Aggiungi un account");
         AddressBox.Focus();
     }
 
@@ -96,7 +121,7 @@ public partial class AccountWindow : Window
         ChoiceNote.Text = note ?? "";
         ChoiceNote.Visibility = note == null ? Visibility.Collapsed : Visibility.Visible;
         BackButton.Visibility = Visibility.Visible;
-        Heading.Text = "Scegli il tipo di account";
+        Heading.Text = T("Scegli il tipo di account");
     }
 
     void Show(AccountType t)
@@ -113,17 +138,17 @@ public partial class AccountWindow : Window
         BackButton.Visibility = ConfirmButton.Visibility = Visibility.Visible;
         ConfirmButton.Content = t switch
         {
-            AccountType.Google or AccountType.GoogleWorkspace => "Accedi con Google",
-            AccountType.Imap => "Accedi",
-            _ => "Accedi con Microsoft",
+            AccountType.Google or AccountType.GoogleWorkspace => T("Accedi con Google"),
+            AccountType.Imap => T("Accedi"),
+            _ => T("Accedi con Microsoft"),
         };
         Heading.Text = t switch
         {
-            AccountType.MicrosoftPersonal => "Account Microsoft",
-            AccountType.Microsoft365 => "Account Microsoft 365",
-            AccountType.GoogleWorkspace => "Account Google Workspace",
-            AccountType.Imap => "Altro account",
-            _ => "Account Google",
+            AccountType.MicrosoftPersonal => T("Account Microsoft"),
+            AccountType.Microsoft365 => T("Account Microsoft 365"),
+            AccountType.GoogleWorkspace => T("Account Google Workspace"),
+            AccountType.Imap => T("Altro account"),
+            _ => T("Account Google"),
         };
         if (t == AccountType.Imap && configFor != Email) _ = FindConfigAsync();
     }
@@ -203,7 +228,7 @@ public partial class AccountWindow : Window
     {
         if (!AccountTypes.LooksValid(Email))
         {
-            ShowError("Scrivi l'indirizzo email completo, per esempio mario.rossi@studio.it.");
+            ShowError(T("Scrivi l'indirizzo email completo, per esempio mario.rossi@studio.it."));
             return;
         }
         Detecting.Visibility = Visibility.Visible;
@@ -228,7 +253,7 @@ public partial class AccountWindow : Window
         if (!Guid.TryParse(clientId, out _))
         {
             MicrosoftAppExpander.IsExpanded = true;
-            ShowError("Inserisci l'ID dell'app Microsoft. Ha questa forma: 12345678-abcd-1234-abcd-1234567890ab.");
+            ShowError(T("Inserisci l'ID dell'app Microsoft. Ha questa forma: 12345678-abcd-1234-abcd-1234567890ab."));
             return;
         }
         Store.Settings.MicrosoftClientId = clientId;
@@ -240,7 +265,7 @@ public partial class AccountWindow : Window
             var email = result.Account.Username;
             if (Store.Settings.Accounts.Any(a => a.Email.Equals(email, StringComparison.OrdinalIgnoreCase)))
             {
-                ShowError($"{email} è già in Missiva.");
+                ShowError(T("{0} è già in Missiva.", email));
                 return;
             }
             Store.Settings.Accounts.Add(new MailAccount
@@ -280,22 +305,21 @@ public partial class AccountWindow : Window
             tenant = TenantBox.Text.Trim().ToLowerInvariant();
             if (!Guid.TryParse(clientId, out _))
             {
-                ShowError("Inserisci l'ID dell'app della tua organizzazione. Ha questa forma: 12345678-abcd-1234-abcd-1234567890ab.");
+                ShowError(T("Inserisci l'ID dell'app della tua organizzazione. Ha questa forma: 12345678-abcd-1234-abcd-1234567890ab."));
                 WorkClientIdBox.Focus();
                 return;
             }
             if (tenant.Length == 0) tenant = MicrosoftAuth.Organizations; // app registrata per più organizzazioni
             else if (!Guid.TryParse(tenant, out _) && !(tenant.Contains('.') && !tenant.Any(char.IsWhiteSpace) && !tenant.Contains('/')))
             {
-                ShowError("La directory è l'ID (come l'ID dell'app) o il dominio dell'organizzazione, per esempio studio.onmicrosoft.com o studio.it.");
+                ShowError(T("La directory è l'ID (come l'ID dell'app) o il dominio dell'organizzazione, per esempio studio.onmicrosoft.com o studio.it."));
                 TenantBox.Focus();
                 return;
             }
         }
         if (MicrosoftAuth.Blocked(clientId, tenant))
         {
-            ShowError("L'app di Missiva ora accetta solo account Microsoft personali: la finestra di accesso non si apre. " +
-                      "Usa l'app registrata dalla tua organizzazione, se c'è, con \"Usa l'app della mia organizzazione\".");
+            ShowError(T("L'app di Missiva ora accetta solo account Microsoft personali: la finestra di accesso non si apre. Usa l'app registrata dalla tua organizzazione, se c'è, con \"Usa l'app della mia organizzazione\"."));
             return;
         }
         MicrosoftAuth.OpenOver(this);
@@ -306,12 +330,12 @@ public partial class AccountWindow : Window
             // 9188040d-...: la directory degli account personali (un ospite dell'organizzazione con un account Outlook.com).
             if (result.TenantId == "9188040d-6c67-4c5b-b112-36a304b66dad")
             {
-                ShowError($"{email} è un account Microsoft personale: aggiungilo come Outlook.com, Hotmail e Live.");
+                ShowError(T("{0} è un account Microsoft personale: aggiungilo come Outlook.com, Hotmail e Live.", email));
                 return;
             }
             if (Store.Settings.Accounts.Any(a => a.Email.Equals(email, StringComparison.OrdinalIgnoreCase)))
             {
-                ShowError($"{email} è già in Missiva.");
+                ShowError(T("{0} è già in Missiva.", email));
                 return;
             }
             Store.Settings.Accounts.Add(new MailAccount
@@ -338,9 +362,9 @@ public partial class AccountWindow : Window
             if (error.AdminConsent)
             {
                 AdminLink.Text = MicrosoftAuth.AdminConsentUrl(clientId, tenant);
-                AdminText.Text = "Manda questo link a un amministratore di Microsoft 365 della tua organizzazione: aprendolo può approvare Missiva per " +
-                                 $"tutti gli utenti. {MicrosoftAuth.AdminConsentScope(clientId)} Quando l'ha fatto, aggiungi di nuovo l'account.";
-                CopyAdminLink.Content = "Copia";
+                AdminText.Text = T("Manda questo link a un amministratore di Microsoft 365 della tua organizzazione: aprendolo può approvare Missiva per tutti gli utenti. {0} Quando l'ha fatto, aggiungi di nuovo l'account.",
+                                   MicrosoftAuth.AdminConsentScope(clientId));
+                CopyAdminLink.Content = T("Copia");
                 AdminPanel.Visibility = Visibility.Visible;
             }
         }
@@ -365,7 +389,7 @@ public partial class AccountWindow : Window
         try
         {
             Clipboard.SetText(AdminLink.Text);
-            CopyAdminLink.Content = "Copiato";
+            CopyAdminLink.Content = T("Copiato");
         }
         catch (Exception ex)
         {
@@ -395,7 +419,7 @@ public partial class AccountWindow : Window
         var email = configFor = Email;
         var domain = AccountTypes.DomainOf(email);
         UserBox.Text = email;
-        ConfigStatus.Text = "Cerco le impostazioni del server…";
+        ConfigStatus.Text = T("Cerco le impostazioni del server…");
         ConfirmButton.IsEnabled = false;
         try
         {
@@ -405,15 +429,16 @@ public partial class AccountWindow : Window
             if (found != null)
             {
                 Fill(found.Server);
-                ConfigStatus.Text = $"Impostazioni trovate ({found.Source}): posta in arrivo {Describe(found.Server.ImapHost, found.Server.ImapPort, found.Server.ImapSecurity)}, " +
-                                    $"in uscita {Describe(found.Server.SmtpHost, found.Server.SmtpPort, found.Server.SmtpSecurity)}. " +
-                                    (found.Foreign ? $"Attenzione: non sono server di {domain}; controlla che siano quelli del tuo provider." : "Puoi cambiarle in Configurazione manuale.");
+                ConfigStatus.Text = T("Impostazioni trovate ({0}): posta in arrivo {1}, in uscita {2}.", found.Source,
+                                      Describe(found.Server.ImapHost, found.Server.ImapPort, found.Server.ImapSecurity),
+                                      Describe(found.Server.SmtpHost, found.Server.SmtpPort, found.Server.SmtpSecurity)) + " " +
+                                    (found.Foreign ? T("Attenzione: non sono server di {0}; controlla che siano quelli del tuo provider.", domain) : T("Puoi cambiarle in Configurazione manuale."));
                 Log.Write($"account IMAP {domain}: impostazioni da {found.Source}");
             }
             else
             {
                 Fill(new ImapServer { ImapHost = "imap." + domain, SmtpHost = "smtp." + domain, UserName = email });
-                ConfigStatus.Text = "Non ho trovato le impostazioni del server: scrivile in Configurazione manuale (sono nelle istruzioni del tuo provider).";
+                ConfigStatus.Text = T("Non ho trovato le impostazioni del server: scrivile in Configurazione manuale (sono nelle istruzioni del tuo provider).");
                 ManualExpander.IsExpanded = true;
             }
         }
@@ -421,7 +446,7 @@ public partial class AccountWindow : Window
         {
             if (search == configSearch && IsVisible)
             {
-                ConfigStatus.Text = "La ricerca delle impostazioni ha impiegato troppo: scrivile in Configurazione manuale.";
+                ConfigStatus.Text = T("La ricerca delle impostazioni ha impiegato troppo: scrivile in Configurazione manuale.");
                 ManualExpander.IsExpanded = true;
             }
         }
@@ -458,8 +483,9 @@ public partial class AccountWindow : Window
         return server;
     }
 
-    public const string ServerFieldsError =
-        "Controlla la configurazione manuale: servono i nomi dei server (come imap.provider.it), le porte (da 1 a 65535) e il nome utente.";
+    /// <summary>L'errore dei campi dei server (anche di Gestisci account), nella lingua di Missiva.</summary>
+    public static string ServerFieldsError =>
+        T("Controlla la configurazione manuale: servono i nomi dei server (come imap.provider.it), le porte (da 1 a 65535) e il nome utente.");
 
     /// <summary>
     /// I server scritti a mano, controllati (anche da Gestisci account): nomi senza spazi, barre e porte, porte da 1 a
@@ -489,17 +515,17 @@ public partial class AccountWindow : Window
         if (!AccountTypes.LooksValid(Email))
         {
             ShowAddress();
-            ShowError("Scrivi l'indirizzo email completo, per esempio mario.rossi@studio.it.");
+            ShowError(T("Scrivi l'indirizzo email completo, per esempio mario.rossi@studio.it."));
             return;
         }
         if (Store.Settings.Accounts.Any(a => a.Email.Equals(Email, StringComparison.OrdinalIgnoreCase)))
         {
-            ShowError($"{Email} è già in Missiva.");
+            ShowError(T("{0} è già in Missiva.", Email));
             return;
         }
         if (PasswordBox.Password.Length == 0)
         {
-            ShowError("Scrivi la password della casella.");
+            ShowError(T("Scrivi la password della casella."));
             PasswordBox.Focus();
             return;
         }
@@ -508,13 +534,14 @@ public partial class AccountWindow : Window
         var domain = AccountTypes.DomainOf(Email);
         var outside = new[] { server.ImapHost, server.SmtpHost }
             .Where(h => foreignHosts.Contains(h, StringComparer.OrdinalIgnoreCase) && !MailAutoconfig.InDomain(h, domain)).Distinct().ToList();
-        if (outside.Count > 0 && Dialog.Ask(this, $"{string.Join(" e ", outside)} non {(outside.Count == 1 ? "è un server" : "sono server")} di {domain}",
-                "Li ha indicati il DNS del dominio (i record SRV o il suo server di posta), che una rete non affidabile può falsificare. Se non sei sicuro che siano i server " +
-                "del tuo provider, controllali in Configurazione manuale. Mandare lì la password della casella?", "Continua") != Choice.Primary)
+        // Al più due nomi, il server IMAP e quello SMTP.
+        if (outside.Count > 0 && Dialog.Ask(this, outside.Count == 1 ? T("{0} non è un server di {1}", outside[0], domain) : T("{0} e {1} non sono server di {2}", outside[0], outside[1], domain),
+                T("Li ha indicati il DNS del dominio (i record SRV o il suo server di posta), che una rete non affidabile può falsificare. Se non sei sicuro che siano i server del tuo provider, controllali in Configurazione manuale. Mandare lì la password della casella?"),
+                T("Continua")) != Choice.Primary)
             return;
         server.ProtectedPassword = Store.Protect(PasswordBox.Password);
         var status = ConfigStatus.Text;
-        ConfigStatus.Text = $"Provo il collegamento con {server.ImapHost} e {server.SmtpHost}…";
+        ConfigStatus.Text = T("Provo il collegamento con {0} e {1}…", server.ImapHost, server.SmtpHost);
         using var trying = new CancellationTokenSource(TimeSpan.FromSeconds(MailLimits.ServerTrySeconds));
         try
         {
@@ -542,7 +569,7 @@ public partial class AccountWindow : Window
         {
             Log.Error("account IMAP", ex);
             ConfigStatus.Text = status;
-            ShowError("Collegamento non riuscito: " + ex.Message);
+            ShowError(T("Collegamento non riuscito: {0}", ex.Message));
         }
     }
 
@@ -553,7 +580,7 @@ public partial class AccountWindow : Window
         if (!clientId.EndsWith(".apps.googleusercontent.com", StringComparison.OrdinalIgnoreCase) || secret.Length == 0)
         {
             GoogleAppExpander.IsExpanded = true;
-            ShowError("Inserisci ID client e client secret dell'app Google. L'ID client finisce con .apps.googleusercontent.com.");
+            ShowError(T("Inserisci ID client e client secret dell'app Google. L'ID client finisce con .apps.googleusercontent.com."));
             return;
         }
         Store.Settings.GoogleClientId = clientId;
@@ -576,7 +603,7 @@ public partial class AccountWindow : Window
             var existing = Store.Settings.Accounts.FirstOrDefault(a => a.Email.Equals(result.Email, StringComparison.OrdinalIgnoreCase));
             if (existing is { Kind: not AccountKind.Gmail })
             {
-                ShowError($"{result.Email} è già in Missiva.");
+                ShowError(T("{0} è già in Missiva.", result.Email));
                 return;
             }
             if (existing != null) GoogleAuth.Apply(existing, result); // aggiunto di nuovo: calendario e contatti qui non si chiedono, e se c'erano lo dice
@@ -602,9 +629,8 @@ public partial class AccountWindow : Window
         {
             // Con Google Workspace, un'app bloccata dall'amministratore resta sulla pagina d'errore di Google, senza tornare.
             ShowError(workspace
-                ? "L'accesso nel browser non è stato completato in tempo. Se Google ha mostrato \"admin_policy_enforced\" o \"Accesso bloccato\": " +
-                  GoogleAuth.AdminBlocked(clientId)
-                : "L'accesso nel browser non è stato completato in tempo. Riprova.");
+                ? T("L'accesso nel browser non è stato completato in tempo. Se Google ha mostrato \"admin_policy_enforced\" o \"Accesso bloccato\": {0}", GoogleAuth.AdminBlocked(clientId))
+                : T("L'accesso nel browser non è stato completato in tempo. Riprova."));
         }
         catch (MailException ex)
         {
@@ -614,7 +640,7 @@ public partial class AccountWindow : Window
         catch (Exception ex)
         {
             Log.Error("accesso Google", ex);
-            ShowError("Accesso non riuscito: " + ex.Message);
+            ShowError(T("Accesso non riuscito: {0}", ex.Message));
         }
         finally
         {

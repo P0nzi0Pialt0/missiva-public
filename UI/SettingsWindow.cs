@@ -34,7 +34,7 @@ public sealed class SettingsWindow : Window
         this.manageAccount = manageAccount;
         this.autoReplies = autoReplies;
         this.ruleHost = ruleHost;
-        Title = "Impostazioni";
+        Title = T("Impostazioni");
         Width = 980;
         Height = 700;
         MinWidth = 760;
@@ -48,9 +48,10 @@ public sealed class SettingsWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         categories.ItemContainerStyle = sections.ItemContainerStyle = (Style)FindResource("NavItem");
-        categories.Items.Add(Nav("\uE713", "Generali"));
-        categories.Items.Add(Nav("\uE77B", "Account"));
-        categories.Items.Add(Nav("\uE715", "Posta"));
+        // Il nome italiano resta nel Tag (Open, le prove e "impostazioni Categoria Sezione" lo usano); si mostra tradotto.
+        categories.Items.Add(Nav("\uE713", N("Generali")));
+        categories.Items.Add(Nav("\uE77B", N("Account")));
+        categories.Items.Add(Nav("\uE715", N("Posta")));
         categories.SelectionChanged += (_, _) => FillSections();
         grid.Children.Add(categories);
 
@@ -80,9 +81,9 @@ public sealed class SettingsWindow : Window
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(new TextBlock { Text = glyph, FontFamily = Icons, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center });
-        panel.Children.Add(new TextBlock { Text = text });
+        panel.Children.Add(new TextBlock { Text = T(text) });
         var item = new ListBoxItem { Content = panel, Tag = text, MinHeight = 36, Padding = new Thickness(12, 0, 10, 0) };
-        AutomationProperties.SetName(item, text); // Assistente vocale leggeva "System.Windows.Controls.ListBoxItem"
+        AutomationProperties.SetName(item, T(text)); // Assistente vocale leggeva "System.Windows.Controls.ListBoxItem"
         return item;
     }
 
@@ -91,19 +92,24 @@ public sealed class SettingsWindow : Window
         sections.Items.Clear();
         var names = ((categories.SelectedItem as ListBoxItem)?.Tag as string) switch
         {
-            "Generali" => new[] { "Aspetto", "Notifiche", "Avvio e chiusura", "Copia di sicurezza", "Informazioni" },
-            "Account" => new[] { "Account di posta", "Firme" },
-            _ => new[] { "Elenco messaggi", "Riquadro di lettura", "Gestione messaggi", "Regole", "Scrittura e risposta", "Modelli" },
+            "Generali" => new[] { N("Aspetto"), N("Notifiche"), N("Avvio e chiusura"), N("Copia di sicurezza"), N("Informazioni") },
+            "Account" => new[] { N("Account di posta"), N("Firme") },
+            _ => new[] { N("Elenco messaggi"), N("Riquadro di lettura"), N("Gestione messaggi"), N("Regole"), N("Scrittura e risposta"), N("Modelli") },
         };
-        foreach (var n in names) sections.Items.Add(new ListBoxItem { Content = n, Tag = n, MinHeight = 36, Padding = new Thickness(12, 0, 10, 0) });
+        foreach (var n in names) sections.Items.Add(new ListBoxItem { Content = T(n), Tag = n, MinHeight = 36, Padding = new Thickness(12, 0, 10, 0) });
         sections.SelectedIndex = 0;
     }
 
     /// <summary>Apre una sezione (Posta, Regole): dal menu dell'account e nelle prove.</summary>
+    /// <remarks>
+    /// I nomi sono quelli italiani dei Tag ("Posta", "Regole": --impostazioni, il menu dell'account, MISSIVA_KEYS), in
+    /// qualunque lingua; con Missiva in inglese valgono anche quelli mostrati ("Mail", "Rules").
+    /// </remarks>
     public void Open(string category, string section)
     {
-        categories.SelectedItem = categories.Items.OfType<ListBoxItem>().FirstOrDefault(i => i.Tag as string == category);
-        sections.SelectedItem = sections.Items.OfType<ListBoxItem>().FirstOrDefault(i => i.Tag as string == section);
+        static bool Named(ListBoxItem item, string name) => item.Tag is string tag && (tag == name || T(tag) == name);
+        categories.SelectedItem = categories.Items.OfType<ListBoxItem>().FirstOrDefault(i => Named(i, category));
+        sections.SelectedItem = sections.Items.OfType<ListBoxItem>().FirstOrDefault(i => Named(i, section));
     }
 
     void ShowPage()
@@ -136,10 +142,8 @@ public sealed class SettingsWindow : Window
     StackPanel RulesPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Regole"));
-        p.Children.Add(Question("Le regole mettono in ordine la posta che arriva: spostano, segnano come letto, mettono categorie, eliminano, " +
-                                "secondo mittente, destinatari, oggetto, testo, allegati o importanza. Si applicano nell'ordine dell'elenco. " +
-                                "Crea regola, nel menu del tasto destro di un messaggio, ne comincia una con il suo mittente."));
+        p.Children.Add(Heading(T("Regole")));
+        p.Children.Add(Question(T("Le regole mettono in ordine la posta che arriva: spostano, segnano come letto, mettono categorie, eliminano, secondo mittente, destinatari, oggetto, testo, allegati o importanza. Si applicano nell'ordine dell'elenco. Crea regola, nel menu del tasto destro di un messaggio, ne comincia una con il suo mittente.")));
         if (ruleHost == null) return p;
         p.Children.Add(new RulesView(ruleHost));
         return p;
@@ -160,27 +164,42 @@ public sealed class SettingsWindow : Window
     StackPanel AboutPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Informazioni"));
+        p.Children.Add(Heading(T("Informazioni")));
         var version = new TextBox
         {
-            Text = "Missiva " + AppVersion.Text, IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent,
+            Text = "Missiva " + VersionText(AppVersion.Text), IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent,
             Padding = new Thickness(0), FontSize = 15, TextWrapping = TextWrapping.Wrap,
         };
-        AutomationProperties.SetName(version, "Versione di Missiva");
+        AutomationProperties.SetName(version, T("Versione di Missiva"));
         p.Children.Add(version);
-        p.Children.Add(Question("Il terzo numero cresce a ogni modifica di Missiva. La data e il codice fra parentesi sono quelli dell'ultima " +
-                                "modifica compresa in questa versione: per sapere se una correzione c'è, si confronta con la data in cui è stata fatta."));
-        p.Children.Add(Section("Aggiornamenti"));
+        p.Children.Add(Question(T("Il terzo numero cresce a ogni modifica di Missiva. La data e il codice fra parentesi sono quelli dell'ultima modifica compresa in questa versione: per sapere se una correzione c'è, si confronta con la data in cui è stata fatta.")));
+        p.Children.Add(Section(T("Aggiornamenti")));
         foreach (var part in UpdatesPart()) p.Children.Add(part);
         p.Children.Add(Rule());
-        p.Children.Add(Section("Registri"));
-        p.Children.Add(Question("Nella cartella dei dati di Missiva c'è il registro (missiva.log), che dice che cosa ha fatto e che cosa non è riuscito: " +
-                                "serve a capire un problema."));
+        p.Children.Add(Section(T("Registri")));
+        p.Children.Add(Question(T("Nella cartella dei dati di Missiva c'è il registro (missiva.log), che dice che cosa ha fatto e che cosa non è riuscito: serve a capire un problema.")));
         // Dal menu della rotellina, che ora apre subito le Impostazioni (ritocchi del 16 ottobre).
-        var logs = new Button { Content = "Apri la cartella dei registri", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 0), Padding = new Thickness(14, 5, 14, 5) };
+        var logs = new Button { Content = T("Apri la cartella dei registri"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 0), Padding = new Thickness(14, 5, 14, 5) };
         logs.Click += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Store.Dir) { UseShellExecute = true });
         p.Children.Add(logs);
         return p;
+    }
+
+    /// <summary>
+    /// La versione come la dice Informazioni. AppVersion.Text lo scrive la compilazione, in italiano: "0.3.525 del 14/10/2026
+    /// (8c444de)", con ", con modifiche non ancora in un commit" se la cartella ne aveva. In italiano resta com'è; in inglese
+    /// le parole sono in inglese e la data è quella breve di Lingua.Culture. Un testo d'altra forma (senza git, il solo
+    /// numero) resta com'è.
+    /// </summary>
+    internal static string VersionText(string text)
+    {
+        if (!Lingua.English) return text;
+        var m = System.Text.RegularExpressions.Regex.Match(text, @"^(?<number>\S+) del (?<day>\d\d)/(?<month>\d\d)/(?<year>\d{4}) \((?<commit>[0-9a-f]+)\)(?<changed>, con modifiche non ancora in un commit)?$");
+        if (!m.Success || !DateTime.TryParseExact($"{m.Groups["year"].Value}-{m.Groups["month"].Value}-{m.Groups["day"].Value}", "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day))
+            return text;
+        string number = m.Groups["number"].Value, date = day.ToString("d", Lingua.Culture), commit = m.Groups["commit"].Value;
+        return m.Groups["changed"].Success ? T("{0} del {1} ({2}), con modifiche non ancora in un commit", number, date, commit) : T("{0} del {1} ({2})", number, date, commit);
     }
 
     /// <summary>
@@ -192,30 +211,26 @@ public sealed class SettingsWindow : Window
         switch (Updates.Current)
         {
             case Updates.Mode.FromSources:
-                yield return Question("Questa Missiva è stata compilata dai sorgenti: non controlla gli aggiornamenti. Si aggiorna rilanciando " +
-                                      "installa.ps1 dalla cartella dei sorgenti, oppure installando un rilascio pubblicato, che poi si aggiorna da solo.");
+                yield return Question(T("Questa Missiva è stata compilata dai sorgenti: non controlla gli aggiornamenti. Si aggiorna rilanciando installa.ps1 dalla cartella dei sorgenti, oppure installando un rilascio pubblicato, che poi si aggiorna da solo."));
                 yield break;
             case Updates.Mode.NoKey:
-                yield return Question("Questa versione non ha la chiave con cui Missiva controlla la firma degli aggiornamenti: non li cerca. " +
-                                      "Si aggiorna scaricando un rilascio più nuovo e lanciando il suo installa.ps1.");
+                yield return Question(T("Questa versione non ha la chiave con cui Missiva controlla la firma degli aggiornamenti: non li cerca. Si aggiorna scaricando un rilascio più nuovo e lanciando il suo installa.ps1."));
                 yield break;
         }
-        yield return Check("Controlla da solo gli aggiornamenti", S.UpdatesAuto, v => S.UpdatesAuto = v, refresh: false);
-        var status = Question(MainWindow.LastUpdateLine ?? "Nessun controllo in questa sessione.");
-        var now = new Button { Content = "Controlla ora", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(14, 5, 14, 5) };
+        yield return Check(T("Controlla da solo gli aggiornamenti"), S.UpdatesAuto, v => S.UpdatesAuto = v, refresh: false);
+        var status = Question(MainWindow.LastUpdateLine ?? T("Nessun controllo in questa sessione."));
+        var now = new Button { Content = T("Controlla ora"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(14, 5, 14, 5) };
         now.Click += async (_, _) =>
         {
             if (Application.Current.MainWindow is not MainWindow main) return;
             now.IsEnabled = false;
-            status.Text = "Controllo in corso…";
+            status.Text = T("Controllo in corso…");
             try { status.Text = await main.CheckUpdatesAsync(automatic: false); }
             finally { now.IsEnabled = true; }
         };
         yield return now;
         yield return status;
-        yield return Question("Con la casella accesa Missiva chiede a GitHub qual è l'ultima versione pubblicata due minuti dopo l'avvio e poi una volta al " +
-                              "giorno; se è più nuova lo dice con il pulsante \"Aggiornamento\" nella barra del titolo, e si aggiorna solo con Aggiorna. " +
-                              "Accetta solo aggiornamenti firmati con la chiave di chi pubblica Missiva.");
+        yield return Question(T("Con la casella accesa Missiva chiede a GitHub qual è l'ultima versione pubblicata due minuti dopo l'avvio e poi una volta al giorno; se è più nuova lo dice con il pulsante \"Aggiornamento\" nella barra del titolo, e si aggiorna solo con Aggiorna. Accetta solo aggiornamenti firmati con la chiave di chi pubblica Missiva."));
     }
 
     // ---------------------------------------------------------------- pezzi comuni
@@ -296,21 +311,21 @@ public sealed class SettingsWindow : Window
     StackPanel MessageListPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Elenco messaggi"));
+        p.Children.Add(Heading(T("Elenco messaggi")));
 
         // Posta in arrivo evidenziata, per account (solo Microsoft)
         var microsoft = S.Accounts.Where(a => a.Kind == AccountKind.Microsoft && a.SharedOf == null).ToList();
-        p.Children.Add(Section("Posta in arrivo evidenziata"));
+        p.Children.Add(Section(T("Posta in arrivo evidenziata")));
         if (microsoft.Count == 0)
         {
-            p.Children.Add(Question("Disponibile per gli account Microsoft. Per Gmail la Posta in arrivo è unica."));
+            p.Children.Add(Question(T("Disponibile per gli account Microsoft. Per Gmail la Posta in arrivo è unica.")));
         }
         else
         {
             var accountBox = new ComboBox { ItemsSource = microsoft, DisplayMemberPath = nameof(MailAccount.Email), SelectedIndex = 0 };
-            p.Children.Add(Labeled("Queste impostazioni si applicano a", accountBox));
-            p.Children.Add(Question("Vuoi che Missiva ordini i tuoi messaggi di posta elettronica per poterti dedicare alle cose più importanti?"));
-            var focusedCheck = new CheckBox { Content = "Ordina i messaggi in Evidenziata e Altra", IsChecked = S.IsFocused(microsoft[0]) };
+            p.Children.Add(Labeled(T("Queste impostazioni si applicano a"), accountBox));
+            p.Children.Add(Question(T("Vuoi che Missiva ordini i tuoi messaggi di posta elettronica per poterti dedicare alle cose più importanti?")));
+            var focusedCheck = new CheckBox { Content = T("Ordina i messaggi in Evidenziata e Altra"), IsChecked = S.IsFocused(microsoft[0]) };
             bool switching = false; // la casella mostra l'account scelto: non è una scelta da salvare
             accountBox.SelectionChanged += (_, _) =>
             {
@@ -332,36 +347,34 @@ public sealed class SettingsWindow : Window
         }
         p.Children.Add(Rule());
 
-        p.Children.Add(Section("Dimensioni e spaziatura del testo"));
-        p.Children.Add(Question("Missiva adatterà l'elenco dei messaggi senza cambiare i messaggi ricevuti o inviati."));
+        p.Children.Add(Section(T("Dimensioni e spaziatura del testo")));
+        p.Children.Add(Question(T("Missiva adatterà l'elenco dei messaggi senza cambiare i messaggi ricevuti o inviati.")));
         p.Children.Add(Radios("size", S.TextSize, v => S.TextSize = v,
-            (TextSize.Small, "Piccola"), (TextSize.Medium, "Media"), (TextSize.Large, "Di grandi dimensioni")));
+            (TextSize.Small, T("Piccola")), (TextSize.Medium, T("Media")), (TextSize.Large, T("Di grandi dimensioni"))));
         p.Children.Add(Rule());
 
-        p.Children.Add(Section("Organizzazione messaggi"));
-        p.Children.Add(Question("Come vuoi che sia organizzato l'Elenco dei messaggi?"));
+        p.Children.Add(Section(T("Organizzazione messaggi")));
+        p.Children.Add(Question(T("Come vuoi che sia organizzato l'Elenco dei messaggi?")));
         p.Children.Add(Radios("group", S.GroupByConversation, v => S.GroupByConversation = v,
-            (true, "Raggruppa i messaggi in base a conversazione"), (false, "Non raggruppare i messaggi")));
-        p.Children.Add(Question("Come vuoi organizzare il riquadro di lettura?"));
+            (true, T("Raggruppa i messaggi in base a conversazione")), (false, T("Non raggruppare i messaggi"))));
+        p.Children.Add(Question(T("Come vuoi organizzare il riquadro di lettura?")));
         p.Children.Add(Radios("reading", S.ReadingWholeConversation, v => S.ReadingWholeConversation = v,
-            (true, "Mostra tutti i messaggi della conversazione selezionata"), (false, "Mostra solo il messaggio selezionato")));
+            (true, T("Mostra tutti i messaggi della conversazione selezionata")), (false, T("Mostra solo il messaggio selezionato"))));
         p.Children.Add(Rule());
 
-        p.Children.Add(Section("Anteprima del testo"));
-        p.Children.Add(Question("Vuoi visualizzare l'anteprima del testo?"));
-        p.Children.Add(Radios("preview", S.PreviewLines, v => S.PreviewLines = v, (0, "Off"), (1, "1 riga"), (2, "2 righe")));
-        p.Children.Add(Question("Come vuoi che i messaggi vengano visualizzati?"));
-        p.Children.Add(Radios("order", S.SenderFirst, v => S.SenderFirst = v, (true, "Nome del mittente all'inizio"), (false, "Oggetto all'inizio")));
+        p.Children.Add(Section(T("Anteprima del testo")));
+        p.Children.Add(Question(T("Vuoi visualizzare l'anteprima del testo?")));
+        p.Children.Add(Radios("preview", S.PreviewLines, v => S.PreviewLines = v, (0, "Off"), (1, T("1 riga")), (2, T("2 righe"))));
+        p.Children.Add(Question(T("Come vuoi che i messaggi vengano visualizzati?")));
+        p.Children.Add(Radios("order", S.SenderFirst, v => S.SenderFirst = v, (true, T("Nome del mittente all'inizio")), (false, T("Oggetto all'inizio"))));
         p.Children.Add(Rule());
 
-        p.Children.Add(Section("Personalizza il layout dell'elenco dei messaggi"));
-        p.Children.Add(Check("Mostra le immagini dei mittenti", S.ShowSenderImages, v => S.ShowSenderImages = v));
-        p.Children.Add(Check("Mostra il logo dell'azienda del mittente", S.ShowSenderLogos, v => S.ShowSenderLogos = v));
-        p.Children.Add(Question("Al posto delle iniziali: il logo certificato del marchio (quello che mostra anche Gmail) e, per i siti " +
-                                "da cui ricevi posta da qualche settimana, l'icona del sito. Mai per la posta indesiderata. Missiva " +
-                                "scarica il logo dal sito del mittente, senza dirgli quale messaggio hai ricevuto."));
-        p.Children.Add(Check("Mostra l'anteprima degli allegati", S.ShowAttachmentPreviews, v => S.ShowAttachmentPreviews = v));
-        p.Children.Add(Check("Visualizza le intestazioni date", S.ShowDateHeaders, v => S.ShowDateHeaders = v));
+        p.Children.Add(Section(T("Personalizza il layout dell'elenco dei messaggi")));
+        p.Children.Add(Check(T("Mostra le immagini dei mittenti"), S.ShowSenderImages, v => S.ShowSenderImages = v));
+        p.Children.Add(Check(T("Mostra il logo dell'azienda del mittente"), S.ShowSenderLogos, v => S.ShowSenderLogos = v));
+        p.Children.Add(Question(T("Al posto delle iniziali: il logo certificato del marchio (quello che mostra anche Gmail) e, per i siti da cui ricevi posta da qualche settimana, l'icona del sito. Mai per la posta indesiderata. Missiva scarica il logo dal sito del mittente, senza dirgli quale messaggio hai ricevuto.")));
+        p.Children.Add(Check(T("Mostra l'anteprima degli allegati"), S.ShowAttachmentPreviews, v => S.ShowAttachmentPreviews = v));
+        p.Children.Add(Check(T("Visualizza le intestazioni date"), S.ShowDateHeaders, v => S.ShowDateHeaders = v));
         return p;
     }
 
@@ -370,19 +383,19 @@ public sealed class SettingsWindow : Window
     StackPanel ReadingPanePage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Riquadro di lettura"));
+        p.Children.Add(Heading(T("Riquadro di lettura")));
 
-        p.Children.Add(Section("Posizione"));
-        p.Children.Add(Question("Dove vuoi vedere il riquadro di lettura?"));
+        p.Children.Add(Section(T("Posizione")));
+        p.Children.Add(Question(T("Dove vuoi vedere il riquadro di lettura?")));
         p.Children.Add(Radios("pane", S.ReadingPane, v => S.ReadingPane = v,
-            (ReadingPanePosition.Right, "A destra"), (ReadingPanePosition.Bottom, "In basso"),
-            (ReadingPanePosition.Off, "Nascosto (i messaggi si aprono con doppio clic)")));
+            (ReadingPanePosition.Right, T("A destra")), (ReadingPanePosition.Bottom, T("In basso")),
+            (ReadingPanePosition.Off, T("Nascosto (i messaggi si aprono con doppio clic)"))));
         p.Children.Add(Rule());
 
-        p.Children.Add(Section("Aspetto dei messaggi"));
-        p.Children.Add(Question("Con il tema scuro di Windows i messaggi vengono adattati ai colori scuri. Il pulsante con il sole in alto a destra di ogni messaggio lo mostra su fondo chiaro."));
-        p.Children.Add(Check("Mostra sempre i messaggi su fondo chiaro", S.LightReadingPane, v => S.LightReadingPane = v));
-        p.Children.Add(Question("Zoom del testo dei messaggi"));
+        p.Children.Add(Section(T("Aspetto dei messaggi")));
+        p.Children.Add(Question(T("Con il tema scuro di Windows i messaggi vengono adattati ai colori scuri. Il pulsante con il sole in alto a destra di ogni messaggio lo mostra su fondo chiaro.")));
+        p.Children.Add(Check(T("Mostra sempre i messaggi su fondo chiaro"), S.LightReadingPane, v => S.LightReadingPane = v));
+        p.Children.Add(Question(T("Zoom del testo dei messaggi")));
         var zoom = new ComboBox { ItemsSource = new[] { 80, 90, 100, 110, 125, 150 }, SelectedItem = S.Zoom, Width = 120, HorizontalAlignment = HorizontalAlignment.Left, ItemStringFormat = "{0}%" };
         zoom.SelectionChanged += (_, _) =>
         {
@@ -395,24 +408,21 @@ public sealed class SettingsWindow : Window
         p.Children.Add(zoom);
         p.Children.Add(Rule());
 
-        p.Children.Add(Section("Immagini esterne"));
-        p.Children.Add(Question("Le immagini scaricate da Internet dicono al mittente se e quando hai letto il messaggio, per questo sono " +
-                                "bloccate. Quando premi Mostra immagini su un messaggio, Missiva le mostra da quel momento in poi per " +
-                                "quel mittente, in tutti gli account: per le aziende vale tutto il dominio (google.com comprende " +
-                                "accounts.google.com), per la posta personale come gmail.com solo quell'indirizzo. Ecco per chi le mostra:"));
+        p.Children.Add(Section(T("Immagini esterne")));
+        p.Children.Add(Question(T("Le immagini scaricate da Internet dicono al mittente se e quando hai letto il messaggio, per questo sono bloccate. Quando premi Mostra immagini su un messaggio, Missiva le mostra da quel momento in poi per quel mittente, in tutti gli account: per le aziende vale tutto il dominio (google.com comprende accounts.google.com), per la posta personale come gmail.com solo quell'indirizzo. Ecco per chi le mostra:")));
         var senders = new StackPanel();
         void Fill()
         {
             senders.Children.Clear();
             if (S.ImageSenders.Count == 0)
             {
-                senders.Children.Add(Question("Nessuno."));
+                senders.Children.Add(Question(T("Nessuno.")));
                 return;
             }
             foreach (var email in S.ImageSenders.OrderBy(e => e, StringComparer.CurrentCultureIgnoreCase).ToList())
             {
                 var row = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
-                var remove = new Button { Content = "Non mostrarle più", Padding = new Thickness(10, 3, 10, 3) };
+                var remove = new Button { Content = T("Non mostrarle più"), Padding = new Thickness(10, 3, 10, 3) };
                 remove.Click += (_, _) =>
                 {
                     S.ImageSenders.Remove(email);
@@ -439,16 +449,59 @@ public sealed class SettingsWindow : Window
     StackPanel AppearancePage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Aspetto"));
-        p.Children.Add(Section("Tema"));
-        p.Children.Add(Question("Missiva può seguire il tema delle app di Windows, che può cambiare da solo all'alba e al tramonto, o restare sempre chiara o sempre scura."));
-        p.Children.Add(Radios("theme", S.Theme, v => App.Current.SetTheme(v), false,
-            (AppTheme.System, "Come Windows"), (AppTheme.Light, "Chiaro"), (AppTheme.Dark, "Scuro")));
+        p.Children.Add(Heading(T("Aspetto")));
+        foreach (var part in LanguagePart()) p.Children.Add(part);
         p.Children.Add(Rule());
-        p.Children.Add(Section("Cartelle"));
-        p.Children.Add(Check("Mostra \"Tutti gli account\" in cima alle cartelle", S.ShowUnified, on => S.ShowUnified = on));
-        p.Children.Add(Question("Con due o più account: Posta in arrivo, Non letti, Contrassegnati, Bozze e Posta inviata di tutti gli account insieme."));
+        p.Children.Add(Section(T("Tema")));
+        p.Children.Add(Question(T("Missiva può seguire il tema delle app di Windows, che può cambiare da solo all'alba e al tramonto, o restare sempre chiara o sempre scura.")));
+        p.Children.Add(Radios("theme", S.Theme, v => App.Current.SetTheme(v), false,
+            (AppTheme.System, T("Come Windows")), (AppTheme.Light, T("Chiaro")), (AppTheme.Dark, T("Scuro"))));
+        p.Children.Add(Rule());
+        p.Children.Add(Section(T("Cartelle")));
+        p.Children.Add(Check(T("Mostra \"Tutti gli account\" in cima alle cartelle"), S.ShowUnified, on => S.ShowUnified = on));
+        p.Children.Add(Question(T("Con due o più account: Posta in arrivo, Non letti, Contrassegnati, Bozze e Posta inviata di tutti gli account insieme.")));
         return p;
+    }
+
+    /// <summary>
+    /// La lingua di Missiva (Lingua, 21 ottobre 2026, richiesta dell'autore): come Windows (di base), italiano o inglese. Il
+    /// titolo è nelle due lingue, perché lo trovi anche chi non legge quella in cui Missiva è adesso; "Italiano" e "English"
+    /// restano sempre scritti così. La scelta si salva subito e vale dal prossimo avvio: se cambia la lingua di Missiva, sotto
+    /// lo dice, con Riavvia ora (App.RestartBecause, l'uscita di Esci con le domande delle scritture aperte).
+    /// </summary>
+    IEnumerable<UIElement> LanguagePart()
+    {
+        string[] values = ["", "it", "en"];
+        var title = T("Lingua (Language)");
+        var box = new ComboBox
+        {
+            ItemsSource = new[] { T("Come Windows"), "Italiano", "English" },
+            SelectedIndex = Math.Max(0, Array.IndexOf(values, S.Language)), Width = 220, HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        AutomationProperties.SetName(box, title);
+        var notice = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        notice.Children.Add(Question(T("La lingua cambia al prossimo avvio di Missiva.")));
+        var restart = new Button { Content = T("Riavvia ora"), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(14, 5, 14, 5) };
+        restart.SetResourceReference(StyleProperty, "AccentButtonStyle");
+        restart.Click += (_, _) =>
+        {
+            Close();
+            App.Current.Dispatcher.BeginInvoke(() => App.Current.RestartBecause("per la lingua nuova"), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        };
+        notice.Children.Add(restart);
+        void Show() => notice.Visibility = Lingua.ChangesAtRestart(S.Language) ? Visibility.Visible : Visibility.Collapsed;
+        Show();
+        box.SelectionChanged += (_, _) =>
+        {
+            if (box.SelectedIndex < 0) return;
+            S.Language = values[box.SelectedIndex];
+            Store.Save();
+            Log.Write($"lingua: impostazione \"{S.Language}\" (vale dal prossimo avvio)");
+            Show();
+        };
+        yield return Section(title);
+        yield return box;
+        yield return notice;
     }
 
     /// <summary>
@@ -458,21 +511,19 @@ public sealed class SettingsWindow : Window
     StackPanel NotificationsPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Notifiche"));
-        p.Children.Add(Section("Nuovi messaggi"));
-        p.Children.Add(Question("Quando nella Posta in arrivo arriva un messaggio nuovo Missiva lo dice con una notifica di Windows: subito con Gmail e gli " +
-                                "altri account IMAP (il server avvisa), entro 30 secondi con gli account Microsoft, e comunque con il controllo di ogni " +
-                                "due minuti. Spegnile per gli account che non vuoi seguire: i messaggi arrivano lo stesso nell'elenco."));
-        if (S.Accounts.Count == 0) p.Children.Add(Question("Nessun account."));
+        p.Children.Add(Heading(T("Notifiche")));
+        p.Children.Add(Section(T("Nuovi messaggi")));
+        p.Children.Add(Question(T("Quando nella Posta in arrivo arriva un messaggio nuovo Missiva lo dice con una notifica di Windows: subito con Gmail e gli altri account IMAP (il server avvisa), entro 30 secondi con gli account Microsoft, e comunque con il controllo di ogni due minuti. Spegnile per gli account che non vuoi seguire: i messaggi arrivano lo stesso nell'elenco.")));
+        if (S.Accounts.Count == 0) p.Children.Add(Question(T("Nessun account.")));
         foreach (var account in S.Accounts.ToList())
-            p.Children.Add(Check($"Notifiche per {account.Email}", !S.NotificationsOff.Contains(account.Id), on =>
+            p.Children.Add(Check(T("Notifiche per {0}", account.Email), !S.NotificationsOff.Contains(account.Id), on =>
             {
                 S.NotificationsOff.Remove(account.Id);
                 if (!on) S.NotificationsOff.Add(account.Id);
             }, refresh: false));
         p.Children.Add(Rule());
-        p.Children.Add(Section("Suono"));
-        p.Children.Add(Check("Riproduci un suono con le notifiche", S.NotificationSound, on => S.NotificationSound = on, refresh: false));
+        p.Children.Add(Section(T("Suono")));
+        p.Children.Add(Check(T("Riproduci un suono con le notifiche"), S.NotificationSound, on => S.NotificationSound = on, refresh: false));
         foreach (var part in IconNumberPart()) p.Children.Add(part);
         return p;
     }
@@ -490,20 +541,19 @@ public sealed class SettingsWindow : Window
         }
         var accounts = new List<CheckBox>();
         yield return Rule();
-        yield return Section("Numero sull'icona di Missiva");
-        yield return Question("Il numero nel cerchio sull'icona di Missiva nella barra delle applicazioni; lo stesso dice il suggerimento dell'icona " +
-                              "vicino all'orologio.");
+        yield return Section(T("Numero sull'icona di Missiva"));
+        yield return Question(T("Il numero nel cerchio sull'icona di Missiva nella barra delle applicazioni; lo stesso dice il suggerimento dell'icona vicino all'orologio."));
         yield return Radios("icona", S.IconNumber, v =>
             {
                 S.IconNumber = v;
                 foreach (var box in accounts) box.IsEnabled = v != IconNumberKind.None;
                 Refresh();
             }, false,
-            (IconNumberKind.Unread, "Messaggi da leggere nella Posta in arrivo"),
-            (IconNumberKind.New, "Messaggi nuovi arrivati da quando hai guardato Missiva"),
-            (IconNumberKind.None, "Nessun numero"));
-        yield return new TextBlock { Text = "Conta questi account", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 2) };
-        if (S.Accounts.Count == 0) yield return Question("Nessun account.");
+            (IconNumberKind.Unread, T("Messaggi da leggere nella Posta in arrivo")),
+            (IconNumberKind.New, T("Messaggi nuovi arrivati da quando hai guardato Missiva")),
+            (IconNumberKind.None, T("Nessun numero")));
+        yield return new TextBlock { Text = T("Conta questi account"), FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 2) };
+        if (S.Accounts.Count == 0) yield return Question(T("Nessun account."));
         foreach (var account in S.Accounts.ToList())
         {
             var box = Check(account.Email, !S.IconNumberOff.Contains(account.Id), on =>
@@ -525,19 +575,17 @@ public sealed class SettingsWindow : Window
     StackPanel StartupPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Avvio e chiusura"));
-        p.Children.Add(Section("Chiudendo la finestra"));
-        p.Children.Add(Question("Nell'area di notifica, vicino all'orologio, Missiva continua a controllare la posta ogni due minuti, a mostrarti le " +
-                                "notifiche, a mandare i messaggi pianificati e a riportare i messaggi posposti, usando poca memoria. Riaprila con un " +
-                                "clic sull'icona; per chiuderla del tutto, tasto destro sull'icona, Esci."));
+        p.Children.Add(Heading(T("Avvio e chiusura")));
+        p.Children.Add(Section(T("Chiudendo la finestra")));
+        p.Children.Add(Question(T("Nell'area di notifica, vicino all'orologio, Missiva continua a controllare la posta ogni due minuti, a mostrarti le notifiche, a mandare i messaggi pianificati e a riportare i messaggi posposti, usando poca memoria. Riaprila con un clic sull'icona; per chiuderla del tutto, tasto destro sull'icona, Esci.")));
         p.Children.Add(Radios("tray", S.KeepInTray, v =>
             {
                 S.KeepInTray = v;
                 App.Current.UpdateTray();
             }, false,
-            (true, "Resta nell'area di notifica"), (false, "Chiudi Missiva del tutto")));
+            (true, T("Resta nell'area di notifica")), (false, T("Chiudi Missiva del tutto"))));
         p.Children.Add(Rule());
-        p.Children.Add(Section("Avvio"));
+        p.Children.Add(Section(T("Avvio")));
 #if !(DEBUG || PROVA)
         // Lo stato vero, non solo l'impostazione di Missiva: spenta da App di avvio di Windows (o con il valore tolto da Run)
         // la casella è spenta. Nella versione di prova la chiave Run non si scrive mai, e resta l'impostazione.
@@ -548,12 +596,12 @@ public sealed class SettingsWindow : Window
             Log.Write($"avvio con Windows: per Windows è {(S.StartWithWindows ? "acceso" : "spento")}, l'impostazione di Missiva lo segue");
         }
 #endif
-        p.Children.Add(Check("Avvia Missiva all'accesso a Windows, nascosta nell'area di notifica", S.StartWithWindows, on =>
+        p.Children.Add(Check(T("Avvia Missiva all'accesso a Windows, nascosta nell'area di notifica"), S.StartWithWindows, on =>
         {
             S.StartWithWindows = on;
             App.ApplyStartWithWindows(byUser: true);
         }, refresh: false));
-        p.Children.Add(Question("Così le notifiche arrivano da subito e la finestra si apre all'istante, già con la posta."));
+        p.Children.Add(Question(T("Così le notifiche arrivano da subito e la finestra si apre all'istante, già con la posta.")));
         return p;
     }
 
@@ -566,28 +614,27 @@ public sealed class SettingsWindow : Window
     StackPanel BackupPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Copia di sicurezza"));
-        p.Children.Add(Question("Un file solo con quello che in Missiva è tuo, da rimettere su questo PC o su un PC nuovo: impostazioni, account, firme, modelli, regole di Missiva, " +
-                                "categorie e colori, Preferiti e ordine delle cartelle, contatti e gruppi di Missiva, rubrica dei destinatari, contrassegni e messaggi posposti. " +
-                                "La posta non c'è: sta sui server e si riscarica."));
+        p.Children.Add(Heading(T("Copia di sicurezza")));
+        p.Children.Add(Question(T("Un file solo con quello che in Missiva è tuo, da rimettere su questo PC o su un PC nuovo: impostazioni, account, firme, modelli, regole di Missiva, categorie e colori, Preferiti e ordine delle cartelle, contatti e gruppi di Missiva, rubrica dei destinatari, contrassegni e messaggi posposti. La posta non c'è: sta sui server e si riscarica.")));
         if (Backup.HasPending(Store.Dir))
         {
             var waiting = new Border { CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), Padding = new Thickness(14, 10, 14, 12), Margin = new Thickness(0, 10, 0, 0) };
             waiting.SetResourceReference(Border.BorderBrushProperty, "CardStrokeColorDefaultBrush");
             waiting.SetResourceReference(Border.BackgroundProperty, "SubtleFillColorSecondaryBrush");
             var box = new StackPanel();
-            var when = Backup.Pending(Store.Dir) is { } copy ? $" (copia del {Backup.Describe(copy).When})" : "";
-            box.Children.Add(new TextBlock { Text = "Un'importazione aspetta il riavvio di Missiva" + when, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            box.Children.Add(Question("Al prossimo avvio i dati di adesso vengono messi da parte e al loro posto vanno quelli della copia. Fino ad allora non cambia nulla."));
+            var waits = Backup.Pending(Store.Dir) is { } copy ? T("Un'importazione aspetta il riavvio di Missiva (copia del {0})", Backup.Describe(copy).When)
+                : T("Un'importazione aspetta il riavvio di Missiva");
+            box.Children.Add(new TextBlock { Text = waits, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+            box.Children.Add(Question(T("Al prossimo avvio i dati di adesso vengono messi da parte e al loro posto vanno quelli della copia. Fino ad allora non cambia nulla.")));
             var row = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
-            var restart = new Button { Content = "Riavvia ora", Margin = new Thickness(0, 0, 8, 0) };
+            var restart = new Button { Content = T("Riavvia ora"), Margin = new Thickness(0, 0, 8, 0) };
             restart.SetResourceReference(StyleProperty, "AccentButtonStyle");
             restart.Click += (_, _) =>
             {
                 Close();
                 App.Current.Dispatcher.BeginInvoke(App.Current.Restart, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             };
-            var forget = new Button { Content = "Annulla l'importazione" };
+            var forget = new Button { Content = T("Annulla l'importazione") };
             forget.Click += (_, _) =>
             {
                 Backup.CancelPending(Store.Dir);
@@ -601,20 +648,18 @@ public sealed class SettingsWindow : Window
             p.Children.Add(waiting);
         }
 
-        p.Children.Add(Section("Esporta"));
-        p.Children.Add(Question("Il file è cifrato con una password che scegli tu: senza quella non si apre, e Missiva non può recuperarla. Gli accessi agli account non ci sono: " +
-                                "dove importi la copia ogni account chiede di nuovo l'accesso (per gli account IMAP puoi scegliere di includere la password)."));
-        var export = new Button { Content = "Esporta…", Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 120 };
-        AutomationProperties.SetName(export, "Esporta una copia di sicurezza");
+        p.Children.Add(Section(T("Esporta")));
+        p.Children.Add(Question(T("Il file è cifrato con una password che scegli tu: senza quella non si apre, e Missiva non può recuperarla. Gli accessi agli account non ci sono: dove importi la copia ogni account chiede di nuovo l'accesso (per gli account IMAP puoi scegliere di includere la password).")));
+        var export = new Button { Content = T("Esporta…"), Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 120 };
+        AutomationProperties.SetName(export, T("Esporta una copia di sicurezza"));
         export.Click += (_, _) => BackupUi.Export(this);
         p.Children.Add(export);
         p.Children.Add(Rule());
 
-        p.Children.Add(Section("Importa"));
-        p.Children.Add(Question("Importare sostituisce tutto quello che Missiva ha ora su questo PC con quello della copia, senza unire. Prima Missiva ti dice che cosa c'è nella copia " +
-                                "e te lo chiede; i dati di adesso restano nella cartella dei dati, messi da parte con la data nel nome. Poi Missiva si riavvia."));
-        var import = new Button { Content = "Importa…", Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 120 };
-        AutomationProperties.SetName(import, "Importa una copia di sicurezza");
+        p.Children.Add(Section(T("Importa")));
+        p.Children.Add(Question(T("Importare sostituisce tutto quello che Missiva ha ora su questo PC con quello della copia, senza unire. Prima Missiva ti dice che cosa c'è nella copia e te lo chiede; i dati di adesso restano nella cartella dei dati, messi da parte con la data nel nome. Poi Missiva si riavvia.")));
+        var import = new Button { Content = T("Importa…"), Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 120 };
+        AutomationProperties.SetName(import, T("Importa una copia di sicurezza"));
         import.Click += (_, _) =>
         {
             BackupUi.Import(this);
@@ -627,10 +672,10 @@ public sealed class SettingsWindow : Window
         if (Backup.AsideFiles(Store.Dir) is { Count: > 0 } aside)
         {
             p.Children.Add(Rule());
-            p.Children.Add(Section("Dati di prima di un'importazione"));
+            p.Children.Add(Section(T("Dati di prima di un'importazione")));
             p.Children.Add(Question(BackupUi.AsideLine(aside)));
-            var delete = new Button { Content = "Elimina i dati di prima…", Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 120 };
-            AutomationProperties.SetName(delete, "Elimina i dati di prima dell'importazione");
+            var delete = new Button { Content = T("Elimina i dati di prima…"), Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 120 };
+            AutomationProperties.SetName(delete, T("Elimina i dati di prima dell'importazione"));
             delete.Click += (_, _) =>
             {
                 var now = Backup.AsideFiles(Store.Dir); // quelli che ci sono adesso: la domanda dice di questi
@@ -639,9 +684,9 @@ public sealed class SettingsWindow : Window
                 {
                     var (_, failed) = Backup.DeleteAside(Store.Dir);
                     if (failed.Count > 0)
-                        Dialog.Show(this, "Non tutti i dati di prima sono stati eliminati",
-                            $"{(failed.Count == 1 ? "Un file non si è lasciato eliminare" : $"{failed.Count} file non si sono lasciati eliminare")}, forse perché in uso da un altro programma: {string.Join(", ", failed)}. " +
-                            "Chiudi quel programma e riprova da qui.");
+                        Dialog.Show(this, T("Non tutti i dati di prima sono stati eliminati"), failed.Count == 1
+                            ? T("Un file non si è lasciato eliminare, forse perché in uso da un altro programma: {0}. Chiudi quel programma e riprova da qui.", failed[0])
+                            : T("{0} file non si sono lasciati eliminare, forse perché in uso da un altro programma: {1}. Chiudi quel programma e riprova da qui.", failed.Count, string.Join(", ", failed)));
                 }
                 ShowPage(); // senza più file la parte sparisce
             };
@@ -659,15 +704,15 @@ public sealed class SettingsWindow : Window
     StackPanel MessageHandlingPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Gestione messaggi"));
-        p.Children.Add(Section("Segna come letto"));
-        p.Children.Add(Question("Quando vuoi che i messaggi aperti nel riquadro di lettura vengano segnati come letti?"));
+        p.Children.Add(Heading(T("Gestione messaggi")));
+        p.Children.Add(Section(T("Segna come letto")));
+        p.Children.Add(Question(T("Quando vuoi che i messaggi aperti nel riquadro di lettura vengano segnati come letti?")));
         var seconds = new ComboBox
         {
-            ItemsSource = new[] { 1, 2, 3, 5, 10, 15, 30 }, SelectedItem = S.MarkReadSeconds, ItemStringFormat = "{0} secondi",
+            ItemsSource = new[] { 1, 2, 3, 5, 10, 15, 30 }, SelectedItem = S.MarkReadSeconds, ItemStringFormat = T("{0} secondi"),
             IsEnabled = S.MarkRead == MarkReadMode.AfterDelay,
         };
-        AutomationProperties.SetName(seconds, "Secondi di attesa");
+        AutomationProperties.SetName(seconds, T("Secondi di attesa"));
         seconds.SelectionChanged += (_, _) =>
         {
             if (seconds.SelectedItem is not int s) return;
@@ -679,15 +724,15 @@ public sealed class SettingsWindow : Window
                 S.MarkRead = v;
                 seconds.IsEnabled = v == MarkReadMode.AfterDelay;
             }, false,
-            (MarkReadMode.Immediately, "Subito, appena il messaggio si apre"),
-            (MarkReadMode.AfterDelay, "Quando il messaggio resta aperto nel riquadro per"),
-            (MarkReadMode.OnSelectionChange, "Quando la selezione cambia"),
-            (MarkReadMode.Never, "Non segnarli automaticamente"));
-        var wait = Labeled("Attesa", seconds);
+            (MarkReadMode.Immediately, T("Subito, appena il messaggio si apre")),
+            (MarkReadMode.AfterDelay, T("Quando il messaggio resta aperto nel riquadro per")),
+            (MarkReadMode.OnSelectionChange, T("Quando la selezione cambia")),
+            (MarkReadMode.Never, T("Non segnarli automaticamente")));
+        var wait = Labeled(T("Attesa"), seconds);
         wait.Margin = new Thickness(28, 0, 0, 4);
         radios.Children.Insert(2, wait); // sotto la sua scelta
         p.Children.Add(radios);
-        p.Children.Add(Question("Puoi sempre segnarli a mano: Ctrl+Q li segna come letti, Ctrl+U da leggere, come la busta fra le azioni rapide dei messaggi."));
+        p.Children.Add(Question(T("Puoi sempre segnarli a mano: Ctrl+Q li segna come letti, Ctrl+U da leggere, come la busta fra le azioni rapide dei messaggi.")));
         return p;
     }
 
@@ -700,25 +745,20 @@ public sealed class SettingsWindow : Window
     StackPanel ComposingPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Scrittura e risposta"));
-        p.Children.Add(Section("Annulla invio"));
-        p.Children.Add(Question("Dopo Invia la finestra si chiude subito, ma il messaggio aspetta qualche secondo prima di partire: in fondo all'elenco " +
-                                "\"Invio in corso…\" con Annulla, che riapre il messaggio com'era."));
+        p.Children.Add(Heading(T("Scrittura e risposta")));
+        p.Children.Add(Section(T("Annulla invio")));
+        p.Children.Add(Question(T("Dopo Invia la finestra si chiude subito, ma il messaggio aspetta qualche secondo prima di partire: in fondo all'elenco \"Invio in corso…\" con Annulla, che riapre il messaggio com'era.")));
         p.Children.Add(Radios("undosend", S.UndoSendSeconds, v => S.UndoSendSeconds = v, false,
-            (0, "Non aspettare: il messaggio parte subito"), (5, "5 secondi"), (10, "10 secondi")));
+            (0, T("Non aspettare: il messaggio parte subito")), (5, T("5 secondi")), (10, T("10 secondi"))));
         p.Children.Add(Rule());
-        p.Children.Add(Section("Allegati dimenticati"));
-        p.Children.Add(Question("Se nel testo scrivi di un allegato (\"in allegato\", \"allego\", \"attached\") e non c'è nessun allegato, a Invia " +
-                                "Missiva chiede se vuoi inviare lo stesso. La firma e il messaggio a cui rispondi non contano."));
-        p.Children.Add(Check("Avvisami se manca l'allegato di cui ho scritto", S.AttachmentReminder, v => S.AttachmentReminder = v, refresh: false));
+        p.Children.Add(Section(T("Allegati dimenticati")));
+        p.Children.Add(Question(T("Se nel testo scrivi di un allegato (\"in allegato\", \"allego\", \"attached\") e non c'è nessun allegato, a Invia Missiva chiede se vuoi inviare lo stesso. La firma e il messaggio a cui rispondi non contano.")));
+        p.Children.Add(Check(T("Avvisami se manca l'allegato di cui ho scritto"), S.AttachmentReminder, v => S.AttachmentReminder = v, refresh: false));
         p.Children.Add(Rule());
         FormatSection(p);
         p.Children.Add(Rule());
-        p.Children.Add(Section("Pianifica invio"));
-        p.Children.Add(Question("Dalla freccia accanto a Invia. Con gli account Microsoft il messaggio aspetta nella Posta in uscita di Outlook e parte " +
-                                "all'ora scelta anche con Missiva chiusa. Con Gmail e gli altri account resta nelle Bozze e lo manda Missiva " +
-                                "all'ora scelta, anche con la finestra chiusa se Missiva resta nell'area di notifica (Generali, Avvio e chiusura); " +
-                                "se Missiva è chiusa del tutto, appena la riapri."));
+        p.Children.Add(Section(T("Pianifica invio")));
+        p.Children.Add(Question(T("Dalla freccia accanto a Invia. Con gli account Microsoft il messaggio aspetta nella Posta in uscita di Outlook e parte all'ora scelta anche con Missiva chiusa. Con Gmail e gli altri account resta nelle Bozze e lo manda Missiva all'ora scelta, anche con la finestra chiusa se Missiva resta nell'area di notifica (Generali, Avvio e chiusura); se Missiva è chiusa del tutto, appena la riapri.")));
         return p;
     }
 
@@ -728,20 +768,20 @@ public sealed class SettingsWindow : Window
     /// </summary>
     void FormatSection(StackPanel p)
     {
-        p.Children.Add(Section("Formato del messaggio"));
-        p.Children.Add(Question("Il carattere con cui cominciano i nuovi messaggi, le risposte e gli inoltri. Nella scrittura la barra lo cambia per il testo scelto."));
+        p.Children.Add(Section(T("Formato del messaggio")));
+        p.Children.Add(Question(T("Il carattere con cui cominciano i nuovi messaggi, le risposte e gli inoltri. Nella scrittura la barra lo cambia per il testo scelto.")));
         var font = new ComboBox { ItemsSource = ComposeWindow.Fonts.Contains(S.ComposeFont) ? ComposeWindow.Fonts : ComposeWindow.Fonts.Prepend(S.ComposeFont).ToArray(), SelectedItem = S.ComposeFont };
-        AutomationProperties.SetName(font, "Carattere dei messaggi");
+        AutomationProperties.SetName(font, T("Carattere dei messaggi"));
         var sizes = ComposeWindow.Sizes.Select(v => v.ToString("0.#", System.Globalization.CultureInfo.CurrentCulture)).ToList();
         var size = new ComboBox { ItemsSource = sizes, SelectedItem = S.ComposeFontSize.ToString("0.#", System.Globalization.CultureInfo.CurrentCulture) };
-        AutomationProperties.SetName(size, "Dimensione del carattere dei messaggi");
-        var color = new ComboBox { ItemsSource = ComposeWindow.TextColors.Select(c => c.Name).ToList() };
+        AutomationProperties.SetName(size, T("Dimensione del carattere dei messaggi"));
+        var color = new ComboBox { ItemsSource = ComposeWindow.TextColors.Select(c => T(c.Name)).ToList() }; // i nomi della scrittura, tradotti se segnati con N
         color.SelectedIndex = Math.Max(0, Array.FindIndex(ComposeWindow.TextColors, c => c.Hex.Equals(S.ComposeColor, StringComparison.OrdinalIgnoreCase)));
-        AutomationProperties.SetName(color, "Colore del testo dei messaggi");
-        p.Children.Add(Labeled("Carattere", font));
-        p.Children.Add(Labeled("Dimensione", size));
-        p.Children.Add(Labeled("Colore", color));
-        var sample = new TextBlock { Text = "Gentile cliente, in allegato il preventivo richiesto.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
+        AutomationProperties.SetName(color, T("Colore del testo dei messaggi"));
+        p.Children.Add(Labeled(T("Carattere"), font));
+        p.Children.Add(Labeled(T("Dimensione"), size));
+        p.Children.Add(Labeled(T("Colore"), color));
+        var sample = new TextBlock { Text = T("Gentile cliente, in allegato il preventivo richiesto."), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
         void Preview()
         {
             sample.FontFamily = new FontFamily(S.ComposeFont);
@@ -784,54 +824,53 @@ public sealed class SettingsWindow : Window
     StackPanel TemplatesPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Modelli"));
-        p.Children.Add(Question("Testi che si ripetono, da inserire con il pulsante Modelli della scrittura. {nome} diventa il nome del primo destinatario, " +
-                                "{data} la data di oggi. Restano su questo PC, cifrati."));
+        p.Children.Add(Heading(T("Modelli")));
+        p.Children.Add(Question(T("Testi che si ripetono, da inserire con il pulsante Modelli della scrittura. {nome} diventa il nome del primo destinatario, {data} la data di oggi. Restano su questo PC, cifrati.")));
         var list = new ListBox { MinHeight = 90, MaxHeight = 180, DisplayMemberPath = nameof(MailTemplate.Name), Margin = new Thickness(0, 6, 0, 0) };
         list.SetResourceReference(ItemsControl.ItemContainerStyleProperty, "NavItem");
         var itemStyle = new Style(typeof(ListBoxItem), (Style)FindResource("NavItem"));
         itemStyle.Setters.Add(new Setter(AutomationProperties.NameProperty, new System.Windows.Data.Binding(nameof(MailTemplate.Name))));
         list.ItemContainerStyle = itemStyle; // per UI Automation il nome, non "Missiva.MailTemplate"
-        AutomationProperties.SetName(list, "Modelli");
+        AutomationProperties.SetName(list, T("Modelli"));
         p.Children.Add(list);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        var add = new Button { Content = "Nuovo modello" };
+        var add = new Button { Content = T("Nuovo modello") };
         add.SetResourceReference(StyleProperty, "AccentButtonStyle");
-        var remove = new Button { Content = "Elimina", Margin = new Thickness(8, 0, 0, 0) };
-        AutomationProperties.SetName(remove, "Elimina il modello");
+        var remove = new Button { Content = T("Elimina"), Margin = new Thickness(8, 0, 0, 0) };
+        AutomationProperties.SetName(remove, T("Elimina il modello"));
         buttons.Children.Add(add);
         buttons.Children.Add(remove);
         p.Children.Add(buttons);
 
         var form = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
         var name = new TextBox();
-        AutomationProperties.SetName(name, "Nome del modello");
+        AutomationProperties.SetName(name, T("Nome del modello"));
         var subject = new TextBox();
-        AutomationProperties.SetName(subject, "Oggetto del modello");
-        var owners = new List<(string? Id, string Text)> { (null, "Tutti gli account") };
+        AutomationProperties.SetName(subject, T("Oggetto del modello"));
+        var owners = new List<(string? Id, string Text)> { (null, T("Tutti gli account")) };
         owners.AddRange(S.Accounts.Select(a => ((string?)a.Id, a.Email)));
         var owner = new ComboBox { ItemsSource = owners.Select(o => o.Text).ToList(), SelectedIndex = 0 };
-        AutomationProperties.SetName(owner, "Modello per");
-        form.Children.Add(Section("Nome"));
+        AutomationProperties.SetName(owner, T("Modello per"));
+        form.Children.Add(Section(T("Nome")));
         form.Children.Add(name);
-        form.Children.Add(Section("Oggetto (facoltativo: va nei messaggi senza oggetto)"));
+        form.Children.Add(Section(T("Oggetto (facoltativo: va nei messaggi senza oggetto)")));
         form.Children.Add(subject);
-        form.Children.Add(Labeled("Per", owner));
-        form.Children.Add(Section("Testo"));
+        form.Children.Add(Labeled(T("Per"), owner));
+        form.Children.Add(Section(T("Testo")));
         var editor = new RichEditor
         {
-            MinHeight = 150, MaxHeight = 320, Padding = new Thickness(8), AcceptsTab = true, Language = System.Windows.Markup.XmlLanguage.GetLanguage("it-IT"),
+            MinHeight = 150, MaxHeight = 320, Padding = new Thickness(8), AcceptsTab = true, Language = Lingua.Xml, // la lingua di Missiva per il correttore: it-IT in italiano, come prima
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontSize = 14,
             Document = new FlowDocument { FontFamily = new FontFamily("Segoe UI"), FontSize = 14 },
         };
         SpellCheck.SetIsEnabled(editor, true);
-        AutomationProperties.SetName(editor, "Testo del modello");
+        AutomationProperties.SetName(editor, T("Testo del modello"));
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
         foreach (var (glyph, tip, command) in new[]
                  {
-                     ("\uE8DD", "Grassetto (Ctrl+B)", EditingCommands.ToggleBold), ("\uE8DB", "Corsivo (Ctrl+I)", EditingCommands.ToggleItalic),
-                     ("\uE8DC", "Sottolineato (Ctrl+U)", EditingCommands.ToggleUnderline), ("\uE8FD", "Elenco puntato", EditingCommands.ToggleBullets),
-                     ("\uE9D5", "Elenco numerato", EditingCommands.ToggleNumbering),
+                     ("\uE8DD", T("Grassetto (Ctrl+B)"), EditingCommands.ToggleBold), ("\uE8DB", T("Corsivo (Ctrl+I)"), EditingCommands.ToggleItalic),
+                     ("\uE8DC", T("Sottolineato (Ctrl+U)"), EditingCommands.ToggleUnderline), ("\uE8FD", T("Elenco puntato"), EditingCommands.ToggleBullets),
+                     ("\uE9D5", T("Elenco numerato"), EditingCommands.ToggleNumbering),
                  })
         {
             var tool = new Button
@@ -880,7 +919,7 @@ public sealed class SettingsWindow : Window
             pending.Stop();
             if (edited is not { } t) return;
             edited = null;
-            t.Name = name.Text.Trim().Length > 0 ? name.Text.Trim() : "Senza nome";
+            t.Name = name.Text.Trim().Length > 0 ? name.Text.Trim() : T("Senza nome");
             t.Subject = subject.Text.Trim();
             t.AccountId = owners[Math.Max(0, owner.SelectedIndex)].Id;
             t.Rtf = editor.Rtf;
@@ -914,7 +953,7 @@ public sealed class SettingsWindow : Window
         add.Click += (_, _) =>
         {
             Flush();
-            var t = new MailTemplate { Name = "Nuovo modello" };
+            var t = new MailTemplate { Name = T("Nuovo modello") };
             S.Templates.Add(t);
             Store.Save();
             Refill(t);
@@ -924,7 +963,7 @@ public sealed class SettingsWindow : Window
         remove.Click += (_, _) =>
         {
             if (list.SelectedItem is not MailTemplate t) return;
-            if (Dialog.Ask(this, $"Eliminare il modello \"{t.Name}\"?", "Il modello esce da Missiva. I messaggi scritti con lui restano.", "Elimina") != Choice.Primary) return;
+            if (Dialog.Ask(this, T("Eliminare il modello \"{0}\"?", t.Name), T("Il modello esce da Missiva. I messaggi scritti con lui restano."), T("Elimina")) != Choice.Primary) return;
             edited = null;
             pending.Stop();
             S.Templates.Remove(t);
@@ -940,9 +979,8 @@ public sealed class SettingsWindow : Window
     StackPanel AccountsPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Account di posta"));
-        p.Children.Add(Question("Gli account collegati a Missiva. Gestisci cambia il nome mostrato, la password e i server (o rifà l'accesso); " +
-                                "rimuovendo un account, la posta resta sul server."));
+        p.Children.Add(Heading(T("Account di posta")));
+        p.Children.Add(Question(T("Gli account collegati a Missiva. Gestisci cambia il nome mostrato, la password e i server (o rifà l'accesso); rimuovendo un account, la posta resta sul server.")));
         foreach (var account in S.Accounts.ToList())
         {
             var card = new Border { CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1), Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 6, 0, 0) };
@@ -950,8 +988,8 @@ public sealed class SettingsWindow : Window
             // L'indirizzo intero sopra, i pulsanti sotto: accanto all'indirizzo lo tagliavano ("mario.rossi@outlool").
             var row = new StackPanel();
             var actions = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-            var remove = new Button { Content = "Rimuovi", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-            AutomationProperties.SetName(remove, "Rimuovi " + account.Email);
+            var remove = new Button { Content = T("Rimuovi"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+            AutomationProperties.SetName(remove, T("Rimuovi {0}", account.Email));
             remove.Click += async (_, _) =>
             {
                 await removeAccount(account);
@@ -962,8 +1000,8 @@ public sealed class SettingsWindow : Window
             // accesso né nome suoi: li ha l'account di lavoro che la apre.
             if (account.SharedOf == null)
             {
-                var manage = new Button { Content = "Gestisci", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-                AutomationProperties.SetName(manage, "Gestisci " + account.Email);
+                var manage = new Button { Content = T("Gestisci"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+                AutomationProperties.SetName(manage, T("Gestisci {0}", account.Email));
                 manage.Click += async (_, _) =>
                 {
                     await manageAccount(account, this, false);
@@ -974,8 +1012,8 @@ public sealed class SettingsWindow : Window
             if (account.Kind == AccountKind.Microsoft && account.SharedOf == null && autoReplies != null)
             {
                 // Come Impostazioni, Account, Risposte automatiche nel nuovo Outlook.
-                var replies = new Button { Content = "Risposte automatiche", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-                AutomationProperties.SetName(replies, "Risposte automatiche di " + account.Email);
+                var replies = new Button { Content = T("Risposte automatiche"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+                AutomationProperties.SetName(replies, T("Risposte automatiche di {0}", account.Email));
                 replies.Click += async (_, _) => await autoReplies(account, this);
                 actions.Children.Add(replies);
             }
@@ -996,7 +1034,7 @@ public sealed class SettingsWindow : Window
             card.Child = row;
             p.Children.Add(card);
         }
-        var add = new Button { Content = "Aggiungi account", Margin = new Thickness(0, 14, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+        var add = new Button { Content = T("Aggiungi account"), Margin = new Thickness(0, 14, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
         add.SetResourceReference(StyleProperty, "AccentButtonStyle");
         add.Click += (_, _) =>
         {
@@ -1007,14 +1045,14 @@ public sealed class SettingsWindow : Window
 
         if (!string.IsNullOrEmpty(S.MicrosoftClientId))
         {
-            p.Children.Add(Section("App registrata su Microsoft Entra"));
-            p.Children.Add(Question("ID applicazione (client) degli account personali: " + S.MicrosoftClientId +
-                                    ". Gli account di lavoro o della scuola usano l'app scritta per ognuno, o quella di Missiva."));
+            p.Children.Add(Section(T("App registrata su Microsoft Entra")));
+            p.Children.Add(Question(T("ID applicazione (client) degli account personali: {0}. Gli account di lavoro o della scuola usano l'app scritta per ognuno, o quella di Missiva.",
+                                      S.MicrosoftClientId)));
         }
         if (!string.IsNullOrEmpty(S.GoogleClientId))
         {
-            p.Children.Add(Section("App registrata su Google Cloud"));
-            p.Children.Add(Question("ID client: " + S.GoogleClientId));
+            p.Children.Add(Section(T("App registrata su Google Cloud")));
+            p.Children.Add(Question(T("ID client: {0}", S.GoogleClientId)));
         }
         return p;
     }
@@ -1038,54 +1076,54 @@ public sealed class SettingsWindow : Window
     StackPanel SignaturesPage()
     {
         var p = new StackPanel();
-        p.Children.Add(Heading("Firme"));
+        p.Children.Add(Heading(T("Firme")));
         if (S.Accounts.Count == 0)
         {
-            p.Children.Add(Question("Aggiungi un account per scrivere la sua firma."));
+            p.Children.Add(Question(T("Aggiungi un account per scrivere la sua firma.")));
             return p;
         }
         // Gli account e i loro altri indirizzi (Gestisci account): un altro indirizzo senza firma sua usa quella dell'account.
-        var owners = S.Accounts.SelectMany(a => a.Identities.Select(i => new SignatureOwner(a.Id + "|" + i.Id, $"{i.Email} (altro indirizzo di {a.Email})"))
+        var owners = S.Accounts.SelectMany(a => a.Identities.Select(i => new SignatureOwner(a.Id + "|" + i.Id, T("{0} (altro indirizzo di {1})", i.Email, a.Email)))
                                                   .Prepend(new SignatureOwner(a.Id, a.Email))).ToList();
         var accountBox = new ComboBox { ItemsSource = owners, DisplayMemberPath = nameof(SignatureOwner.Email), SelectedIndex = 0 };
-        AutomationProperties.SetName(accountBox, "Firma per");
+        AutomationProperties.SetName(accountBox, T("Firma per"));
         var itemStyle = new Style(typeof(ComboBoxItem), (Style)FindResource(typeof(ComboBoxItem)));
         itemStyle.Setters.Add(new Setter(AutomationProperties.NameProperty, new System.Windows.Data.Binding(nameof(SignatureOwner.Email))));
         accountBox.ItemContainerStyle = itemStyle; // per UI Automation l'indirizzo, non "Missiva.MailAccount"
-        p.Children.Add(Labeled("Firma per", accountBox));
+        p.Children.Add(Labeled(T("Firma per"), accountBox));
 
         // Le firme dell'indirizzo: la principale e le altre, con Nuova firma, il nome ed Elimina.
         var signatureBox = new ComboBox();
-        AutomationProperties.SetName(signatureBox, "Firma da modificare");
-        p.Children.Add(Labeled("Firma", signatureBox));
+        AutomationProperties.SetName(signatureBox, T("Firma da modificare"));
+        p.Children.Add(Labeled(T("Firma"), signatureBox));
         var manage = new WrapPanel { Margin = new Thickness(0, 2, 0, 0) };
-        var add = new Button { Content = "Nuova firma", Margin = new Thickness(0, 0, 8, 4) };
-        AutomationProperties.SetName(add, "Nuova firma");
-        var remove = new Button { Content = "Elimina la firma", Margin = new Thickness(0, 0, 8, 4) };
-        AutomationProperties.SetName(remove, "Elimina la firma");
+        var add = new Button { Content = T("Nuova firma"), Margin = new Thickness(0, 0, 8, 4) };
+        AutomationProperties.SetName(add, T("Nuova firma"));
+        var remove = new Button { Content = T("Elimina la firma"), Margin = new Thickness(0, 0, 8, 4) };
+        AutomationProperties.SetName(remove, T("Elimina la firma"));
         var nameBox = new TextBox { Width = 200, Margin = new Thickness(0, 0, 8, 4), VerticalAlignment = VerticalAlignment.Center };
-        AutomationProperties.SetName(nameBox, "Nome della firma");
+        AutomationProperties.SetName(nameBox, T("Nome della firma"));
         manage.Children.Add(add);
-        manage.Children.Add(new TextBlock { Text = "Nome", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 4) });
+        manage.Children.Add(new TextBlock { Text = T("Nome"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 4) });
         manage.Children.Add(nameBox);
         manage.Children.Add(remove);
         p.Children.Add(manage);
 
-        p.Children.Add(Section("Modifica la firma"));
+        p.Children.Add(Section(T("Modifica la firma")));
         var editor = new RichEditor
         {
-            MinHeight = 150, MaxHeight = 320, Padding = new Thickness(8), AcceptsTab = true, Language = System.Windows.Markup.XmlLanguage.GetLanguage("it-IT"),
+            MinHeight = 150, MaxHeight = 320, Padding = new Thickness(8), AcceptsTab = true, Language = Lingua.Xml, // la lingua di Missiva per il correttore: it-IT in italiano, come prima
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontSize = 14,
             Document = new FlowDocument { FontFamily = new FontFamily("Segoe UI"), FontSize = 14 },
         };
         SpellCheck.SetIsEnabled(editor, true);
-        AutomationProperties.SetName(editor, "Firma");
+        AutomationProperties.SetName(editor, T("Firma"));
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
         foreach (var (glyph, tip, command) in new[]
                  {
-                     ("", "Grassetto (Ctrl+B)", EditingCommands.ToggleBold), ("", "Corsivo (Ctrl+I)", EditingCommands.ToggleItalic),
-                     ("", "Sottolineato (Ctrl+U)", EditingCommands.ToggleUnderline), ("", "Allinea a sinistra", EditingCommands.AlignLeft),
-                     ("", "Al centro", EditingCommands.AlignCenter),
+                     ("", T("Grassetto (Ctrl+B)"), EditingCommands.ToggleBold), ("", T("Corsivo (Ctrl+I)"), EditingCommands.ToggleItalic),
+                     ("", T("Sottolineato (Ctrl+U)"), EditingCommands.ToggleUnderline), ("", T("Allinea a sinistra"), EditingCommands.AlignLeft),
+                     ("", T("Al centro"), EditingCommands.AlignCenter),
                  })
         {
             var tool = new Button
@@ -1104,15 +1142,14 @@ public sealed class SettingsWindow : Window
         p.Children.Add(tools);
         p.Children.Add(editor);
 
-        p.Children.Add(Section("Firme predefinite"));
-        p.Children.Add(Question("Missiva mette la firma da sola, dopo due righe vuote; nelle risposte sta sopra il messaggio citato. Nella scrittura il " +
-                                "pulsante Firma la cambia."));
+        p.Children.Add(Section(T("Firme predefinite")));
+        p.Children.Add(Question(T("Missiva mette la firma da sola, dopo due righe vuote; nelle risposte sta sopra il messaggio citato. Nella scrittura il pulsante Firma la cambia.")));
         var newBox = new ComboBox();
         var replyBox = new ComboBox();
-        AutomationProperties.SetName(newBox, "Firma dei nuovi messaggi");
-        AutomationProperties.SetName(replyBox, "Firma delle risposte e degli inoltri");
-        p.Children.Add(Labeled("Nei nuovi messaggi", newBox));
-        p.Children.Add(Labeled("Nelle risposte e negli inoltri", replyBox));
+        AutomationProperties.SetName(newBox, T("Firma dei nuovi messaggi"));
+        AutomationProperties.SetName(replyBox, T("Firma delle risposte e degli inoltri"));
+        p.Children.Add(Labeled(T("Nei nuovi messaggi"), newBox));
+        p.Children.Add(Labeled(T("Nelle risposte e negli inoltri"), replyBox));
 
         bool loading = false;
         const string None = "-";
@@ -1120,10 +1157,10 @@ public sealed class SettingsWindow : Window
         string EditedId() => (signatureBox.SelectedItem as SignatureChoice)?.Id ?? "";
         void FillChoices(Signature s, string select)
         {
-            var all = s.All().Select(x => new SignatureChoice(x.Id, x.Id.Length == 0 ? "Firma principale" : x.Name.Length > 0 ? x.Name : "Senza nome")).ToList();
+            var all = s.All().Select(x => new SignatureChoice(x.Id, x.Id.Length == 0 ? T("Firma principale") : x.Name.Length > 0 ? x.Name : T("Senza nome"))).ToList();
             signatureBox.ItemsSource = all;
             signatureBox.SelectedItem = all.FirstOrDefault(c => c.Id == select) ?? all[0];
-            var defaults = all.Prepend(new SignatureChoice(None, "Nessuna firma")).ToList();
+            var defaults = all.Prepend(new SignatureChoice(None, T("Nessuna firma"))).ToList();
             newBox.ItemsSource = defaults;
             replyBox.ItemsSource = defaults;
             newBox.SelectedItem = defaults.FirstOrDefault(c => c.Id == (s.NewMessages ? s.NewId : None)) ?? defaults[1];
@@ -1143,7 +1180,7 @@ public sealed class SettingsWindow : Window
             var id = EditedId();
             var named = s.More.FirstOrDefault(m => m.Id == id);
             editor.Rtf = named?.Rtf ?? s.Rtf;
-            nameBox.Text = named?.Name ?? "Firma principale";
+            nameBox.Text = named?.Name ?? T("Firma principale");
             nameBox.IsEnabled = remove.IsEnabled = named != null;
         }
         void Save(SignatureOwner a, string id)
@@ -1191,7 +1228,7 @@ public sealed class SettingsWindow : Window
             if (accountBox.SelectedItem is not SignatureOwner a) return;
             Flush();
             var s = Current(a);
-            var named = new NamedSignature { Name = s.More.Count == 0 ? "Breve" : $"Firma {s.More.Count + 2}" };
+            var named = new NamedSignature { Name = s.More.Count == 0 ? T("Breve") : T("Firma {0}", s.More.Count + 2) };
             s.More.Add(named);
             Store.Save();
             Load(named.Id);
@@ -1201,7 +1238,7 @@ public sealed class SettingsWindow : Window
         nameBox.LostFocus += (_, _) =>
         {
             if (loading || accountBox.SelectedItem is not SignatureOwner a || Current(a).More.FirstOrDefault(m => m.Id == EditedId()) is not { } named) return;
-            var name = nameBox.Text.Trim().Length > 0 ? nameBox.Text.Trim() : "Senza nome";
+            var name = nameBox.Text.Trim().Length > 0 ? nameBox.Text.Trim() : T("Senza nome");
             if (name == named.Name) return;
             Flush();
             named.Name = name;
@@ -1211,7 +1248,7 @@ public sealed class SettingsWindow : Window
         remove.Click += (_, _) =>
         {
             if (accountBox.SelectedItem is not SignatureOwner a || Current(a).More.FirstOrDefault(m => m.Id == EditedId()) is not { } named) return;
-            if (Dialog.Ask(this, $"Eliminare la firma \"{named.Name}\"?", "La firma esce da Missiva; i messaggi già scritti con lei restano come sono.", "Elimina") != Choice.Primary) return;
+            if (Dialog.Ask(this, T("Eliminare la firma \"{0}\"?", named.Name), T("La firma esce da Missiva; i messaggi già scritti con lei restano come sono."), T("Elimina")) != Choice.Primary) return;
             edited = null;
             pending.Stop();
             var s = Current(a);

@@ -167,28 +167,28 @@
                          PreviewKeyDown="OnSearchPreviewKeyDown" GotKeyboardFocus="OnSearchFocus" LostKeyboardFocus="OnSearchBlur" />
                 <TextBlock Text="&#xE721;" Style="{StaticResource Glyph}" FontSize="14" Margin="12,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                <TextBlock x:Name="SearchHint" Text="Cerca" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                <TextBlock x:Name="SearchHint" Text="{local:T 'Cerca'}" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
                            Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                 <!-- I filtri della ricerca come pastiglie nella casella, con la x per toglierli (MainWindow.SearchFilters.cs) -->
                 <StackPanel x:Name="SearchPills" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="32,0,0,0"
-                            MaxWidth="300" ClipToBounds="True" SizeChanged="OnSearchPillsSize" AutomationProperties.Name="Filtri della ricerca" />
+                            MaxWidth="300" ClipToBounds="True" SizeChanged="OnSearchPillsSize" AutomationProperties.Name="{local:T 'Filtri della ricerca'}" />
                 <!-- Cancella e dove cercare (Tutte le cartelle o Cartella corrente), come nel nuovo Outlook -->
                 <StackPanel x:Name="SearchTools" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,3,0" SizeChanged="OnSearchToolsSize">
                     <Button x:Name="ClearSearchButton" Width="30" Height="26" Padding="0" VerticalAlignment="Center"
-                            Background="Transparent" BorderThickness="0" Visibility="Collapsed" Click="OnClearSearch" ToolTip="Cancella la ricerca"
-                            AutomationProperties.Name="Cancella la ricerca">
+                            Background="Transparent" BorderThickness="0" Visibility="Collapsed" Click="OnClearSearch" ToolTip="{local:T 'Cancella la ricerca'}"
+                            AutomationProperties.Name="{local:T 'Cancella la ricerca'}">
                         <TextBlock Text="&#xE711;" Style="{StaticResource Glyph}" FontSize="11" />
                     </Button>
                     <Button x:Name="SearchFiltersButton" Width="30" Height="26" Padding="0" VerticalAlignment="Center" Background="Transparent"
-                            BorderThickness="0" Click="OnSearchFilters" ToolTip="Filtri: Da, A, Oggetto, date, allegati, non letti, contrassegnati"
-                            AutomationProperties.Name="Filtri">
+                            BorderThickness="0" Click="OnSearchFilters" ToolTip="{local:T 'Filtri: Da, A, Oggetto, date, allegati, non letti, contrassegnati'}"
+                            AutomationProperties.Name="{local:T 'Filtri'}">
                         <TextBlock x:Name="SearchFiltersGlyph" Text="&#xE71C;" Style="{StaticResource Glyph}" FontSize="13"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     </Button>
                     <Button x:Name="SearchScopeButton" Height="26" Padding="8,0" MinWidth="0" VerticalAlignment="Center" Background="Transparent"
-                            BorderThickness="0" Click="OnSearchScope" ToolTip="Dove cercare" AutomationProperties.Name="Dove cercare">
+                            BorderThickness="0" Click="OnSearchScope" ToolTip="{local:T 'Dove cercare'}" AutomationProperties.Name="{local:T 'Dove cercare'}">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="SearchScopeText" Text="Tutte le cartelle" FontSize="12" VerticalAlignment="Center"
+                            <TextBlock x:Name="SearchScopeText" Text="{local:T 'Tutte le cartelle'}" FontSize="12" VerticalAlignment="Center"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                             <TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="9" Margin="6,0,0,0"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -203,17 +203,17 @@
                             Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
                         <StackPanel>
                             <StackPanel x:Name="SuggestTabs" Orientation="Horizontal" Margin="2,0,0,4">
-                                <RadioButton x:Name="SuggestAllTab" Style="{StaticResource Tab}" Content="Tutto" IsChecked="True" Focusable="False"
+                                <RadioButton x:Name="SuggestAllTab" Style="{StaticResource Tab}" Content="{local:T 'Tutto'}" IsChecked="True" Focusable="False"
                                              GroupName="SuggestTabs" Checked="OnSuggestTab" />
                                 <RadioButton x:Name="SuggestMailTab" Style="{StaticResource Tab}" Content="Mail" Focusable="False"
                                              GroupName="SuggestTabs" Checked="OnSuggestTab" />
-                                <RadioButton x:Name="SuggestPeopleTab" Style="{StaticResource Tab}" Content="Persone" Focusable="False"
+                                <RadioButton x:Name="SuggestPeopleTab" Style="{StaticResource Tab}" Content="{local:T 'Persone'}" Focusable="False"
                                              GroupName="SuggestTabs" Checked="OnSuggestTab" />
-                                <RadioButton x:Name="SuggestFilesTab" Style="{StaticResource Tab}" Content="File" Focusable="False"
+                                <RadioButton x:Name="SuggestFilesTab" Style="{StaticResource Tab}" Content="{local:T 'File'}" Focusable="False"
                                              GroupName="SuggestTabs" Checked="OnSuggestTab" />
                             </StackPanel>
                             <ListBox x:Name="SuggestList" Focusable="False" BorderThickness="0" Background="Transparent" MaxHeight="440"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Suggerimenti della ricerca">
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="{local:T 'Suggerimenti della ricerca'}">
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem" BasedOn="{StaticResource NavItem}">
                                         <Setter Property="Focusable" Value="False" />
@@ -258,11 +258,11 @@
             <StackPanel x:Name="TitleTools" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top"
                         Margin="0,11,144,0" WindowChrome.IsHitTestVisibleInChrome="True" SizeChanged="OnTitleToolsSize">
                 <Button x:Name="UpdateButton" Visibility="Collapsed" Click="OnUpdateButton" Template="{StaticResource TitleButton}" Height="30" MinWidth="34"
-                        Padding="10,0" Margin="0,0,4,0" Background="Transparent" AutomationProperties.Name="Aggiornamento di Missiva">
+                        Padding="10,0" Margin="0,0,4,0" Background="Transparent" AutomationProperties.Name="{local:T 'Aggiornamento di Missiva'}">
                     <Grid>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock x:Name="UpdateGlyph" Text="&#xE777;" Style="{StaticResource Glyph}" FontSize="14" />
-                            <TextBlock x:Name="UpdateLabel" Text="Aggiornamento" FontSize="12" Margin="7,0,0,1" VerticalAlignment="Center" />
+                            <TextBlock x:Name="UpdateLabel" Text="{local:T 'Aggiornamento'}" FontSize="12" Margin="7,0,0,1" VerticalAlignment="Center" />
                         </StackPanel>
                         <!-- La barra sottile dello scaricamento, sotto il testo: disegnata qui (la ProgressBar di Fluent sotto i 4 DIP non si vede) -->
                         <Grid x:Name="UpdateProgress" Height="2" VerticalAlignment="Bottom" Margin="0,0,0,-5" Visibility="Collapsed" IsHitTestVisible="False">
@@ -278,7 +278,7 @@
                 <!-- Gli scaricamenti degli allegati (MainWindow.Downloads.cs, DownloadList): c'è da quando ce n'è uno in questa sessione;
                      mentre qualcosa scarica l'anello dell'avanzamento attorno all'icona e, con più di uno, quanti sono -->
                 <Button x:Name="DownloadsButton" Visibility="Collapsed" Click="OnDownloadsButton" Template="{StaticResource TitleButton}" Width="36" Height="30"
-                        Padding="0" Margin="0,0,4,0" Background="Transparent" AutomationProperties.Name="Scaricamenti" ToolTip="Scaricamenti">
+                        Padding="0" Margin="0,0,4,0" Background="Transparent" AutomationProperties.Name="{local:T 'Scaricamenti'}" ToolTip="{local:T 'Scaricamenti'}">
                     <Grid Width="26" Height="26">
                         <Ellipse x:Name="DownloadsTrack" Margin="1" StrokeThickness="2" Stroke="{DynamicResource ControlStrongStrokeColorDefaultBrush}" Opacity="0.3"
                                  Visibility="Collapsed" />
@@ -303,46 +303,46 @@
         <StackPanel x:Name="CommandArea" Grid.Row="1" Margin="12,0,12,4">
             <StackPanel Orientation="Horizontal" Margin="4,0,0,2">
                 <RadioButton x:Name="HomeTab" Style="{StaticResource Tab}" Content="Home" IsChecked="True" Margin="0,0,4,0" Checked="OnTab" />
-                <RadioButton x:Name="ViewTab" Style="{StaticResource Tab}" Content="Visualizza" Checked="OnTab" />
+                <RadioButton x:Name="ViewTab" Style="{StaticResource Tab}" Content="{local:T 'Visualizza'}" Checked="OnTab" />
             </StackPanel>
             <Border Padding="6,3" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                 <Grid>
                     <!-- I pulsanti che non entrano finiscono nel menu "..." (CommandOverflow) -->
                     <DockPanel x:Name="HomeBar" LastChildFill="False" SizeChanged="OnBarSize">
-                        <Button x:Name="HomeRefresh" Style="{StaticResource Command}" DockPanel.Dock="Right" Click="OnRefresh" ToolTip="Sincronizza (F5)"
-                                AutomationProperties.Name="Sincronizza">
+                        <Button x:Name="HomeRefresh" Style="{StaticResource Command}" DockPanel.Dock="Right" Click="OnRefresh" ToolTip="{local:T 'Sincronizza (F5)'}"
+                                AutomationProperties.Name="{local:T 'Sincronizza'}">
                             <TextBlock Text="&#xE72C;" Style="{StaticResource Glyph}" />
                         </Button>
                         <StackPanel x:Name="HomeCommands" Orientation="Horizontal">
-                            <Button x:Name="FoldersButton" Style="{StaticResource Command}" Click="OnToggleFolders" ToolTip="Mostra o nascondi le cartelle"
-                                    AutomationProperties.Name="Cartelle">
+                            <Button x:Name="FoldersButton" Style="{StaticResource Command}" Click="OnToggleFolders" ToolTip="{local:T 'Mostra o nascondi le cartelle'}"
+                                    AutomationProperties.Name="{local:T 'Cartelle'}">
                                 <TextBlock Text="&#xE700;" Style="{StaticResource Glyph}" />
                             </Button>
                             <!-- Padding verticale 5 invece di 6: il bordo di 1 dello stile Fluent lo farebbe 2 DIP più alto degli altri
                                  comandi, e passando a Visualizza cartelle ed elenco salivano di 2 DIP -->
                             <Button x:Name="NewButton" Style="{DynamicResource AccentButtonStyle}" Padding="12,5" Margin="4,0,10,0" Click="OnNew"
-                                    ToolTip="Nuovo messaggio (Ctrl+N)" AutomationProperties.Name="Nuovo messaggio">
+                                    ToolTip="{local:T 'Nuovo messaggio (Ctrl+N)'}" AutomationProperties.Name="{local:T 'Nuovo messaggio'}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE70F;" Style="{StaticResource Glyph}" FontSize="14" Margin="0,0,8,0" />
-                                    <TextBlock Text="Nuovo messaggio" />
+                                    <TextBlock x:Name="NewButtonText" Text="{local:T 'Nuovo messaggio'}" />
                                 </StackPanel>
                             </Button>
-                            <Button x:Name="DeleteButton" Style="{StaticResource Command}" Click="OnDelete" ToolTip="Elimina (Canc)" AutomationProperties.Name="Elimina">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Elimina" /></StackPanel>
+                            <Button x:Name="DeleteButton" Style="{StaticResource Command}" Click="OnDelete" ToolTip="{local:T 'Elimina (Canc)'}" AutomationProperties.Name="{local:T 'Elimina'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Elimina'}" /></StackPanel>
                             </Button>
-                            <Button x:Name="ArchiveButton" Style="{StaticResource Command}" Click="OnArchive" AutomationProperties.Name="Archivia">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7B8;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Archivia" /></StackPanel>
+                            <Button x:Name="ArchiveButton" Style="{StaticResource Command}" Click="OnArchive" AutomationProperties.Name="{local:T 'Archivia'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7B8;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Archivia'}" /></StackPanel>
                             </Button>
-                            <Button x:Name="MoveButton" Style="{StaticResource Command}" Click="OnMoveMenu" AutomationProperties.Name="Sposta in">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8DE;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Sposta in" /></StackPanel>
+                            <Button x:Name="MoveButton" Style="{StaticResource Command}" Click="OnMoveMenu" AutomationProperties.Name="{local:T 'Sposta in'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8DE;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Sposta in'}" /></StackPanel>
                             </Button>
                             <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
-                            <Button x:Name="ReplyButton" Style="{StaticResource Command}" Click="OnReply" ToolTip="Rispondi (Ctrl+R)" AutomationProperties.Name="Rispondi">
+                            <Button x:Name="ReplyButton" Style="{StaticResource Command}" Click="OnReply" ToolTip="{local:T 'Rispondi (Ctrl+R)'}" AutomationProperties.Name="{local:T 'Rispondi'}">
                                 <TextBlock Text="&#xE97A;" Style="{StaticResource Glyph}" />
                             </Button>
-                            <Button x:Name="ReplyAllButton" Style="{StaticResource Command}" Click="OnReplyAll" ToolTip="Rispondi a tutti (Ctrl+Maiusc+R)"
-                                    AutomationProperties.Name="Rispondi a tutti" Tag="{x:Static local:ContextMenus.ReplyAllGlyph}">
+                            <Button x:Name="ReplyAllButton" Style="{StaticResource Command}" Click="OnReplyAll" ToolTip="{local:T 'Rispondi a tutti (Ctrl+Maiusc+R)'}"
+                                    AutomationProperties.Name="{local:T 'Rispondi a tutti'}" Tag="{x:Static local:ContextMenus.ReplyAllGlyph}">
                                 <!-- Due frecce di risposta sovrapposte, come nel nuovo Outlook -->
                                 <Grid Width="20">
                                     <TextBlock Text="&#xE97A;" Style="{StaticResource Glyph}" Margin="-3,0,0,0">
@@ -351,60 +351,60 @@
                                     <TextBlock Text="&#xE97A;" Style="{StaticResource Glyph}" Margin="3,0,0,0" />
                                 </Grid>
                             </Button>
-                            <Button x:Name="ForwardButton" Style="{StaticResource Command}" Click="OnForward" ToolTip="Inoltra (Ctrl+Maiusc+F)"
-                                    AutomationProperties.Name="Inoltra" Tag="{x:Static local:ContextMenus.ForwardGlyph}">
+                            <Button x:Name="ForwardButton" Style="{StaticResource Command}" Click="OnForward" ToolTip="{local:T 'Inoltra (Ctrl+Maiusc+F)'}"
+                                    AutomationProperties.Name="{local:T 'Inoltra'}" Tag="{x:Static local:ContextMenus.ForwardGlyph}">
                                 <TextBlock Text="&#xE97A;" Style="{StaticResource Glyph}" RenderTransformOrigin="0.5,0.5">
                                     <TextBlock.RenderTransform><ScaleTransform ScaleX="-1" /></TextBlock.RenderTransform>
                                 </TextBlock>
                             </Button>
                             <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
-                            <Button x:Name="ReadButton" Style="{StaticResource Command}" Click="OnToggleRead" ToolTip="Segna come già letto (Ctrl+Q) o da leggere (Ctrl+U)"
-                                    AutomationProperties.Name="Già letto/Da leggere">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8C3;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Già letto/Da leggere" /></StackPanel>
+                            <Button x:Name="ReadButton" Style="{StaticResource Command}" Click="OnToggleRead" ToolTip="{local:T 'Segna come già letto (Ctrl+Q) o da leggere (Ctrl+U)'}"
+                                    AutomationProperties.Name="{local:T 'Già letto/Da leggere'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8C3;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Già letto/Da leggere'}" /></StackPanel>
                             </Button>
-                            <Button x:Name="FlagButton" Style="{StaticResource Command}" Click="OnToggleFlag" ToolTip="Contrassegna (Ins)" AutomationProperties.Name="Contrassegna">
+                            <Button x:Name="FlagButton" Style="{StaticResource Command}" Click="OnToggleFlag" ToolTip="{local:T 'Contrassegna (Ins)'}" AutomationProperties.Name="{local:T 'Contrassegna'}">
                                 <TextBlock Text="&#xE7C1;" Style="{StaticResource FlagGlyph}" />
                             </Button>
-                            <Button x:Name="PinButton" Style="{StaticResource Command}" Click="OnTogglePin" ToolTip="Fissa in alto" AutomationProperties.Name="Fissa in alto">
+                            <Button x:Name="PinButton" Style="{StaticResource Command}" Click="OnTogglePin" ToolTip="{local:T 'Fissa in alto'}" AutomationProperties.Name="{local:T 'Fissa in alto'}">
                                 <TextBlock Text="&#xE718;" Style="{StaticResource Glyph}" />
                             </Button>
                         </StackPanel>
-                        <Button x:Name="HomeMore" Style="{StaticResource Command}" Click="OnMoreCommands" ToolTip="Altre opzioni" Visibility="Collapsed"
-                                AutomationProperties.Name="Altre opzioni">
+                        <Button x:Name="HomeMore" Style="{StaticResource Command}" Click="OnMoreCommands" ToolTip="{local:T 'Altre opzioni'}" Visibility="Collapsed"
+                                AutomationProperties.Name="{local:T 'Altre opzioni'}">
                             <TextBlock Text="&#xE712;" Style="{StaticResource Glyph}" />
                         </Button>
                     </DockPanel>
 
                     <DockPanel x:Name="ViewBar" LastChildFill="False" Visibility="Collapsed" SizeChanged="OnBarSize">
-                        <Button x:Name="ViewRefresh" Style="{StaticResource Command}" DockPanel.Dock="Right" Click="OnRefresh" AutomationProperties.Name="Sincronizza">
-                            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE72C;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Sincronizza" /></StackPanel>
+                        <Button x:Name="ViewRefresh" Style="{StaticResource Command}" DockPanel.Dock="Right" Click="OnRefresh" AutomationProperties.Name="{local:T 'Sincronizza'}">
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE72C;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Sincronizza'}" /></StackPanel>
                         </Button>
                         <StackPanel x:Name="ViewCommands" Orientation="Horizontal">
-                            <Button Style="{StaticResource Command}" Click="OnViewSettings" AutomationProperties.Name="Impostazioni di visualizzazione">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Impostazioni di visualizzazione" /></StackPanel>
+                            <Button Style="{StaticResource Command}" Click="OnViewSettings" AutomationProperties.Name="{local:T 'Impostazioni di visualizzazione'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Impostazioni di visualizzazione'}" /></StackPanel>
                             </Button>
-                            <Button x:Name="MessagesMenuButton" Style="{StaticResource Command}" Click="OnMessagesMenu" AutomationProperties.Name="Messaggi">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8BD;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Messaggi" /><TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,0,0,0" /></StackPanel>
+                            <Button x:Name="MessagesMenuButton" Style="{StaticResource Command}" Click="OnMessagesMenu" AutomationProperties.Name="{local:T 'Messaggi'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8BD;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Messaggi'}" /><TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,0,0,0" /></StackPanel>
                             </Button>
-                            <Button Style="{StaticResource Command}" Click="OnCollapseConversations" AutomationProperties.Name="Comprimi conversazioni">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8D5;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Comprimi conversazioni" /></StackPanel>
+                            <Button Style="{StaticResource Command}" Click="OnCollapseConversations" AutomationProperties.Name="{local:T 'Comprimi conversazioni'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8D5;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Comprimi conversazioni'}" /></StackPanel>
                             </Button>
                             <Button x:Name="ZoomButton" Style="{StaticResource Command}" Click="OnZoomMenu" AutomationProperties.Name="Zoom">
                                 <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE71E;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock x:Name="ZoomText" Text="Zoom" /></StackPanel>
                             </Button>
                             <ToggleButton x:Name="LightToggle" Background="Transparent" BorderThickness="0" Padding="10,6" Margin="0,0,2,0" Click="OnLightToggle"
-                                          AutomationProperties.Name="Riquadro di lettura chiaro">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE706;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Riquadro di lettura chiaro" /></StackPanel>
+                                          AutomationProperties.Name="{local:T 'Riquadro di lettura chiaro'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE706;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Riquadro di lettura chiaro'}" /></StackPanel>
                             </ToggleButton>
-                            <Button x:Name="PaneMenuButton" Style="{StaticResource Command}" Click="OnPaneMenu" AutomationProperties.Name="Riquadro di lettura">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE89F;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Riquadro di lettura" /><TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,0,0,0" /></StackPanel>
+                            <Button x:Name="PaneMenuButton" Style="{StaticResource Command}" Click="OnPaneMenu" AutomationProperties.Name="{local:T 'Riquadro di lettura'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE89F;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Riquadro di lettura'}" /><TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,0,0,0" /></StackPanel>
                             </Button>
-                            <Button x:Name="SizeMenuButton" Style="{StaticResource Command}" Click="OnSizeMenu" AutomationProperties.Name="Dimensioni testo">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8D2;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="Dimensioni testo" /><TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,0,0,0" /></StackPanel>
+                            <Button x:Name="SizeMenuButton" Style="{StaticResource Command}" Click="OnSizeMenu" AutomationProperties.Name="{local:T 'Dimensioni testo'}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8D2;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Dimensioni testo'}" /><TextBlock Text="&#xE70D;" Style="{StaticResource Glyph}" FontSize="10" Margin="6,0,0,0" /></StackPanel>
                             </Button>
                         </StackPanel>
-                        <Button x:Name="ViewMore" Style="{StaticResource Command}" Click="OnMoreCommands" ToolTip="Altre opzioni" Visibility="Collapsed"
-                                AutomationProperties.Name="Altre opzioni">
+                        <Button x:Name="ViewMore" Style="{StaticResource Command}" Click="OnMoreCommands" ToolTip="{local:T 'Altre opzioni'}" Visibility="Collapsed"
+                                AutomationProperties.Name="{local:T 'Altre opzioni'}">
                             <TextBlock Text="&#xE712;" Style="{StaticResource Glyph}" />
                         </Button>
                     </DockPanel>
@@ -425,22 +425,22 @@
 
             <!-- Colonna delle app -->
             <DockPanel Margin="8,0,8,0">
-                <Button x:Name="MailRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" ToolTip="Posta" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                        AutomationProperties.Name="Posta" Click="OnMailRail">
+                <Button x:Name="MailRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" ToolTip="{local:T 'Posta'}" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        AutomationProperties.Name="{local:T 'Posta'}" Click="OnMailRail">
                     <TextBlock x:Name="MailRailGlyph" Text="&#xE715;" Style="{StaticResource Glyph}" FontSize="18" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                 </Button>
-                <Button x:Name="CalendarRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" AutomationProperties.Name="Calendario"
-                        ToolTip="Calendario" Click="OnCalendarRail">
+                <Button x:Name="CalendarRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" AutomationProperties.Name="{local:T 'Calendario'}"
+                        ToolTip="{local:T 'Calendario'}" Click="OnCalendarRail">
                     <TextBlock x:Name="CalendarRailGlyph" Text="&#xE787;" Style="{StaticResource Glyph}" FontSize="18" />
                 </Button>
-                <Button x:Name="PeopleRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" AutomationProperties.Name="Persone"
-                        ToolTip="Persone" Click="OnPeopleRail">
+                <Button x:Name="PeopleRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" AutomationProperties.Name="{local:T 'Persone'}"
+                        ToolTip="{local:T 'Persone'}" Click="OnPeopleRail">
                     <TextBlock x:Name="PeopleRailGlyph" Text="&#xE716;" Style="{StaticResource Glyph}" FontSize="18" />
                 </Button>
                 <!-- Come in Outlook la rotellina apre subito le Impostazioni (ritocchi del 16 ottobre: prima un menu con Impostazioni,
                      Aggiungi account e la cartella dei registri, che ora sta in Impostazioni, Generali, Informazioni) -->
                 <Button x:Name="SettingsButton" Style="{StaticResource RailButton}" DockPanel.Dock="Bottom" VerticalAlignment="Bottom"
-                        ToolTip="Impostazioni" Click="OnSettings" AutomationProperties.Name="Impostazioni">
+                        ToolTip="{local:T 'Impostazioni'}" Click="OnSettings" AutomationProperties.Name="{local:T 'Impostazioni'}">
                     <TextBlock Text="&#xE713;" Style="{StaticResource Glyph}" FontSize="18" />
                 </Button>
             </DockPanel>
@@ -448,10 +448,10 @@
             <!-- Cartelle: nella finestra stretta si aprono sopra l'elenco, come nel nuovo Outlook (SetCompact) -->
             <Border Grid.Column="1" x:Name="FolderPane" Panel.ZIndex="10" CornerRadius="8" SizeChanged="OnFolderPaneSize">
             <DockPanel>
-                <Button DockPanel.Dock="Bottom" Margin="4,8,8,0" HorizontalAlignment="Stretch" Click="OnAddAccount" AutomationProperties.Name="Aggiungi account">
+                <Button DockPanel.Dock="Bottom" Margin="4,8,8,0" HorizontalAlignment="Stretch" Click="OnAddAccount" AutomationProperties.Name="{local:T 'Aggiungi account'}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="&#xE710;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,8,0" />
-                        <TextBlock Text="Aggiungi account" />
+                        <TextBlock Text="{local:T 'Aggiungi account'}" />
                     </StackPanel>
                 </Button>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -466,11 +466,11 @@
                                     Background="{DynamicResource AccentFillColorDefaultBrush}" />
                         </Grid>
                         <Button Click="OnUnifiedToggle" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="4,4"
-                                AutomationProperties.Name="Tutti gli account: mostra o nascondi">
+                                AutomationProperties.Name="{local:T 'Tutti gli account: mostra o nascondi'}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock x:Name="UnifiedChevron" Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
                                            VerticalAlignment="Center" Margin="2,0,10,0" />
-                                <TextBlock Text="Tutti gli account" FontWeight="SemiBold" />
+                                <TextBlock Text="{local:T 'Tutti gli account'}" FontWeight="SemiBold" />
                             </StackPanel>
                         </Button>
                         </Grid>
@@ -510,11 +510,11 @@
                                     Background="{DynamicResource AccentFillColorDefaultBrush}" />
                         </Grid>
                         <Button Click="OnFavoritesToggle" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="4,4"
-                                AutomationProperties.Name="Preferiti: mostra o nascondi">
+                                AutomationProperties.Name="{local:T 'Preferiti: mostra o nascondi'}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock x:Name="FavoritesChevron" Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
                                            VerticalAlignment="Center" Margin="2,0,10,0" />
-                                <TextBlock Text="Preferiti" FontWeight="SemiBold" />
+                                <TextBlock Text="{local:T 'Preferiti'}" FontWeight="SemiBold" />
                             </StackPanel>
                         </Button>
                         </Grid>
@@ -577,7 +577,7 @@
                                                            VerticalAlignment="Center" Margin="2,0,10,0" />
                                                 <!-- Casella condivisa di Microsoft 365, sotto l'account di lavoro che la apre -->
                                                 <TextBlock Grid.Column="1" Text="&#xE716;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Visibility="{Binding SharedVisibility}"
-                                                           VerticalAlignment="Center" Margin="0,0,6,0" AutomationProperties.Name="Casella condivisa" />
+                                                           VerticalAlignment="Center" Margin="0,0,6,0" AutomationProperties.Name="{local:T 'Casella condivisa'}" />
                                                 <TextBlock Grid.Column="2" Text="{Binding Header}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                                 <TextBlock Grid.Column="3" Text="{Binding HeaderUnreadText}" Visibility="{Binding HeaderUnreadVisibility}" FontWeight="SemiBold"
                                                            Margin="8,0,4,0" VerticalAlignment="Center" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
@@ -604,10 +604,10 @@
                                         <StackPanel>
                                             <TextBlock Text="{Binding AutoReplyText}" FontSize="12" TextWrapping="Wrap" />
                                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                                <Button Content="Disattiva" Tag="{Binding}" Click="OnAutoRepliesOff" Padding="10,3" FontSize="12"
-                                                        AutomationProperties.Name="Disattiva le risposte automatiche" />
-                                                <Button Content="Modifica" Tag="{Binding}" Click="OnAutoRepliesEdit" Padding="10,3" FontSize="12" Margin="6,0,0,0"
-                                                        AutomationProperties.Name="Modifica le risposte automatiche" />
+                                                <Button Content="{local:T 'Disattiva'}" Tag="{Binding}" Click="OnAutoRepliesOff" Padding="10,3" FontSize="12"
+                                                        AutomationProperties.Name="{local:T 'Disattiva le risposte automatiche'}" />
+                                                <Button Content="{local:T 'Modifica'}" Tag="{Binding}" Click="OnAutoRepliesEdit" Padding="10,3" FontSize="12" Margin="6,0,0,0"
+                                                        AutomationProperties.Name="{local:T 'Modifica le risposte automatiche'}" />
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
@@ -636,7 +636,7 @@
                                                         </Grid.ColumnDefinitions>
                                                         <Button Tag="{Binding}" Click="OnFolderToggle" Visibility="{Binding ChevronVisibility}" Background="Transparent"
                                                                 BorderThickness="0" Padding="0" MinWidth="0" Width="18" Height="20" Margin="-8,0,4,0"
-                                                                ToolTip="Mostra o nascondi le sottocartelle">
+                                                                ToolTip="{local:T 'Mostra o nascondi le sottocartelle'}">
                                                             <TextBlock Text="{Binding ChevronGlyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="9" />
                                                         </Button>
                                                         <TextBlock Grid.Column="1" Text="{Binding Glyph}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
@@ -689,30 +689,30 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <CheckBox x:Name="SelectAllBox" Visibility="Collapsed" Click="OnSelectAll" MinWidth="0" Margin="4,0,6,0"
-                                          VerticalAlignment="Center" ToolTip="Seleziona tutto" />
+                                          VerticalAlignment="Center" ToolTip="{local:T 'Seleziona tutto'}" />
                                 <TextBlock x:Name="ListTitle" Grid.Column="1" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                            VerticalAlignment="Center" />
                                 <Button x:Name="StarButton" Grid.Column="2" Style="{StaticResource HeaderButton}" Click="OnStar" Margin="4,0,0,0">
                                     <TextBlock x:Name="StarGlyph" Text="&#xE734;" Style="{StaticResource Glyph}" />
                                 </Button>
                                 <StackPanel x:Name="HeaderButtons" Grid.Column="4" Orientation="Horizontal">
-                                    <ToggleButton x:Name="SelectModeButton" Style="{StaticResource HeaderToggle}" Checked="OnSelectMode" Unchecked="OnSelectMode" ToolTip="Seleziona" AutomationProperties.Name="Seleziona">
+                                    <ToggleButton x:Name="SelectModeButton" Style="{StaticResource HeaderToggle}" Checked="OnSelectMode" Unchecked="OnSelectMode" ToolTip="{local:T 'Seleziona'}" AutomationProperties.Name="{local:T 'Seleziona'}">
                                         <TextBlock Text="&#xE762;" Style="{StaticResource Glyph}" />
                                     </ToggleButton>
-                                    <Button x:Name="JumpButton" Style="{StaticResource HeaderButton}" Click="OnJumpTo" ToolTip="Vai a" AutomationProperties.Name="Vai a">
+                                    <Button x:Name="JumpButton" Style="{StaticResource HeaderButton}" Click="OnJumpTo" ToolTip="{local:T 'Vai a'}" AutomationProperties.Name="{local:T 'Vai a'}">
                                         <TextBlock x:Name="JumpGlyph" Text="&#xE787;" Style="{StaticResource Glyph}" />
                                     </Button>
-                                    <Button x:Name="FilterButton" Style="{StaticResource HeaderButton}" Click="OnFilterMenu" ToolTip="Filtro" AutomationProperties.Name="Filtro">
+                                    <Button x:Name="FilterButton" Style="{StaticResource HeaderButton}" Click="OnFilterMenu" ToolTip="{local:T 'Filtro'}" AutomationProperties.Name="{local:T 'Filtro'}">
                                         <TextBlock x:Name="FilterGlyph" Text="&#xE71C;" Style="{StaticResource Glyph}" />
                                     </Button>
-                                    <Button x:Name="SortButton" Style="{StaticResource HeaderButton}" Click="OnSortMenu" ToolTip="Ordina" AutomationProperties.Name="Ordina">
+                                    <Button x:Name="SortButton" Style="{StaticResource HeaderButton}" Click="OnSortMenu" ToolTip="{local:T 'Ordina'}" AutomationProperties.Name="{local:T 'Ordina'}">
                                         <TextBlock x:Name="SortGlyph" Text="&#xE8CB;" Style="{StaticResource Glyph}" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
                             <StackPanel x:Name="FocusedTabs" Orientation="Horizontal" Visibility="Collapsed" Margin="-6,4,0,0">
-                                <RadioButton x:Name="FocusedTab" Style="{StaticResource Tab}" Content="Evidenziata" IsChecked="True" Margin="0,0,4,0" Checked="OnFocusedTab" />
-                                <RadioButton x:Name="OtherTab" Style="{StaticResource Tab}" Content="Altra" Checked="OnFocusedTab" />
+                                <RadioButton x:Name="FocusedTab" Style="{StaticResource Tab}" Content="{local:T 'Evidenziata'}" IsChecked="True" Margin="0,0,4,0" Checked="OnFocusedTab" />
+                                <RadioButton x:Name="OtherTab" Style="{StaticResource Tab}" Content="{local:T 'Altra'}" Checked="OnFocusedTab" />
                             </StackPanel>
                             <!-- Vai a: il calendario, per saltare ai messaggi arrivati fino a quel giorno -->
                             <Popup x:Name="JumpPopup" PlacementTarget="{Binding ElementName=JumpButton}" Placement="Bottom" StaysOpen="False"
@@ -720,9 +720,9 @@
                                 <Border CornerRadius="8" BorderThickness="1" Padding="12" Margin="0,4,0,0"
                                         Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
                                     <StackPanel>
-                                        <TextBlock Text="Vai ai messaggi arrivati fino al giorno" Margin="4,0,4,8" Style="{StaticResource Secondary}" />
+                                        <TextBlock Text="{local:T 'Vai ai messaggi arrivati fino al giorno'}" Margin="4,0,4,8" Style="{StaticResource Secondary}" />
                                         <Calendar x:Name="JumpCalendar" SelectedDatesChanged="OnJumpDate" />
-                                        <Button x:Name="JumpResetButton" Content="Torna ai più recenti" Click="OnJumpReset" Margin="0,8,0,0"
+                                        <Button x:Name="JumpResetButton" Content="{local:T 'Torna ai più recenti'}" Click="OnJumpReset" Margin="0,8,0,0"
                                                 HorizontalAlignment="Stretch" Visibility="Collapsed" />
                                     </StackPanel>
                                 </Border>
@@ -924,7 +924,7 @@
                                                             Background="Transparent" BorderThickness="0" Padding="5,3" MinWidth="0">
                                                         <TextBlock Text="&#xE718;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" />
                                                     </Button>
-                                                    <Button Tag="{Binding}" Click="OnRowDelete" ToolTip="Elimina" AutomationProperties.Name="Elimina"
+                                                    <Button Tag="{Binding}" Click="OnRowDelete" ToolTip="{local:T 'Elimina'}" AutomationProperties.Name="{local:T 'Elimina'}"
                                                             Background="Transparent" BorderThickness="0" Padding="5,3" MinWidth="0">
                                                         <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" />
                                                     </Button>
@@ -942,7 +942,7 @@
                                                 <!-- Importanza alta, come il punto esclamativo di Outlook -->
                                                 <TextBlock Grid.Column="5" Text="&#xE8C9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
                                                            Margin="6,0,0,0" VerticalAlignment="Center" Visibility="{Binding ImportantVisibility, Mode=OneTime}" Foreground="{DynamicResource CriticalBrush}"
-                                                           ToolTip="Importanza alta" />
+                                                           ToolTip="{local:T 'Importanza alta'}" />
                                                 <TextBlock FontSize="{Binding FontSize, Mode=OneTime}" FontWeight="{Binding Line2Weight}"
                                                            Foreground="{Binding Line2Brush}" TextTrimming="CharacterEllipsis">
                                                     <Run Text="{Binding Line2Tag, Mode=OneTime}" Foreground="{Binding DraftBrush, Mode=OneWay}" /><Run
@@ -1040,12 +1040,12 @@
                             <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" />
                         </Border.Effect>
                         <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="Annulla" Click="OnOutboxUndo" Template="{StaticResource SubtleButton}" Background="Transparent"
+                            <Button x:Name="OutboxUndoButton" DockPanel.Dock="Right" Content="{local:T 'Annulla'}" Click="OnOutboxUndo" Template="{StaticResource SubtleButton}" Background="Transparent"
                                     Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
-                                    ToolTip="Togli l'ultimo messaggio dalla Posta in uscita e riaprilo" AutomationProperties.Name="Annulla l'invio dalla Posta in uscita" />
-                            <Button DockPanel.Dock="Right" Content="Riprova" Click="OnOutboxRetry" Template="{StaticResource SubtleButton}" Background="Transparent"
+                                    ToolTip="{local:T 'Togli l\'ultimo messaggio dalla Posta in uscita e riaprilo'}" AutomationProperties.Name="{local:T 'Annulla l\'invio dalla Posta in uscita'}" />
+                            <Button DockPanel.Dock="Right" Content="{local:T 'Riprova'}" Click="OnOutboxRetry" Template="{StaticResource SubtleButton}" Background="Transparent"
                                     Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
-                                    ToolTip="Prova adesso a inviare i messaggi e a fare le azioni in attesa" AutomationProperties.Name="Riprova l'invio della Posta in uscita" />
+                                    ToolTip="{local:T 'Prova adesso a inviare i messaggi e a fare le azioni in attesa'}" AutomationProperties.Name="{local:T 'Riprova l\'invio della Posta in uscita'}" />
                             <TextBlock DockPanel.Dock="Left" Text="&#xE724;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <TextBlock x:Name="OutboxText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
                         </DockPanel>
@@ -1058,10 +1058,10 @@
                             <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" />
                         </Border.Effect>
                         <DockPanel>
-                            <Button x:Name="UndoSendButton" DockPanel.Dock="Right" Content="Annulla" Click="OnUndoSend" Template="{StaticResource SubtleButton}" Background="Transparent"
+                            <Button x:Name="UndoSendButton" DockPanel.Dock="Right" Content="{local:T 'Annulla'}" Click="OnUndoSend" Template="{StaticResource SubtleButton}" Background="Transparent"
                                     Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
-                                    ToolTip="Non inviare il messaggio e riaprilo" AutomationProperties.Name="Annulla invio" />
-                            <TextBlock x:Name="SendText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="Invio in corso…" />
+                                    ToolTip="{local:T 'Non inviare il messaggio e riaprilo'}" AutomationProperties.Name="{local:T 'Annulla invio'}" />
+                            <TextBlock x:Name="SendText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{local:T 'Invio in corso…'}" />
                         </DockPanel>
                     </Border>
                     <!-- Annulla dopo Elimina, Archivia e Sposta, come nel nuovo Outlook: sopra l'elenco, che così non si sposta -->
@@ -1072,9 +1072,9 @@
                             <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18" />
                         </Border.Effect>
                         <DockPanel>
-                            <Button x:Name="UndoButton" DockPanel.Dock="Right" Content="Annulla" Click="OnUndo" Template="{StaticResource SubtleButton}" Background="Transparent"
+                            <Button x:Name="UndoButton" DockPanel.Dock="Right" Content="{local:T 'Annulla'}" Click="OnUndo" Template="{StaticResource SubtleButton}" Background="Transparent"
                                     Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" Padding="10,4"
-                                    ToolTip="Annulla (Ctrl+Z)" AutomationProperties.Name="Annulla" />
+                                    ToolTip="{local:T 'Annulla (Ctrl+Z)'}" AutomationProperties.Name="{local:T 'Annulla'}" />
                             <TextBlock x:Name="UndoText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </Border>

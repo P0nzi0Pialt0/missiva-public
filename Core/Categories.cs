@@ -11,12 +11,12 @@ public static class CategoryPalette
 {
     public static readonly (string Name, string Hex)[] Presets =
     {
-        ("Rosso", "#D13438"), ("Arancione", "#F7630C"), ("Marrone", "#8E562E"), ("Giallo", "#FCE100"), ("Verde", "#13A10E"),
-        ("Verde acqua", "#00B7C3"), ("Oliva", "#8B8F3A"), ("Blu", "#0078D4"), ("Viola", "#8764B8"), ("Mirtillo", "#C30052"),
-        ("Acciaio", "#69797E"), ("Acciaio scuro", "#394146"), ("Grigio", "#7A7574"), ("Grigio scuro", "#484644"), ("Nero", "#201F1E"),
-        ("Rosso scuro", "#A4262C"), ("Arancione scuro", "#CA5010"), ("Marrone scuro", "#5E3A1E"), ("Giallo scuro", "#C19C00"),
-        ("Verde scuro", "#0B6A0B"), ("Verde acqua scuro", "#005B70"), ("Oliva scuro", "#5C5A28"), ("Blu scuro", "#004E8C"),
-        ("Viola scuro", "#5C2E91"), ("Mirtillo scuro", "#6B0E2C"),
+        (N("Rosso"), "#D13438"), (N("Arancione"), "#F7630C"), (N("Marrone"), "#8E562E"), (N("Giallo"), "#FCE100"), (N("Verde"), "#13A10E"),
+        (N("Verde acqua"), "#00B7C3"), (N("Oliva"), "#8B8F3A"), (N("Blu"), "#0078D4"), (N("Viola"), "#8764B8"), (N("Mirtillo"), "#C30052"),
+        (N("Acciaio"), "#69797E"), (N("Acciaio scuro"), "#394146"), (N("Grigio"), "#7A7574"), (N("Grigio scuro"), "#484644"), (N("Nero"), "#201F1E"),
+        (N("Rosso scuro"), "#A4262C"), (N("Arancione scuro"), "#CA5010"), (N("Marrone scuro"), "#5E3A1E"), (N("Giallo scuro"), "#C19C00"),
+        (N("Verde scuro"), "#0B6A0B"), (N("Verde acqua scuro"), "#005B70"), (N("Oliva scuro"), "#5C5A28"), (N("Blu scuro"), "#004E8C"),
+        (N("Viola scuro"), "#5C2E91"), (N("Mirtillo scuro"), "#6B0E2C"),
     };
 
     /// <summary>

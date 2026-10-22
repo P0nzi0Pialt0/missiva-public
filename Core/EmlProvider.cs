@@ -51,11 +51,11 @@ public sealed class EmlProvider(MimeMessage message, IMailProvider sender) : IMa
             {
                 case MimePart { Content: { } content } part:
                     content.DecodeTo(ms);
-                    name = part.FileName ?? "allegato";
+                    name = part.FileName ?? T("allegato");
                     break;
                 case MessagePart { Message: { } inner }:
                     inner.WriteTo(ms);
-                    name = Safety.SafeFileName((inner.Subject ?? "messaggio") + ".eml");
+                    name = Safety.SafeFileName((inner.Subject ?? T("messaggio")) + ".eml");
                     break;
                 default:
                     continue;
@@ -83,7 +83,7 @@ public sealed class EmlProvider(MimeMessage message, IMailProvider sender) : IMa
         };
     }
 
-    static MailException NotHere() => new("È un messaggio aperto da un file .eml: non sta nella casella, quindi non si sposta né si segna.");
+    static MailException NotHere() => new(T("È un messaggio aperto da un file .eml: non sta nella casella, quindi non si sposta né si segna."));
 
     // ---------------------------------------------------------------- letture: dal file
 
@@ -92,7 +92,7 @@ public sealed class EmlProvider(MimeMessage message, IMailProvider sender) : IMa
     /// <summary>Gli allegati di un .eml sono già in memoria: arrivano subito, tutti in un passo dell'avanzamento.</summary>
     public Task<byte[]> GetAttachmentAsync(MessageSummary m, Attachment attachment, IProgress<long>? progress = null, CancellationToken cancel = default)
     {
-        if (attachment.Content == null) return Task.FromException<byte[]>(new MailException("Allegato non trovato."));
+        if (attachment.Content == null) return Task.FromException<byte[]>(new MailException(T("Allegato non trovato.")));
         progress?.Report(attachment.Content.Length);
         return Task.FromResult(attachment.Content);
     }
@@ -118,7 +118,7 @@ public sealed class EmlProvider(MimeMessage message, IMailProvider sender) : IMa
     OutgoingMessage Unlink(OutgoingMessage mail)
     {
         if (mail.Original == null || mail.Mode == ComposeMode.New) return mail;
-        var header = $"Il {Summary.Date:dddd d MMMM yyyy HH:mm}, {Summary.From} ha scritto:";
+        var header = MimeOptions.QuoteHeader(Summary);
         return new OutgoingMessage
         {
             Mode = ComposeMode.New,

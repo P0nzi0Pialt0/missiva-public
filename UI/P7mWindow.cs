@@ -46,17 +46,17 @@ public sealed class P7mWindow : Window
         panel.Children.Add(head);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-        var save = new Button { Content = "Salva il documento", MinWidth = 120, Margin = new Thickness(0, 0, 8, 0) };
+        var save = new Button { Content = T("Salva il documento"), MinWidth = 120, Margin = new Thickness(0, 0, 8, 0) };
         save.Click += (_, _) => Save();
         buttons.Children.Add(save);
         if (text == null)
         {
-            var open = new Button { Content = "Apri il documento", MinWidth = 120, Margin = new Thickness(0, 0, 8, 0) };
+            var open = new Button { Content = T("Apri il documento"), MinWidth = 120, Margin = new Thickness(0, 0, 8, 0) };
             open.SetResourceReference(StyleProperty, "AccentButtonStyle");
             open.Click += (_, _) => Open();
             buttons.Children.Add(open);
         }
-        var close = new Button { Content = "Chiudi", MinWidth = 100, IsCancel = true };
+        var close = new Button { Content = T("Chiudi"), MinWidth = 100, IsCancel = true };
         close.Click += (_, _) => Close();
         buttons.Children.Add(close);
         DockPanel.SetDock(buttons, Dock.Bottom);
@@ -70,12 +70,12 @@ public sealed class P7mWindow : Window
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 TextWrapping = TextWrapping.NoWrap, AcceptsReturn = true,
             };
-            AutomationProperties.SetName(box, "Contenuto del documento firmato");
+            AutomationProperties.SetName(box, T("Contenuto del documento firmato"));
             panel.Children.Add(box);
         }
         else
         {
-            var note = new TextBlock { Text = $"Il documento dentro la firma ({result.Content.Length / 1024} KB) si apre con il suo programma, o si salva.", TextWrapping = TextWrapping.Wrap };
+            var note = new TextBlock { Text = T("Il documento dentro la firma ({0} KB) si apre con il suo programma, o si salva.", result.Content.Length / 1024), TextWrapping = TextWrapping.Wrap };
             note.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryTextBrush");
             panel.Children.Add(note);
         }
@@ -103,7 +103,7 @@ public sealed class P7mWindow : Window
         catch (Exception ex)
         {
             Log.Error("file firmato", ex);
-            Dialog.Show(owner, "File firmato non leggibile", ex is MailException ? ex.Message : "Il file firmato non si legge: " + ex.Message);
+            Dialog.Show(owner, T("File firmato non leggibile"), ex is MailException ? ex.Message : T("Il file firmato non si legge: {0}", ex.Message));
             return;
         }
         Log.Write($"file firmato {Log.Private(result.Name)}: firma {result.Signature}, {result.Layers} buste, {result.Content.Length / 1024} KB");
@@ -132,8 +132,8 @@ public sealed class P7mWindow : Window
     {
         var name = Safety.SafeFileName(result.Name);
         if (Safety.IsDangerous(name) &&
-            Dialog.Ask(this, "Aprire un file che può avviare programmi?",
-                $"\"{name}\" è un tipo di file che può eseguire codice sul PC. Aprilo solo se lo aspettavi e ti fidi di chi lo ha firmato.", "Apri comunque") != Choice.Primary)
+            Dialog.Ask(this, T("Aprire un file che può avviare programmi?"),
+                T("\"{0}\" è un tipo di file che può eseguire codice sul PC. Aprilo solo se lo aspettavi e ti fidi di chi lo ha firmato.", name), T("Apri comunque")) != Choice.Primary)
             return;
         if (!Dialog.ConfirmOpenWebPage(this, name)) return;
         try
@@ -149,7 +149,7 @@ public sealed class P7mWindow : Window
         catch (Exception ex)
         {
             Log.Error("documento firmato", ex);
-            Dialog.Show(this, "Documento non aperto", ex.Message);
+            Dialog.Show(this, T("Documento non aperto"), ex.Message);
         }
     }
 }

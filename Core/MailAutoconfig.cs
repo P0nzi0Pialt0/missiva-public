@@ -40,7 +40,7 @@ public static class MailAutoconfig
         {
             ($"https://autoconfig.{domain}/mail/config-v1.1.xml?emailaddress={address}", $"autoconfig.{domain}"),
             ($"https://{domain}/.well-known/autoconfig/mail/config-v1.1.xml?emailaddress={address}", $"{domain}/.well-known/autoconfig"),
-            ($"https://autoconfig.thunderbird.net/v1.1/{domain}", "database dei provider di Thunderbird"),
+            ($"https://autoconfig.thunderbird.net/v1.1/{domain}", T("database dei provider di Thunderbird")),
         })
         {
             if (await FromXmlAsync(url, email, source, cancel) is { } found) return found;
@@ -52,7 +52,7 @@ public static class MailAutoconfig
         var mx = await MailDns.MxAsync(domain);
         if (Pec(domain, mx.Select(m => m.Host)) is { } pec) return pec with { Server = WithUser(pec.Server, email) };
         if (mx.FirstOrDefault() is { } first && BaseDomain(first.Host) is { } mxDomain && mxDomain != domain &&
-            await FromXmlAsync($"https://autoconfig.thunderbird.net/v1.1/{mxDomain}", email, $"database dei provider di Thunderbird ({mxDomain}, dal server di posta)", cancel) is { } byMx)
+            await FromXmlAsync($"https://autoconfig.thunderbird.net/v1.1/{mxDomain}", email, T("database dei provider di Thunderbird ({0}, dal server di posta)", mxDomain), cancel) is { } byMx)
         {
             // Il dominio del server di posta viene dal DNS, come gli SRV: chi falsifica l'MX sceglie quale provider del
             // database (anche uno che non esiste più, con i server di chi lo ha ricomprato). Fuori dal dominio
@@ -95,7 +95,7 @@ public static class MailAutoconfig
             bool byMx = !byDomain && mxHosts.Any(h => mxDomains.Any(d => InDomain(h, d)));
             if (!byDomain && !byMx) continue;
             return new Found(new ImapServer { ImapHost = imap, ImapPort = 993, ImapSecurity = MailSecurity.Ssl, SmtpHost = smtp, SmtpPort = 465, SmtpSecurity = MailSecurity.Ssl },
-                             $"gestori PEC noti: {name}{(byMx ? ", dal server di posta" : "")}");
+                             byMx ? T("gestori PEC noti: {0}, dal server di posta", name) : T("gestori PEC noti: {0}", name));
         }
         return null;
     }
@@ -224,9 +224,9 @@ public static class MailAutoconfig
             ImapHost = i.Answer.Host.TrimEnd('.').ToLowerInvariant(), ImapPort = i.Answer.Port, ImapSecurity = i.Security,
             SmtpHost = o.Answer.Host.TrimEnd('.').ToLowerInvariant(), SmtpPort = o.Answer.Port, SmtpSecurity = o.Security, UserName = email.Trim(),
         };
-        if (InDomain(server.ImapHost, domain) && InDomain(server.SmtpHost, domain)) return new Found(server, "record SRV del dominio");
+        if (InDomain(server.ImapHost, domain) && InDomain(server.SmtpHost, domain)) return new Found(server, T("record SRV del dominio"));
         Log.Write($"configurazione automatica: i record SRV di {domain} indicano {server.ImapHost} e {server.SmtpHost}, fuori dal dominio");
-        return new Found(server, "record SRV del dominio, verso un server di un altro dominio", Foreign: true);
+        return new Found(server, T("record SRV del dominio, verso un server di un altro dominio"), Foreign: true);
     }
 
     /// <summary>
@@ -247,7 +247,7 @@ public static class MailAutoconfig
         {
             ImapHost = imap.Value.Host, ImapPort = imap.Value.Port, ImapSecurity = imap.Value.Security,
             SmtpHost = smtp.Value.Host, SmtpPort = smtp.Value.Port, SmtpSecurity = smtp.Value.Security, UserName = email.Trim(),
-        }, "nomi comuni del dominio, provati");
+        }, T("nomi comuni del dominio, provati"));
     }
 
     static async Task<bool> ProbeAsync(string host, int port, MailSecurity security, bool imap, CancellationToken cancel)

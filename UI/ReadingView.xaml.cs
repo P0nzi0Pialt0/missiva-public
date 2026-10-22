@@ -782,8 +782,8 @@ public partial class ReadingView : UserControl
         {
             Log.Error("lettura messaggio", ex);
             // Senza rete e senza copia su disco: lo si dice, senza il testo di Windows.
-            entry.Error = Network.Explain(ex) is { } offline ? offline + " Questo messaggio non è ancora stato scaricato."
-                                                              : "Non riesco ad aprire il messaggio: " + ex.Message;
+            entry.Error = Network.Explain(ex) is { } offline ? T("{0} Questo messaggio non è ancora stato scaricato.", offline)
+                                                              : T("Non riesco ad aprire il messaggio: {0}", ex.Message);
         }
         entry.Loading = false;
         return true;
@@ -881,8 +881,8 @@ public partial class ReadingView : UserControl
 
     /// <summary>Che cosa dire quando WebView2 non parte: se manca il Runtime (con il link per installarlo) o l'errore vero.</summary>
     internal static (string Text, bool Missing) WebErrorText(Exception ex, bool missing) => missing
-        ? ("Per mostrare i messaggi serve Microsoft Edge WebView2 Runtime, di solito già presente in Windows 11: su questo PC non c'è. ", true)
-        : ($"Il riquadro di lettura non è riuscito ad avviarsi: {ex.Message.Trim().TrimEnd('.')}. Può dipendere dalla cartella dei dati di Missiva (bloccata, o disco pieno). ", false);
+        ? (T("Per mostrare i messaggi serve Microsoft Edge WebView2 Runtime, di solito già presente in Windows 11: su questo PC non c'è. "), true)
+        : (T("Il riquadro di lettura non è riuscito ad avviarsi: {0}. Può dipendere dalla cartella dei dati di Missiva (bloccata, o disco pieno). ", ex.Message.Trim().TrimEnd('.')), false);
 
     /// <summary>
     /// WebView2 non è partito. Prima per qualunque errore (anche una cartella bloccata o il disco pieno) c'era la stessa riga
@@ -899,25 +899,29 @@ public partial class ReadingView : UserControl
             link.Click += (_, _) => click();
             return link;
         }
+        // La frase con i link è una chiave sola (Lingua), con {0} e {1} al posto dei link: si divide qui.
+        void Sentence(string sentence, params System.Windows.Documents.Hyperlink[] links)
+        {
+            foreach (var part in System.Text.RegularExpressions.Regex.Split(sentence, @"(\{\d\})"))
+            {
+                if (part.Length == 0) continue;
+                if (part is ['{', var d, '}'] && d - '0' < links.Length) StatusText.Inlines.Add(links[d - '0']);
+                else StatusText.Inlines.Add(part);
+            }
+        }
         StatusText.Inlines.Clear();
         StatusText.Inlines.Add(text);
         if (missing)
         {
-            StatusText.Inlines.Add(Link("Scaricalo dal sito di Microsoft", () =>
+            Sentence(T("{0}, installalo e poi premi {1}."), Link(T("Scaricalo dal sito di Microsoft"), () =>
             {
                 try { Process.Start(new ProcessStartInfo(WebRuntimeLink) { UseShellExecute = true }); }
                 catch (Exception e) { Log.Error("apertura del link di WebView2 Runtime", e); }
-            }));
-            StatusText.Inlines.Add(", installalo e poi premi ");
-            StatusText.Inlines.Add(Link("Riprova", RetryWeb));
-            StatusText.Inlines.Add(".");
+            }), Link(T("Riprova"), RetryWeb));
         }
         else
         {
-            StatusText.Inlines.Add(Link("Riprova", RetryWeb));
-            StatusText.Inlines.Add(" oppure ");
-            StatusText.Inlines.Add(Link("apri la cartella dei registri", App.OpenDataFolder));
-            StatusText.Inlines.Add(" (missiva.log dice l'errore per esteso).");
+            Sentence(T("{0} oppure {1} (missiva.log dice l'errore per esteso)."), Link(T("Riprova"), RetryWeb), Link(T("apri la cartella dei registri"), App.OpenDataFolder));
         }
         StatusText.Visibility = Visibility.Visible;
     }
@@ -966,7 +970,7 @@ public partial class ReadingView : UserControl
             LoadsImages(e.Summary, e.Body, junk, imagesOnce.Contains(OnceKey(e.Summary)), provider?.Account, IsEml),
             e.Expanded && e.Body != null && provider != null ? SenderCheck.Of(provider.Account, e.Summary, e.Body) : null,
             LogoOf(e.Summary), InJunk(e.Summary, junk), UnsubscribeLine(e), ImagesOnce(provider?.Account, e.Summary, e.Body, junk, IsEml))).ToList(), light, provider?.Account.Id ?? "",
-            new PageHeader(Selected is { Subject.Length: > 0 } s ? s.Subject : "(nessun oggetto)", Dark,
+            new PageHeader(Selected is { Subject.Length: > 0 } s ? s.Subject : T("(nessun oggetto)"), Dark,
                 ShowAccount && provider != null ? (provider.Account.Email, Avatars.AccountColor(provider.Account)) : null));
         Log.Time($"pagina costruita ({entries.Count(e => e.Body != null)} corpi)", building);
         page = actionsPage = built;
@@ -1056,11 +1060,11 @@ public partial class ReadingView : UserControl
     /// <param name="eml">Il messaggio è un .eml aperto da un allegato (EmlProvider).</param>
     internal static string? ImagesOnce(MailAccount? account, MessageSummary summary, MessageBody? body, string? junkFolderId, bool eml = false)
     {
-        if (InJunk(summary, junkFolderId)) return "Questo messaggio è nella Posta indesiderata";
-        if (eml) return "Questo messaggio è stato aperto da un allegato, e nessuno ha verificato chi lo ha scritto";
+        if (InJunk(summary, junkFolderId)) return T("Questo messaggio è nella Posta indesiderata");
+        if (eml) return T("Questo messaggio è stato aperto da un allegato, e nessuno ha verificato chi lo ha scritto");
         if (body == null) return null;
-        if (account != null && SenderCheck.Own(account, body.AuthenticationResults) is { } own && SenderCheck.Failed(own)) return "Il mittente di questo messaggio non è verificato";
-        if (body.Pec is { } pec && Pec.Band(pec).Tone == "danger") return "La posta certificata o la firma di questo messaggio ha un avviso rosso";
+        if (account != null && SenderCheck.Own(account, body.AuthenticationResults) is { } own && SenderCheck.Failed(own)) return T("Il mittente di questo messaggio non è verificato");
+        if (body.Pec is { } pec && Pec.Band(pec).Tone == "danger") return T("La posta certificata o la firma di questo messaggio ha un avviso rosso");
         return null;
     }
 
@@ -1103,7 +1107,7 @@ public partial class ReadingView : UserControl
         environment ??= CoreWebView2Environment.CreateAsync(null, Path.Combine(Store.Dir, "WebView2"),
             new CoreWebView2EnvironmentOptions
             {
-                Language = "it-IT",
+                Language = Lingua.Culture.Name, // menu e correttore di WebView2 nella lingua di Missiva: "it-IT" in italiano, come prima
                 AdditionalBrowserArguments = BrowserArguments,
             });
 
@@ -1574,7 +1578,7 @@ public partial class ReadingView : UserControl
         if (Unsubscribe.For(from.Account, entry.Summary, entry.Body, InJunk(entry.Summary, junk)) is not { } action) return;
         var owner = Window.GetWindow(this);
         var sender = entry.Summary.From.Display;
-        bool Confirm(string heading, string body, string primary) => Dialog.Ask(owner, heading, body, primary, null, "Resta iscritto") == Choice.Primary;
+        bool Confirm(string heading, string body, string primary) => Dialog.Ask(owner, heading, body, primary, null, T("Resta iscritto")) == Choice.Primary;
         // L'indirizzo iscritto alla lista è quello a cui il messaggio era scritto: un alias dell'account, se è il caso (T-11).
         var (identity, subscribed) = Unsubscribe.Recipient(from.Account, entry.Summary, entry.Body);
         if (action.Kind != UnsubscribeKind.OneClick)
@@ -1590,21 +1594,21 @@ public partial class ReadingView : UserControl
         var outcome = await Unsubscribe.OneClickAsync(action, sender, subscribed, (heading, body, primary) =>
         {
             if (!Confirm(heading, body, primary)) return false;
-            lock (unsubscribed) unsubscribed[key] = "Annullamento dell'iscrizione in corso…";
+            lock (unsubscribed) unsubscribed[key] = T("Annullamento dell'iscrizione in corso…");
             if (entries.Contains(entry)) Render();
             return true;
         }, dryRun: MainWindow.Testing);
         if (!outcome.Confirmed) return;
         lock (unsubscribed)
         {
-            if (outcome.Error == null) unsubscribed[key] = $"Richiesta di annullare l'iscrizione inviata a {action.Where}.";
+            if (outcome.Error == null) unsubscribed[key] = T("Richiesta di annullare l'iscrizione inviata a {0}.", action.Where);
             else unsubscribed.Remove(key);
         }
         if (entries.Contains(entry)) Render();
         if (outcome.Error == null)
-            Dialog.Show(owner, "Iscrizione annullata", $"{action.Where} ha accettato la richiesta per {sender}. Possono passare alcuni giorni prima che i messaggi smettano di arrivare.");
-        else if (Dialog.Ask(owner, "Iscrizione non annullata", outcome.Error + "\n\nPuoi provare dalla pagina del mittente, nel browser:\n" + action.Shown,
-                            "Apri nel browser", null, "Chiudi") == Choice.Primary)
+            Dialog.Show(owner, T("Iscrizione annullata"), T("{0} ha accettato la richiesta per {1}. Possono passare alcuni giorni prima che i messaggi smettano di arrivare.", action.Where, sender));
+        else if (Dialog.Ask(owner, T("Iscrizione non annullata"), T("{0}\n\nPuoi provare dalla pagina del mittente, nel browser:\n{1}", outcome.Error, action.Shown),
+                            T("Apri nel browser"), null, T("Chiudi")) == Choice.Primary)
             OpenLink(new Uri(action.Target));
     }
 
@@ -1627,7 +1631,7 @@ public partial class ReadingView : UserControl
         catch (Exception ex)
         {
             Log.Error("consenso al calendario", ex);
-            ShowConsentError(Window.GetWindow(this), "Accesso al calendario non consentito", ex, p.Account, "usare il calendario");
+            ShowConsentError(Window.GetWindow(this), T("Accesso al calendario non consentito"), ex, p.Account, T("usare il calendario"));
         }
     }
 
@@ -1846,7 +1850,7 @@ public partial class ReadingView : UserControl
         catch (Exception ex)
         {
             Log.Error("allegato", ex);
-            Dialog.Show(owner, "Allegato non disponibile", ex.Message);
+            Dialog.Show(owner, T("Allegato non disponibile"), ex.Message);
             return;
         }
         // Gli altri passano dal gestore degli scaricamenti (DownloadList, ritocchi del 16 ottobre 2026): un elemento nella barra
@@ -1898,16 +1902,15 @@ public partial class ReadingView : UserControl
         var owner = Window.GetWindow(this);
         var skipped = attachments.Where(a => Safety.IsDangerous(Safety.SafeFileName(a.Name))).ToList();
         var why = skipped.Count == 1
-            ? $"\"{skipped[0].Name}\" è un tipo di file che può avviare programmi: se ti fidi di chi l'ha mandato, salvalo da solo con Salva con nome."
-            : $"{string.Join(", ", skipped.Select(a => $"\"{a.Name}\""))} sono tipi di file che possono avviare programmi: se ti fidi di chi li ha mandati, " +
-              "salvali uno per uno con Salva con nome.";
+            ? T("\"{0}\" è un tipo di file che può avviare programmi: se ti fidi di chi l'ha mandato, salvalo da solo con Salva con nome.", skipped[0].Name)
+            : T("{0} sono tipi di file che possono avviare programmi: se ti fidi di chi li ha mandati, salvali uno per uno con Salva con nome.", string.Join(", ", skipped.Select(a => $"\"{a.Name}\"")));
         if (skipped.Count == attachments.Count)
         {
-            Dialog.Show(owner, "Allegati non salvati", why);
+            Dialog.Show(owner, T("Allegati non salvati"), why);
             return;
         }
         attachments = attachments.Except(skipped).ToList();
-        var dialog = new OpenFolderDialog { Title = "Salva tutti gli allegati nella cartella" };
+        var dialog = new OpenFolderDialog { Title = T("Salva tutti gli allegati nella cartella") };
         savingAll = true;
         try
         {
@@ -1923,7 +1926,7 @@ public partial class ReadingView : UserControl
         var files = attachments.Select(a => new DownloadList.SaveAllFile(Safety.SafeFileName(a.Name), ExpectedSize(a),
             (progress, cancel) => AttachmentBytesAsync(p, entry, a, progress, cancel))).ToList();
         var saving = DownloadList.Session.SaveAllAsync(dialog.FolderName, files, p.Account.Id, InJunk(entry.Summary, junk));
-        if (skipped.Count > 0) Dialog.Show(owner, skipped.Count == 1 ? "Un allegato non salvato" : $"{skipped.Count} allegati non salvati", why);
+        if (skipped.Count > 0) Dialog.Show(owner, skipped.Count == 1 ? T("Un allegato non salvato") : T("{0} allegati non salvati", skipped.Count), why);
         await saving;
     }
 
@@ -1939,7 +1942,7 @@ public partial class ReadingView : UserControl
         var texts = page.LinkTexts.GetValueOrDefault(uri.AbsoluteUri) ?? page.HostTexts.GetValueOrDefault(ReadingPage.HostKey(uri)) ?? new List<string> { "" };
         var warning = texts.Select(t => Safety.LinkWarning(t, uri)).FirstOrDefault(w => w != null);
         if (warning != null &&
-            Dialog.Ask(Window.GetWindow(this), "Controlla questo link", warning + "\n\nIndirizzo reale:\n" + uri.AbsoluteUri, "Apri comunque") != Choice.Primary)
+            Dialog.Ask(Window.GetWindow(this), T("Controlla questo link"), T("{0}\n\nIndirizzo reale:\n{1}", warning, uri.AbsoluteUri), T("Apri comunque")) != Choice.Primary)
             return;
         try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); }
         catch (Exception ex) { Log.Error("apertura link", ex); }

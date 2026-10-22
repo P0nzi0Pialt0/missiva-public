@@ -650,7 +650,7 @@ static partial class ProvaBozze
             // Il Ccn del link va nel campo, e se c'è (anche da solo, senza Cc) i campi Cc e Ccn si aprono; nessuno li richiude.
             bool filled = Ch3InOrder(fill, "BccBox.Text = initialBcc = string.Join(\"; \", mailto.Bcc);", "if (mailto.Cc.Count + mailto.Bcc.Count > 0) OnShowCcBcc(this, new RoutedEventArgs());");
             bool opened = show.Contains("BccLabel.Visibility = BccBox.Visibility = Visibility.Visible;");
-            bool stays = compose.Split("BccBox.Visibility").Length == 2 && !compose.Contains("BccBox.IsEnabled") && xaml.Contains("x:Name=\"BccBox\"") && xaml.Contains("x:Name=\"BccLabel\" Grid.Row=\"3\" Text=\"Ccn\"");
+            bool stays = compose.Split("BccBox.Visibility").Length == 2 && !compose.Contains("BccBox.IsEnabled") && xaml.Contains("x:Name=\"BccBox\"") && xaml.Contains("x:Name=\"BccLabel\" Grid.Row=\"3\" Text=\"{local:T 'Ccn'}\"");
             // Il mailto: che Missiva costruisce da sé non ha Cc né Ccn, e resta com'è.
             var own = Mailto.Parse(UI.AdminConsentWindow.MailtoFor("mario@studio-prova.example", "https://login.example/consenso"));
             Check(parsed.Bcc is ["archivio@altrove-prova.example"] && filled && opened && stays && own is { To.Count: 0, Cc.Count: 0, Bcc.Count: 0 } && own.Subject.Length > 0 && own.Body.Contains("https://login.example/consenso"),

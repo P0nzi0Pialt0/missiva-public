@@ -22,27 +22,30 @@ public sealed class AdminConsentWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
+#if DEBUG
+        DevTools.HideForPhotos(this); // le foto (--foto): nasce fuori dallo schermo e non prende il fuoco
+#endif
 
         var (clientId, tenant) = MicrosoftAuth.AppOf(account);
         var link = MicrosoftAuth.AdminConsentUrl(clientId, tenant);
         var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
         panel.Children.Add(new TextBlock { Text = heading, FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
         panel.Children.Add(Secondary(explanation));
-        panel.Children.Add(new TextBlock { Text = "Chiedi l'approvazione all'amministratore", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 14, 0, 4) });
-        panel.Children.Add(Secondary("Manda questo link a un amministratore di Microsoft 365 della tua organizzazione: aprendolo può approvare Missiva " +
-                                     $"per tutti gli utenti. {MicrosoftAuth.AdminConsentScope(clientId)} Quando l'ha fatto, riprova."));
+        panel.Children.Add(new TextBlock { Text = T("Chiedi l'approvazione all'amministratore"), FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 14, 0, 4) });
+        panel.Children.Add(Secondary(T("Manda questo link a un amministratore di Microsoft 365 della tua organizzazione: aprendolo può approvare Missiva per tutti gli utenti. {0} Quando l'ha fatto, riprova.",
+                                       MicrosoftAuth.AdminConsentScope(clientId))));
         var box = new TextBox { Text = link, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
-        System.Windows.Automation.AutomationProperties.SetName(box, "Link per l'amministratore");
+        System.Windows.Automation.AutomationProperties.SetName(box, T("Link per l'amministratore"));
         panel.Children.Add(box);
 
         var buttons = new DockPanel { Margin = new Thickness(0, 12, 0, 0), LastChildFill = false };
-        var copy = new Button { Content = "Copia", MinWidth = 100 };
+        var copy = new Button { Content = T("Copia"), MinWidth = 100 };
         copy.Click += (_, _) =>
         {
             try
             {
                 Clipboard.SetText(link);
-                copy.Content = "Copiato";
+                copy.Content = T("Copiato");
             }
             catch (Exception ex)
             {
@@ -51,13 +54,13 @@ public sealed class AdminConsentWindow : Window
                 box.SelectAll();
             }
         };
-        var mail = new Button { Content = "Scrivi all'amministratore", Margin = new Thickness(8, 0, 0, 0) };
+        var mail = new Button { Content = T("Scrivi all'amministratore"), Margin = new Thickness(8, 0, 0, 0) };
         mail.Click += (_, _) =>
         {
             Mailto = MailtoFor(account.Email, link);
             Close();
         };
-        var close = new Button { Content = "Chiudi", MinWidth = 100, IsCancel = true, IsDefault = true };
+        var close = new Button { Content = T("Chiudi"), MinWidth = 100, IsCancel = true, IsDefault = true };
         close.Click += (_, _) => Close();
         DockPanel.SetDock(close, Dock.Right);
         buttons.Children.Add(copy);
@@ -76,13 +79,13 @@ public sealed class AdminConsentWindow : Window
 
     /// <summary>
     /// Il messaggio per l'amministratore, come link mailto: senza destinatario (MainWindow lo apre in Nuovo messaggio; parte
-    /// solo con Invia).
+    /// solo con Invia). Nella lingua di Missiva: in inglese la mail è in inglese.
     /// </summary>
     public static string MailtoFor(string? email, string link)
     {
-        var who = email != null ? $" con il mio account di lavoro {email}" : "";
-        var body = $"Ciao,\n\nper usare Missiva (programma di posta per Windows){who} serve l'approvazione di un amministratore di " +
-                   $"Microsoft 365. Puoi darla aprendo questo link con il tuo account di amministratore:\n\n{link}\n\nGrazie";
-        return "mailto:?subject=" + Uri.EscapeDataString("Approvazione di Missiva per Microsoft 365") + "&body=" + Uri.EscapeDataString(body);
+        var body = email != null
+            ? T("Ciao,\n\nper usare Missiva (programma di posta per Windows) con il mio account di lavoro {0} serve l'approvazione di un amministratore di Microsoft 365. Puoi darla aprendo questo link con il tuo account di amministratore:\n\n{1}\n\nGrazie", email, link)
+            : T("Ciao,\n\nper usare Missiva (programma di posta per Windows) serve l'approvazione di un amministratore di Microsoft 365. Puoi darla aprendo questo link con il tuo account di amministratore:\n\n{0}\n\nGrazie", link);
+        return "mailto:?subject=" + Uri.EscapeDataString(T("Approvazione di Missiva per Microsoft 365")) + "&body=" + Uri.EscapeDataString(body);
     }
 }

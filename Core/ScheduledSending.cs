@@ -47,7 +47,7 @@ public static class ScheduledSending
                         sent++;
                         Log.Write($"invio pianificato di {Log.Private(due.Subject)} partito ({provider.Account.Email})");
                     }
-                    else problem?.Invoke(due, $"La bozza di \"{due.Subject}\" non c'è più nelle Bozze (eliminata, o modificata dopo la pianificazione): non è partita.");
+                    else problem?.Invoke(due, T("La bozza di \"{0}\" non c'è più nelle Bozze (eliminata, o modificata dopo la pianificazione): non è partita.", due.Subject));
                 }
                 catch (Exception ex)
                 {
@@ -60,21 +60,21 @@ public static class ScheduledSending
                         Store.Settings.ScheduledSends.Remove(due);
                         Store.Save();
                         warned.Remove(due);
-                        problem?.Invoke(due, $"\"{due.Subject}\" doveva partire il {due.At:dd/MM} alle {due.At:HH:mm}: {reason}\n\nMissiva non riprova da sola, per non mandarlo due volte. " +
-                                             "Il messaggio è ancora nelle Bozze: controlla se è arrivato (nella Posta inviata, o chiedendo al destinatario) e, se non è partito, invialo da lì.");
+                        problem?.Invoke(due, T("\"{0}\" doveva partire il {1} alle {2:HH:mm}: {3}\n\nMissiva non riprova da sola, per non mandarlo due volte. Il messaggio è ancora nelle Bozze: controlla se è arrivato (nella Posta inviata, o chiedendo al destinatario) e, se non è partito, invialo da lì.",
+                                               due.Subject, Day(due.At), due.At, reason));
                     }
                     else if (Transient(ex))
                     {
                         // Rete assente o server che non risponde: si riprova al prossimo controllo, e lo si dice una volta.
                         if (warned.Add(due))
-                            problem?.Invoke(due, $"\"{due.Subject}\" doveva partire il {due.At:dd/MM} alle {due.At:HH:mm} ma non è ancora partito: {reason}\n\nMissiva riprova ogni minuto finché è aperta.");
+                            problem?.Invoke(due, T("\"{0}\" doveva partire il {1} alle {2:HH:mm} ma non è ancora partito: {3}\n\nMissiva riprova ogni minuto finché è aperta.", due.Subject, Day(due.At), due.At, reason));
                     }
                     else
                     {
                         Store.Settings.ScheduledSends.Remove(due);
                         Store.Save();
                         warned.Remove(due);
-                        problem?.Invoke(due, $"\"{due.Subject}\" non è partito: {reason}\n\nIl messaggio è ancora nelle Bozze: aprilo da lì per inviarlo o pianificarlo di nuovo.");
+                        problem?.Invoke(due, T("\"{0}\" non è partito: {1}\n\nIl messaggio è ancora nelle Bozze: aprilo da lì per inviarlo o pianificarlo di nuovo.", due.Subject, reason));
                     }
                 }
             }
@@ -95,6 +95,12 @@ public static class ScheduledSending
                 return true;
         return false;
     }
+
+    /// <summary>
+    /// Il giorno dell'invio negli avvisi: "21/10" in italiano, com'era; in inglese con il mese in lettere, nell'ordine della
+    /// cultura ("21 October", "October 21"), perché "10/21" e "21/10" si leggono in due modi.
+    /// </summary>
+    internal static string Day(DateTime at) => at.ToString(Lingua.English ? "M" : "dd/MM", Lingua.Culture);
 
     static string FirstLine(string text)
     {

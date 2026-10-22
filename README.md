@@ -15,6 +15,8 @@
   <a href="LEGGIMI.md"><strong>Manuale</strong></a>
   &nbsp;·&nbsp;
   <a href="#sicurezza-e-privacy"><strong>Sicurezza</strong></a>
+  &nbsp;·&nbsp;
+  <a href="README.en.md"><strong>English</strong></a>
 </p>
 
 <picture>
@@ -24,11 +26,7 @@
 
 <p align="center"><sub>Tutte le immagini sono della versione di prova, con account, persone e messaggi inventati.</sub></p>
 
-**In English.** Missiva is a native Windows 11 email client, modeled on the new Outlook but built with WPF instead of
-a web page. It talks directly to Outlook.com and Microsoft 365, Gmail and any IMAP/SMTP mailbox from your PC, with no
-ads and no servers of its own in between. Emails open in a locked-down WebView2, without JavaScript and without remote
-images until you allow them. It also reads Italian certified email (PEC) and signed .p7m e-invoices. The interface is
-in Italian. Open source, MIT license.
+**In English.** Missiva is available in English too, and so is this page: [README.en.md](README.en.md).
 
 ## Perché non il nuovo Outlook
 
@@ -77,7 +75,7 @@ Il manuale completo, con quello che Missiva fa e quello che ancora manca, è in 
 ![La finestra di scrittura con la barra del formato, un elenco puntato, il grassetto e l'evidenziatore](docs/immagini/scrittura.png)
 
 - Formato del testo come nel nuovo Outlook: carattere, colori, elenchi, rientri, tabelle, immagini e link, con il
-  controllo ortografico italiano.
+  controllo ortografico nella lingua di Missiva.
 - Le bozze si salvano da sole; Annulla invio per qualche secondo dopo Invia; Pianifica invio; firme per account e
   modelli per i testi che si ripetono.
 - I suggerimenti dei destinatari mentre scrivi, l'avviso quando scrivi fuori dalla tua organizzazione e quello
@@ -185,7 +183,8 @@ Aggiungi account parte dall'indirizzo: Missiva riconosce da sola il tipo di acco
 
 - Versione 0.3. È un progetto personale, usato tutti i giorni dall'autore: funziona, ma non ha garanzie né
   assistenza.
-- Solo in italiano, solo per Windows 11.
+- In italiano e in inglese: la lingua si sceglie in Impostazioni, Generali, Aspetto, Lingua (di base è quella di
+  Windows: italiano se Windows è in italiano, inglese altrimenti). Solo per Windows 11.
 - L'eseguibile non è firmato con un certificato di firma del codice: Windows avvisa alla prima apertura.
 - Il calendario c'è per gli account Microsoft e Google, non ancora per gli altri. Quello che manca è in
   [LEGGIMI.md](LEGGIMI.md#cosa-manca-ancora).
@@ -212,6 +211,8 @@ Per saperne di più:
 
 - `Core` è la posta (Microsoft Graph, Gmail e IMAP, la pulizia dell'HTML, la copia sul PC), `UI` l'interfaccia WPF,
   `strumenti` gli script per provarla.
+- L'italiano è la lingua di partenza: ogni testo dell'interfaccia è scritto in italiano nel codice, dentro `T("...")`,
+  e la sua traduzione inglese sta in `Assets/lingue/en`. Una prova controlla che ogni testo abbia la traduzione.
 - Le prove automatiche stanno in `Core/ProvaBozze*.cs` e girano dentro l'eseguibile di Debug, con server finti sul PC
   e senza rete: `dotnet build`, poi `Missiva.exe --prova-bozze risultato.txt` con la variabile `MISSIVA_DATA` che
   indica una cartella vuota. Senza quella variabile la versione di Debug non parte, per non toccare la posta vera.

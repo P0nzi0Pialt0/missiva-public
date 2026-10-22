@@ -118,7 +118,7 @@ public static class MimeOptions
                     message.References.Add(source.MessageId);
                 }
             }
-            var header = $"Il {original.Date:dddd d MMMM yyyy HH:mm}, {original.From} ha scritto:";
+            var header = QuoteHeader(original);
             html += $"<br><div>{System.Net.WebUtility.HtmlEncode(header)}</div><blockquote style=\"margin:0 0 0 .8ex;border-left:2px solid #ccc;padding-left:1ex\">" +
                     QuoteHtml(quoted.Html) + "</blockquote>";
             text += "\n\n" + header + "\n" + QuoteText(quoted.Html);
@@ -126,14 +126,14 @@ public static class MimeOptions
             // Le immagini incorporate della citazione (cid:): senza, arrivano rotte.
             foreach (var a in quoted.Attachments.Where(a => a.IsInline && a.Content != null && a.ContentId != null))
             {
-                var part = builder.LinkedResources.Add(a.Name.Length > 0 ? a.Name : "immagine", a.Content!, TypeOf(a));
+                var part = builder.LinkedResources.Add(a.Name.Length > 0 ? a.Name : T("immagine"), a.Content!, TypeOf(a));
                 part.Headers.Replace(HeaderId.ContentId, $"<{a.ContentId}>");
             }
             // Come in Outlook, Inoltra porta con sé gli allegati dell'originale (scaricati uno per uno, non tutto il messaggio).
             // Dopo il primo salvataggio della bozza sono fra quelli della bozza (KeptAttachments), e l'utente può toglierli.
             if (mail.Mode == ComposeMode.Forward && mail.Draft == null)
                 foreach (var a in quoted.Attachments.Where(a => !a.IsInline))
-                    builder.Attachments.Add(a.Name.Length > 0 ? a.Name : "allegato", await attachmentOf(original, a), TypeOf(a));
+                    builder.Attachments.Add(a.Name.Length > 0 ? a.Name : T("allegato"), await attachmentOf(original, a), TypeOf(a));
         }
 
         builder.HtmlBody = html;
@@ -150,12 +150,28 @@ public static class MimeOptions
         // sulla connessione delle bozze, non su quella principale; quelli tenuti dal salvataggio di prima non si riscaricano.
         if (mail.Draft is { } draft)
             foreach (var a in mail.KeptAttachments)
-                builder.Attachments.Add(a.Name.Length > 0 ? a.Name : "allegato", await attachmentOf(draft.Message, a), TypeOf(a));
+                builder.Attachments.Add(a.Name.Length > 0 ? a.Name : T("allegato"), await attachmentOf(draft.Message, a), TypeOf(a));
         foreach (var path in mail.AttachmentPaths) await builder.Attachments.AddAsync(path);
         // Risposta a un invito (iMIP): testo, HTML e la parte text/calendar, invece del corpo normale.
         message.Body = mail.Calendar != null ? Invitation.MimeBody(mail) : builder.ToMessageBody();
         return message;
     }
+
+    /// <summary>
+    /// La riga sopra la citazione di una risposta o di un inoltro (Gmail, IMAP e .eml; Graph la scrive il server): parte con
+    /// il messaggio, quindi segue la lingua di Missiva. In italiano "Il martedì 21 ottobre 2026 14:30, Mario Rossi
+    /// &lt;...&gt; ha scritto:" come sempre (la data con it-IT); in inglese "On Tuesday, October 21, 2026 2:30 PM, ... wrote:",
+    /// con la data e l'ora lunghe di Lingua.Culture.
+    /// </summary>
+    internal static string QuoteHeader(MessageSummary original) => T("Il {0}, {1} ha scritto:", QuoteDate(original.Date), original.From);
+
+    /// <summary>
+    /// La data dell'originale, nella riga della citazione e in "Inviato" sotto la scrittura: "martedì 21 ottobre 2026 14:30"
+    /// in italiano, come sempre; in inglese la data lunga con l'ora breve di Lingua.Culture ("Tuesday, October 21, 2026 2:30
+    /// PM" in en-US, "Tuesday, 21 October 2026 14:30" in en-GB).
+    /// </summary>
+    internal static string QuoteDate(DateTime date) =>
+        Lingua.English ? date.ToString("f", Lingua.Culture) : date.ToString("dddd d MMMM yyyy HH:mm", Lingua.Culture);
 
     static ContentType TypeOf(Attachment a) =>
         ContentType.TryParse(a.ContentType, out var type) ? type : new ContentType("application", "octet-stream");
@@ -196,7 +212,7 @@ public static class MimeOptions
         catch (Exception ex) when (delivered.Whole && ex is not (SmtpCommandException or MailException))
         {
             Log.Write($"SMTP di {host}: connessione persa dopo la consegna del messaggio e prima della risposta ({ex.GetType().Name}): forse è partito, non si riprova da soli");
-            throw new MailException($"La connessione con {host} si è interrotta mentre il server riceveva il messaggio: non si sa se è partito.", ex) { MaybeSent = true };
+            throw new MailException(T("La connessione con {0} si è interrotta mentre il server riceveva il messaggio: non si sa se è partito.", host), ex) { MaybeSent = true };
         }
     }
 }

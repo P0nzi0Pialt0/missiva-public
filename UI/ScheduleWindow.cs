@@ -16,24 +16,24 @@ public sealed class ScheduleWindow : Window
 
     public ScheduleWindow()
     {
-        Title = "Pianifica invio";
+        Title = T("Pianifica invio");
         Width = 380;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
         var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
-        panel.Children.Add(new TextBlock { Text = "Pianifica invio", FontSize = 20, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) });
-        panel.Children.Add(new TextBlock { Text = "Giorno" });
-        System.Windows.Automation.AutomationProperties.SetName(day, "Giorno");
+        panel.Children.Add(new TextBlock { Text = Title, FontSize = 20, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) });
+        panel.Children.Add(new TextBlock { Text = T("Giorno") });
+        System.Windows.Automation.AutomationProperties.SetName(day, T("Giorno"));
         day.DisplayDateStart = DateTime.Today;
         panel.Children.Add(day);
-        panel.Children.Add(new TextBlock { Text = "Ora" });
-        System.Windows.Automation.AutomationProperties.SetName(time, "Ora");
+        panel.Children.Add(new TextBlock { Text = T("Ora") });
+        System.Windows.Automation.AutomationProperties.SetName(time, T("Ora"));
         panel.Children.Add(time);
         panel.Children.Add(error);
         var buttons = new DockPanel { Margin = new Thickness(0, 20, 0, 0), LastChildFill = false };
-        var ok = new Button { Content = "Pianifica", MinWidth = 100, IsDefault = true };
+        var ok = new Button { Content = T("Pianifica"), MinWidth = 100, IsDefault = true };
         ok.SetResourceReference(StyleProperty, "AccentButtonStyle");
         ok.Click += (_, _) =>
         {
@@ -44,10 +44,10 @@ public sealed class ScheduleWindow : Window
                 DialogResult = true;
                 return;
             }
-            error.Text = "Scegli un giorno e un'ora futuri, con l'ora come 8:30.";
+            error.Text = T("Scegli un giorno e un'ora futuri, con l'ora come 8:30.");
             error.Visibility = Visibility.Visible;
         };
-        var cancel = new Button { Content = "Annulla", MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
+        var cancel = new Button { Content = T("Annulla"), MinWidth = 100, IsCancel = true, Margin = new Thickness(0, 0, 8, 0) };
         DockPanel.SetDock(ok, Dock.Right);
         DockPanel.SetDock(cancel, Dock.Right);
         buttons.Children.Add(ok);

@@ -34,8 +34,8 @@ public static class Network
     /// <summary>"Non in linea" con il perché, o null se l'errore non è della rete. 10013: un firewall come Portmaster blocca Missiva.</summary>
     public static string? Explain(Exception? ex) => SocketError(ex) switch
     {
-        { ErrorCode: 10013 } => "Non in linea: un firewall (per esempio Portmaster) blocca Missiva. Consenti Missiva.exe nel firewall.",
-        { } s when OfflineCodes.Contains(s.ErrorCode) => "Non in linea: controlla la connessione a Internet.",
+        { ErrorCode: 10013 } => T("Non in linea: un firewall (per esempio Portmaster) blocca Missiva. Consenti Missiva.exe nel firewall."),
+        { } s when OfflineCodes.Contains(s.ErrorCode) => T("Non in linea: controlla la connessione a Internet."),
         _ => null,
     };
 

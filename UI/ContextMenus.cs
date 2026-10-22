@@ -15,9 +15,16 @@ public static class ContextMenus
 
     public enum Tone { Plain, Purple, Blue, Green, Red }
 
+    /// <summary>
+    /// Una voce: Key è quello che si salva nelle impostazioni (ordine e voci nascoste), quindi una personalizzazione fatta in
+    /// italiano vale anche in inglese; Name è il nome italiano, segnato con N e tradotto dove si mostra (T(entry.Name)).
+    /// </summary>
     public sealed record Entry(string Key, string Name, string Glyph, Tone Tone);
 
-    /// <summary>Un menu: le sue voci, l'ordine di base e dove stanno le scelte dell'utente nelle impostazioni.</summary>
+    /// <summary>
+    /// Un menu: le sue voci, l'ordine di base e dove stanno le scelte dell'utente nelle impostazioni. Titolo e descrizione
+    /// sono in italiano (segnati con N) e si traducono dove si mostrano.
+    /// </summary>
     public sealed class Definition
     {
         public required string Title { get; init; }
@@ -69,32 +76,32 @@ public static class ContextMenus
 
     public static readonly Definition Messages = new()
     {
-        Title = "Menu del tasto destro sui messaggi",
-        Description = "Spunta le voci da mostrare quando premi il tasto destro su un messaggio. Trascinale, o usa Su e Giù, per cambiarne l'ordine. I separatori dividono il menu in gruppi.",
+        Title = N("Menu del tasto destro sui messaggi"),
+        Description = N("Spunta le voci da mostrare quando premi il tasto destro su un messaggio. Trascinale, o usa Su e Giù, per cambiarne l'ordine. I separatori dividono il menu in gruppi."),
         All = new Entry[]
         {
-            new("reply", "Rispondi", "", Tone.Purple),
-            new("replyAll", "Rispondi a tutti", ReplyAllGlyph, Tone.Purple),
-            new("forward", "Inoltra", ForwardGlyph, Tone.Blue),
-            new("meeting", "Rispondi con riunione", "", Tone.Purple),
-            new("replyTemplate", "Rispondi con modello", "", Tone.Purple),
-            new("delete", "Elimina", "", Tone.Plain),
-            new("archive", "Archivia", "", Tone.Green),
-            new("move", "Sposta", "", Tone.Blue),
-            new("copy", "Copia", "", Tone.Blue),
-            new("read", "Segna come letto o da leggere", "", Tone.Plain),
-            new("pin", "Fissa in alto", "", Tone.Blue),
-            new("categorize", "Categorizza", "", Tone.Plain),
-            new("flag", "Contrassegna", "", Tone.Red),
-            new("snooze", "Posponi", "", Tone.Plain),
-            new("rule", "Crea regola", "", Tone.Plain),
-            new("report", "Segnala", "", Tone.Red),
-            new("save", "Salva con nome", "", Tone.Plain),
-            new("print", "Stampa", "", Tone.Plain),
-            new("related", "Trova elementi correlati", "", Tone.Plain),
-            new("view", "Visualizza", "", Tone.Plain),
-            new("window", "Apri in una nuova finestra", "", Tone.Plain),
-            new("source", "Origine del messaggio", "", Tone.Plain),
+            new("reply", N("Rispondi"), "", Tone.Purple),
+            new("replyAll", N("Rispondi a tutti"), ReplyAllGlyph, Tone.Purple),
+            new("forward", N("Inoltra"), ForwardGlyph, Tone.Blue),
+            new("meeting", N("Rispondi con riunione"), "", Tone.Purple),
+            new("replyTemplate", N("Rispondi con modello"), "", Tone.Purple),
+            new("delete", N("Elimina"), "", Tone.Plain),
+            new("archive", N("Archivia"), "", Tone.Green),
+            new("move", N("Sposta"), "", Tone.Blue),
+            new("copy", N("Copia"), "", Tone.Blue),
+            new("read", N("Segna come letto o da leggere"), "", Tone.Plain),
+            new("pin", N("Fissa in alto"), "", Tone.Blue),
+            new("categorize", N("Categorizza"), "", Tone.Plain),
+            new("flag", N("Contrassegna"), "", Tone.Red),
+            new("snooze", N("Posponi"), "", Tone.Plain),
+            new("rule", N("Crea regola"), "", Tone.Plain),
+            new("report", N("Segnala"), "", Tone.Red),
+            new("save", N("Salva con nome"), "", Tone.Plain),
+            new("print", N("Stampa"), "", Tone.Plain),
+            new("related", N("Trova elementi correlati"), "", Tone.Plain),
+            new("view", N("Visualizza"), "", Tone.Plain),
+            new("window", N("Apri in una nuova finestra"), "", Tone.Plain),
+            new("source", N("Origine del messaggio"), "", Tone.Plain),
         },
         DefaultOrder = new[]
         {
@@ -109,24 +116,24 @@ public static class ContextMenus
 
     public static readonly Definition Folders = new()
     {
-        Title = "Menu del tasto destro sulle cartelle",
-        Description = "Spunta le voci da mostrare quando premi il tasto destro su una cartella. Trascinale, o usa Su e Giù, per cambiarne l'ordine. I separatori dividono il menu in gruppi.",
+        Title = N("Menu del tasto destro sulle cartelle"),
+        Description = N("Spunta le voci da mostrare quando premi il tasto destro su una cartella. Trascinale, o usa Su e Giù, per cambiarne l'ordine. I separatori dividono il menu in gruppi."),
         All = new Entry[]
         {
-            new("count", "Numero di elementi e non letti", "", Tone.Plain),
-            new("newFolder", "Crea nuova sottocartella", "", Tone.Plain),
-            new("rename", "Rinomina", "", Tone.Plain),
-            new("color", "Cambia colore", "", Tone.Plain),
-            new("move", "Sposta", "", Tone.Plain),
-            new("delete", "Elimina", "", Tone.Plain),
-            new("empty", "Svuota", "", Tone.Plain),
-            new("markRead", "Contrassegna tutti come letti", "", Tone.Plain),
-            new("favorite", "Aggiungi a Preferiti o rimuovi", "", Tone.Plain),
-            new("up", "Sposta su", "", Tone.Plain),
-            new("down", "Sposta giù", "", Tone.Plain),
-            new("window", "Apri in un'altra finestra", "", Tone.Plain),
-            new("hide", "Nascondi dall'elenco", "", Tone.Plain),
-            new("resetOrder", "Ripristina l'ordine predefinito", "", Tone.Plain),
+            new("count", N("Numero di elementi e non letti"), "", Tone.Plain),
+            new("newFolder", N("Crea nuova sottocartella"), "", Tone.Plain),
+            new("rename", N("Rinomina"), "", Tone.Plain),
+            new("color", N("Cambia colore"), "", Tone.Plain),
+            new("move", N("Sposta"), "", Tone.Plain),
+            new("delete", N("Elimina"), "", Tone.Plain),
+            new("empty", N("Svuota"), "", Tone.Plain),
+            new("markRead", N("Contrassegna tutti come letti"), "", Tone.Plain),
+            new("favorite", N("Aggiungi a Preferiti o rimuovi"), "", Tone.Plain),
+            new("up", N("Sposta su"), "", Tone.Plain),
+            new("down", N("Sposta giù"), "", Tone.Plain),
+            new("window", N("Apri in un'altra finestra"), "", Tone.Plain),
+            new("hide", N("Nascondi dall'elenco"), "", Tone.Plain),
+            new("resetOrder", N("Ripristina l'ordine predefinito"), "", Tone.Plain),
         },
         DefaultOrder = new[]
         {

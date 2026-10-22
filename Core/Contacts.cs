@@ -53,7 +53,13 @@ public sealed class Contact
     [JsonIgnore]
     public string Name => DisplayName.Trim().Length > 0 ? DisplayName.Trim()
         : $"{GivenName} {Surname}".Trim() is { Length: > 0 } full ? full
-        : Emails.FirstOrDefault() ?? (Company.Length > 0 ? Company : "(senza nome)");
+        : Emails.FirstOrDefault() ?? (Company.Length > 0 ? Company : NoName);
+
+    /// <summary>
+    /// Il nome di un contatto senza nome, indirizzi né azienda, nella lingua di Missiva: chi guarda se un contatto è vuoto
+    /// confronta Name con questo (in italiano "(senza nome)", come prima).
+    /// </summary>
+    public static string NoName => T("(senza nome)");
 
     public Contact Clone() => new()
     {
@@ -351,7 +357,7 @@ public static class ContactFiles
     public static List<Contact> Read(string path)
     {
         var info = new FileInfo(path);
-        if (info.Length > MaxBytes) throw new MailException($"Il file è troppo grande ({info.Length / 1024 / 1024} MB): Missiva legge rubriche fino a 5 MB.");
+        if (info.Length > MaxBytes) throw new MailException(T("Il file è troppo grande ({0} MB): Missiva legge rubriche fino a 5 MB.", info.Length / 1024 / 1024));
         var text = File.ReadAllText(path, Encoding.UTF8);
         return path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? Csv(text) : VCard(text);
     }
@@ -377,7 +383,7 @@ public static class ContactFiles
             if (current == null) continue;
             if (name == "END")
             {
-                if (current.Name != "(senza nome)" || current.Emails.Count > 0) result.Add(current);
+                if (current.Name != Contact.NoName || current.Emails.Count > 0) result.Add(current);
                 current = null;
                 continue;
             }
@@ -544,7 +550,7 @@ public static class ContactFiles
                 BusinessPhone = At(row, cols.Business), Company = At(row, cols.Company), JobTitle = At(row, cols.Title), Notes = At(row, cols.Notes),
             };
             foreach (var mail in new[] { At(row, cols.Mail1), At(row, cols.Mail2) }.Where(AccountTypes.LooksValid)) c.Emails.Add(mail);
-            if (c.Name != "(senza nome)") result.Add(c);
+            if (c.Name != Contact.NoName) result.Add(c);
         }
         return result;
     }

@@ -153,7 +153,7 @@ public partial class MainWindow
                     foreach (var (m, a) in saved) cached[(a, m.Id)] = m;
                     rows.Append(saved);
                 }
-                SetListStatus(rows.Rows.Count > 0 ? null : "Caricamento…");
+                SetListStatus(rows.Rows.Count > 0 ? null : T("Caricamento…"));
             }
             var clock = Stopwatch.StartNew();
             var shown = await NextMergedAsync(first, version);
@@ -175,7 +175,7 @@ public partial class MainWindow
                 UpdateCommands();
             }
             else AppendKeepingPosition(() => rows.Append(shown));
-            ShowMergedStatus("Non ci sono messaggi qui.");
+            ShowMergedStatus(T("Non ci sono messaggi qui."));
             foreach (var g in shown.GroupBy(x => x.Account))
                 if (merged.FirstOrDefault(s => s.Account == g.Key)?.Folder is { } where)
                     _ = FillPreviewsAsync(where, version, g.Select(x => x.Message).ToList(), prefetch: first);
@@ -183,7 +183,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("elenco di tutti gli account", ex);
-            if (version == listVersion && cached.Count == 0) SetListStatus(Network.Explain(ex) ?? "Non riesco a caricare i messaggi: " + ex.Message, () => _ = LoadUnifiedAsync(first));
+            if (version == listVersion && cached.Count == 0) SetListStatus(Network.Explain(ex) ?? T("Non riesco a caricare i messaggi: {0}", ex.Message), () => _ = LoadUnifiedAsync(first));
         }
         finally
         {
@@ -252,8 +252,8 @@ public partial class MainWindow
     {
         var failed = merged.Where(s => s.Error != null).ToList();
         if (failed.Count > 0)
-            SetListStatus($"{string.Join(", ", failed.Select(s => s.Account.Header))} non {(failed.Count == 1 ? "risponde" : "rispondono")}: " +
-                          (failed.Count == 1 ? failed[0].Error : "i loro messaggi mancano."));
+            SetListStatus(failed.Count == 1 ? T("{0} non risponde: {1}", failed[0].Account.Header, failed[0].Error)
+                                            : T("{0} non rispondono: i loro messaggi mancano.", string.Join(", ", failed.Select(s => s.Account.Header))));
         else SetListStatus(rows.Rows.Count == 0 ? empty : null);
     }
 
@@ -307,7 +307,7 @@ public partial class MainWindow
         rows.ShowAccounts = Reader.ShowAccount = true;
         rows.ByDue = false;
         Reader.Clear();
-        ListTitle.Text = "Risultati in Tutti gli account";
+        ListTitle.Text = T("Risultati in Tutti gli account");
         ListTitle.ToolTip = ListTitle.Text;
         StarButton.Visibility = FocusedTabs.Visibility = Visibility.Collapsed;
         // Senza rete, per l'account non in linea i risultati della copia sul PC (una pagina sola).
@@ -316,7 +316,7 @@ public partial class MainWindow
             var page = await SearchOrOfflineAsync(a, null, queryFor(a.Provider), next);
             return page.Next == OfflineResults ? new MessagePage { Messages = page.Messages } : page;
         })).ToList();
-        SetListStatus("Ricerca in corso…");
+        SetListStatus(T("Ricerca in corso…"));
         await SearchAccountsPageAsync(first: true);
     }
 
@@ -336,7 +336,7 @@ public partial class MainWindow
             foreach (var (m, a) in shown.Where(x => x.Message.FolderName.Length == 0))
                 m.FolderName = a.Folders.FirstOrDefault(f => f.Folder.Id == m.FolderId)?.Name ?? "";
             AppendKeepingPosition(() => rows.Append(shown));
-            ShowMergedStatus($"Nessun risultato per \"{searchQuery}\".");
+            ShowMergedStatus(T("Nessun risultato per \"{0}\".", searchQuery));
             foreach (var g in shown.GroupBy(x => x.Account))
                 if ((g.Key.Folders.FirstOrDefault(f => f.Folder.Kind == FolderKind.Inbox) ?? g.Key.Folders.FirstOrDefault()) is { } where)
                     _ = FillPreviewsAsync(where, version, g.Select(x => x.Message).ToList(), prefetch: first);
@@ -344,7 +344,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("ricerca in tutti gli account", ex);
-            if (version == listVersion) SetListStatus("Ricerca non riuscita: " + ex.Message, () => _ = SearchAccountsPageAsync(first));
+            if (version == listVersion) SetListStatus(T("Ricerca non riuscita: {0}", ex.Message), () => _ = SearchAccountsPageAsync(first));
         }
         finally
         {

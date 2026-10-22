@@ -84,19 +84,22 @@ static class CalendarSamples
     /// <summary>
     /// Le foto della pagina GitHub (--calendario-finto --foto): la settimana di lavoro di Ada Galli, architetta, con il
     /// calendario personale e i compleanni; persone e luoghi inventati (come i dati di ProvaBozze.Foto.cs). Nessun
-    /// promemoria: le foto non fanno partire notifiche.
+    /// promemoria: le foto non fanno partire notifiche. In inglese (di base se Missiva è in inglese: le foto inglesi) gli
+    /// stessi eventi, con le persone e i luoghi delle foto inglesi.
     /// </summary>
-    internal static CalendarData Photo(MailAccount account, DateTime from, DateTime to)
+    internal static CalendarData Photo(MailAccount account, DateTime from, DateTime to, bool? english = null)
     {
+        bool en = english ?? Lingua.English;
+        string L(string italian, string inEnglish) => en ? inEnglish : italian;
         var calendars = new List<CalendarInfo>
         {
-            new("principale", "Calendario", "#0F6CBD", true),
-            new("personale", "Personale", "#8764B8", false),
-            new("compleanni", "Compleanni", "#107C10", false, CanEdit: false),
+            new("principale", L("Calendario", "Calendar"), "#0F6CBD", true),
+            new("personale", L("Personale", "Personal"), "#8764B8", false),
+            new("compleanni", L("Compleanni", "Birthdays"), "#107C10", false, CanEdit: false),
         };
-        Address maria = new() { Name = "Maria Rossi", Email = "maria.rossi@studio-esempio.example" };
-        Address paolo = new() { Name = "Paolo Conti", Email = "paolo.conti@impresa-esempio.example" };
-        Address giulia = new() { Name = "Giulia Neri", Email = "giulia.neri@comune-esempio.example" };
+        Address maria = en ? new() { Name = "Emma Collins", Email = "emma.collins@northlight.example" } : new() { Name = "Maria Rossi", Email = "maria.rossi@studio-esempio.example" };
+        Address paolo = en ? new() { Name = "Sam Turner", Email = "sam.turner@turner-build.example" } : new() { Name = "Paolo Conti", Email = "paolo.conti@impresa-esempio.example" };
+        Address giulia = en ? new() { Name = "Hannah Wright", Email = "hannah.wright@easton-council.example" } : new() { Name = "Giulia Neri", Email = "giulia.neri@comune-esempio.example" };
         var events = new List<CalendarEvent>();
         int n = 0;
         void E(string subject, DateTime start, DateTime end, string location = "", string calendar = "principale", bool allDay = false, bool recurring = false,
@@ -112,24 +115,24 @@ static class CalendarSamples
         for (var monday = firstMonday; monday < to; monday = monday.AddDays(7))
         {
             DateTime At(int day, double hour) => monday.AddDays(day).AddHours(hour);
-            E("Punto settimanale", At(0, 9.5), At(0, 10), "Sala riunioni", recurring: true);
-            E("Sopralluogo in cantiere", At(0, 14), At(0, 16), "Via del Lavoro 14", organizer: paolo, response: "accepted",
+            E(L("Punto settimanale", "Weekly check-in"), At(0, 9.5), At(0, 10), L("Sala riunioni", "Conference room"), recurring: true);
+            E(L("Sopralluogo in cantiere", "Site visit"), At(0, 14), At(0, 16), L("Via del Lavoro 14", "14 Mill Lane"), organizer: paolo, response: "accepted",
               attendees: [new(paolo, "accepted", false), new(maria, "accepted", false)]);
-            E("Revisione delle tavole", At(1, 10), At(1, 11.5), "Studio", attendees: [new(maria, "accepted", false)]);
-            E("Pranzo con Chiara", At(1, 13), At(1, 14), "In centro", "personale");
-            E("Chiamata con il Comune", At(1, 16.5), At(1, 17.5), "Telefono", organizer: giulia, response: "accepted");
-            E("Progetto della biblioteca", At(2, 9), At(2, 12), "Sala grande", attendees: [new(maria, "accepted", false), new(giulia, "tentativelyAccepted", false)],
-              preview: "Le osservazioni della commissione e le tavole aggiornate.");
-            E("Fornitore delle finiture", At(2, 10.5), At(2, 11.5), "Studio", organizer: paolo, response: "tentativelyAccepted");
-            E("Dentista", At(2, 15), At(2, 16), "", "personale");
-            E("Compleanno di Chiara", At(2, 0), At(3, 0), calendar: "compleanni", allDay: true);
-            E("Presentazione al cliente", At(3, 10), At(3, 11.5), "Sala grande", attendees: [new(maria, "accepted", false), new(paolo, "accepted", false)]);
-            E("Verifica del soppalco", At(3, 14), At(3, 15), "Cantiere", organizer: paolo, response: "accepted");
-            E("Corso di aggiornamento", At(3, 17.5), At(3, 19), "Ordine degli Architetti");
-            E("Ferie di Elena", At(4, 0), At(5, 0), allDay: true);
-            E("Firma del contratto", At(4, 9.5), At(4, 10.5), "Studio notarile");
-            E("Consegna del progetto", At(4, 15), At(4, 16), "Comune", organizer: giulia, response: "accepted");
-            E("Mercato con Chiara", At(5, 9.5), At(5, 11.5), "Piazza grande", "personale");
+            E(L("Revisione delle tavole", "Drawing review"), At(1, 10), At(1, 11.5), L("Studio", "Office"), attendees: [new(maria, "accepted", false)]);
+            E(L("Pranzo con Chiara", "Lunch with Chloe"), At(1, 13), At(1, 14), L("In centro", "Downtown"), "personale");
+            E(L("Chiamata con il Comune", "Call with the council"), At(1, 16.5), At(1, 17.5), L("Telefono", "Phone"), organizer: giulia, response: "accepted");
+            E(L("Progetto della biblioteca", "Library project"), At(2, 9), At(2, 12), L("Sala grande", "Main conference room"), attendees: [new(maria, "accepted", false), new(giulia, "tentativelyAccepted", false)],
+              preview: L("Le osservazioni della commissione e le tavole aggiornate.", "The committee's comments and the updated drawings."));
+            E(L("Fornitore delle finiture", "Finishes supplier"), At(2, 10.5), At(2, 11.5), L("Studio", "Office"), organizer: paolo, response: "tentativelyAccepted");
+            E(L("Dentista", "Dentist"), At(2, 15), At(2, 16), "", "personale");
+            E(L("Compleanno di Chiara", "Chloe's birthday"), At(2, 0), At(3, 0), calendar: "compleanni", allDay: true);
+            E(L("Presentazione al cliente", "Client presentation"), At(3, 10), At(3, 11.5), L("Sala grande", "Main conference room"), attendees: [new(maria, "accepted", false), new(paolo, "accepted", false)]);
+            E(L("Verifica del soppalco", "Mezzanine inspection"), At(3, 14), At(3, 15), L("Cantiere", "Site"), organizer: paolo, response: "accepted");
+            E(L("Corso di aggiornamento", "Training course"), At(3, 17.5), At(3, 19), L("Ordine degli Architetti", "Institute of Architects"));
+            E(L("Ferie di Elena", "Priya on vacation"), At(4, 0), At(5, 0), allDay: true);
+            E(L("Firma del contratto", "Contract signing"), At(4, 9.5), At(4, 10.5), L("Studio notarile", "Law office"));
+            E(L("Consegna del progetto", "Project handover"), At(4, 15), At(4, 16), L("Comune", "City Hall"), organizer: giulia, response: "accepted");
+            E(L("Mercato con Chiara", "Farmers market with Chloe"), At(5, 9.5), At(5, 11.5), L("Piazza grande", "Main Square"), "personale");
         }
         return new CalendarData { Calendars = calendars, Events = events.Where(e => e.End > from && e.Start < to).ToList(), From = from, To = to };
     }
