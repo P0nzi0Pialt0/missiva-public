@@ -79,10 +79,10 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// tenute cinque minuti): uno scaricamento trova la connessione già aperta dalle richieste, invece di un gruppo suo
     /// quasi sempre freddo.
     /// </summary>
-    static readonly SocketsHttpHandler Net = Network.ApiHandler();
-    static HttpClient Http = new(Net, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(60) };
+    static SocketsHttpHandler net = Network.ApiHandler();
+    static HttpClient Http = ApiClient(net);
     /// <summary>Per gli scaricamenti (DownloadAsync), che controllano da sé l'attesa invece della durata.</summary>
-    static HttpClient Downloads = new(Net, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+    static HttpClient Downloads = DownloadClient(net);
     /// <summary>
     /// Per i pezzi degli allegati grandi (UploadLargeAsync), che vanno a un altro server, all'indirizzo che Graph dà: senza
     /// seguire reindirizzamenti (un 307 o un 308 di quel server rimanderebbe il pezzo, con il contenuto del file, a un
@@ -90,6 +90,55 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// </summary>
     internal static SocketsHttpHandler UploadHandler() => new() { AllowAutoRedirect = false, UseCookies = false, PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5) };
     static HttpClient Uploads = new(UploadHandler()) { Timeout = TimeSpan.FromSeconds(60) };
+
+    static HttpClient ApiClient(HttpMessageHandler handler) => new(handler, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(60) };
+    static HttpClient DownloadClient(HttpMessageHandler handler) => new(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+
+    /// <summary>Quante volte le connessioni sono state rifatte (ResetConnections): una richiesta partita prima e caduta si riconosce.</summary>
+    static int generation;
+
+    /// <summary>
+    /// Dopo la ripresa del PC o un cambio di rete (App.WakeAsync): le connessioni con Graph rifatte da capo. Il gestore
+    /// tiene le connessioni aperte per riusarle, e dopo la sospensione quella in HTTP/2 era morta senza che qui arrivasse
+    /// nulla: ogni richiesta ci restava ferma fino al tempo scaduto di 60 s (registro dell'autore del 26 ottobre 2026, un
+    /// minuto di "Non riesco ad aprire il messaggio" dopo la ripresa, poi 10054). Ora un gestore nuovo per le richieste
+    /// dopo, e i client di prima chiusi, che fermano subito le richieste che aspettavano ancora: le letture si ripetono
+    /// sulle connessioni nuove (SendAsync, DownloadAsync, i pezzi degli allegati), le altre falliscono come una
+    /// connessione caduta (Interrupted), perché non si sa se sono arrivate.
+    /// </summary>
+    internal static void ResetConnections()
+    {
+        HttpClient http = Http, downloads = Downloads, uploads = Uploads;
+        HttpMessageHandler? handler = net;
+#if DEBUG
+        if (testHandler is { } fake)
+        {
+            (Http, Downloads, Uploads, handler) = (new HttpClient(fake, false), DownloadClient(fake), new HttpClient(fake, false), null);
+        }
+        else
+#endif
+        {
+            net = Network.ApiHandler();
+            (Http, Downloads, Uploads) = (ApiClient(net), DownloadClient(net), new HttpClient(UploadHandler()) { Timeout = TimeSpan.FromSeconds(60) });
+        }
+        Interlocked.Increment(ref generation);
+        http.Dispose();
+        downloads.Dispose();
+        uploads.Dispose();
+        handler?.Dispose();
+    }
+
+    /// <summary>
+    /// La richiesta è caduta perché le connessioni sono state rifatte mentre partiva o aspettava (ResetConnections: il client
+    /// di prima, chiuso, annulla le sue richieste, o era già chiuso). Non è colpa del server né di chi l'aveva chiesta.
+    /// </summary>
+    static bool CutByReset(Exception ex, int sentOn, CancellationToken cancel) =>
+        !cancel.IsCancellationRequested && Volatile.Read(ref generation) != sentOn &&
+        ex is OperationCanceledException or ObjectDisposedException or HttpRequestException or IOException;
+
+    /// <summary>Una scrittura caduta con le connessioni rifatte: come una connessione caduta (ActionQueue.Passing la rimette in coda).</summary>
+    static IOException Interrupted(Exception ex) =>
+        new(T("La connessione con Microsoft si è interrotta (il PC è uscito dalla sospensione o la rete è cambiata): riprova."), ex);
 
     /// <summary>
     /// L'indirizzo a cui va una richiesta con il token dell'account: uno relativo sta sotto Base; uno intero (il nextLink o
@@ -159,16 +208,21 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     static readonly AsyncLocal<bool> opening = new();
 
 #if DEBUG
-    /// <summary>Prove con un gestore HTTP finto (Missiva.exe --prova-bozze): le richieste vanno lì, con un token finto.</summary>
-    internal static void UseTestHandler(HttpMessageHandler handler)
+    /// <summary>
+    /// Prove con un gestore HTTP finto (Missiva.exe --prova-bozze): le richieste vanno lì, con un token finto. Con null di
+    /// nuovo i client veri, per le prove di ResetConnections, che non mandano nulla.
+    /// </summary>
+    internal static void UseTestHandler(HttpMessageHandler? handler)
     {
-        Http = new HttpClient(handler);
-        Downloads = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
-        Uploads = new HttpClient(handler);
+        testHandler = handler;
+        if (handler == null) (Http, Downloads, Uploads) = (ApiClient(net), DownloadClient(net), new HttpClient(UploadHandler()));
+        else (Http, Downloads, Uploads) = (new HttpClient(handler, false), DownloadClient(handler), new HttpClient(handler, false));
         testing = true;
     }
 
     static bool testing;
+    static HttpMessageHandler? testHandler;
+    internal static SocketsHttpHandler TestNet => net;
 #endif
 
     /// <summary>
@@ -282,8 +336,10 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                                     string? token = null, string? timeZone = null)
     {
         Network.Check(); // --senza-rete (solo Debug)
+        bool again = false;
         for (int attempt = 0; ; attempt++)
         {
+            int sentOn = Volatile.Read(ref generation);
             using var request = Network.ApiRequest(method, Target(url));
             var clock = System.Diagnostics.Stopwatch.StartNew();
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token ?? await TokenAsync());
@@ -300,7 +356,24 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             using (await gate.EnterAsync(opening.Value, cancel))
             {
                 queued = clock.ElapsedMilliseconds - tokenMs;
-                answer = await Http.SendAsync(request, cancel);
+                try
+                {
+                    answer = await Http.SendAsync(request, cancel);
+                }
+                // Le connessioni rifatte mentre aspettava (ResetConnections), o la connessione caduta (10054, un ping senza
+                // risposta): una lettura una volta di nuovo, su una connessione nuova; le altre non si sa se sono arrivate.
+                catch (Exception ex) when (CutByReset(ex, sentOn, cancel) || Network.ConnectionLost(ex, cancel))
+                {
+                    bool reset = CutByReset(ex, sentOn, cancel);
+                    if (method != HttpMethod.Get || again)
+                    {
+                        if (reset) throw Interrupted(ex);
+                        throw;
+                    }
+                    again = true;
+                    Log.Write($"Graph: lettura ripetuta su una connessione nuova ({(reset ? "connessioni rifatte" : "connessione caduta: " + ex.GetBaseException().GetType().Name)})");
+                    continue;
+                }
             }
             using var response = answer;
             var text = await response.Content.ReadAsStringAsync(cancel);
@@ -988,6 +1061,23 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// <param name="whole">Il messaggio intero (l'Origine, Salva con nome .eml), non un allegato: cambia solo la frase dell'errore.</param>
     async Task<byte[]> DownloadAsync(string url, bool whole, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null)
     {
+        // Come le altre letture (SendAsync): caduto con le connessioni rifatte o con la connessione, una volta da capo.
+        for (bool again = false; ; again = true)
+        {
+            int sentOn = Volatile.Read(ref generation);
+            try
+            {
+                return await DownloadOnceAsync(url, whole, limit, cancel, progress);
+            }
+            catch (Exception ex) when (!again && (CutByReset(ex, sentOn, cancel) || Network.ConnectionLost(ex, cancel)))
+            {
+                Log.Write($"Graph: scaricamento ripetuto su una connessione nuova ({(CutByReset(ex, sentOn, cancel) ? "connessioni rifatte" : "connessione caduta: " + ex.GetBaseException().GetType().Name)})");
+            }
+        }
+    }
+
+    async Task<byte[]> DownloadOnceAsync(string url, bool whole, int limit, CancellationToken cancel, IProgress<long>? progress)
+    {
         using var request = Network.ApiRequest(HttpMethod.Get, Base + url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync());
         cancel.ThrowIfCancellationRequested();
@@ -1237,7 +1327,17 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         request.Content = new StringContent(Convert.ToBase64String(buffer.ToArray()), Encoding.ASCII, "text/plain");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync());
         using var slot = await gate.EnterAsync(opening: false, default);
-        using var response = await Http.SendAsync(request);
+        int sentOn = Volatile.Read(ref generation);
+        HttpResponseMessage answer;
+        try
+        {
+            answer = await Http.SendAsync(request);
+        }
+        catch (Exception ex) when (CutByReset(ex, sentOn, default))
+        {
+            throw Interrupted(ex);
+        }
+        using var response = answer;
         Result(response, await response.Content.ReadAsStringAsync());
     }
 
@@ -1942,6 +2042,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                 // MainWindow.UploadShort riconosce questo testo e lo riscrive per la barra degli invii e la riga di stato della
                 // scrittura: in italiano "Caricamento di nome: 3,5 di 12 MB…", in inglese esattamente "Uploading nome: 3.5 of 12 MB…".
                 progress?.Report(T("Caricamento di {0}: {1} di {2} MB…", name, Mb(sent), Mb(size)));
+                bool resent = false;
                 for (int attempt = 0; ; attempt++)
                 {
                     Network.Check(); // --senza-rete (solo Debug)
@@ -1951,10 +2052,18 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
                     request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
                     request.Content.Headers.ContentRange = new ContentRangeHeaderValue(sent, sent + read - 1, size);
                     HttpResponseMessage response;
+                    int sentOn = Volatile.Read(ref generation);
                     try
                     {
                         using var slot = await gate.EnterAsync(opening: false, cancel, lengthy: true);
                         response = await Uploads.SendAsync(request, cancel);
+                    }
+                    // Le connessioni rifatte mentre il pezzo partiva (ResetConnections): lo stesso pezzo di nuovo, una volta.
+                    catch (Exception ex) when (CutByReset(ex, sentOn, cancel) && !resent)
+                    {
+                        resent = true;
+                        Log.Write("Graph: pezzo dell'allegato ripetuto su una connessione nuova (connessioni rifatte)");
+                        continue;
                     }
                     catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
                     {

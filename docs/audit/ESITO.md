@@ -8166,3 +8166,10 @@ sezione "Esito delle correzioni":
 La suite: 1335 controlli prima dell'audit (22 ottobre), 1393 all'unione dei blocchi 1 e 2 (main `5d53818`, "tutto bene"),
 1423 con il blocco 3 (26 ottobre 2026, ramo `correzioni-elenco` al commit `e089cf7`, "tutto bene", in 286 s). Le scelte lasciate
 all'autore e quello che non si è potuto provare sono nelle sezioni di esito dei tre rapporti.
+
+Dopo l'installazione della 0.3.681 (26 ottobre 2026), A-11: alla ripresa del PC le connessioni HTTP di Graph e delle API
+di Google restavano quelle di prima, e per un minuto ogni richiesta all'account Microsoft finiva sul tempo scaduto
+("Non riesco ad aprire il messaggio"). Ora `App.WakeAsync` le rifà (`GraphProvider.ResetConnections`,
+`GoogleApi.ResetConnections`), le letture ferme ripartono sulla connessione nuova, una lettura caduta con la connessione
+si ripete una volta, e il gestore manda i ping di HTTP/2. Dettagli e prove in fondo a `docs/audit/affidabilita-arrivo.md`,
+"Dopo l'installazione"; 8 controlli in più nel gruppo `affidabilita-arrivo`, la suite a 1431.

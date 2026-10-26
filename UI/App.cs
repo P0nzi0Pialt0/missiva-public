@@ -380,7 +380,8 @@ public sealed class App : Application
     /// <summary>
     /// Il risveglio: la ripresa dalla sospensione, un cambio di rete vero, e nelle prove "ripresa" e "rete tornata" in
     /// MISSIVA_KEYS. Le connessioni IMAP e Gmail si buttano tutte, anche le sessioni dell'IDLE in corso (DropConnections:
-    /// chi aspettava una risposta riprova su una connessione nuova), gli IDLE caduti riprovano subito, la query delta di
+    /// chi aspettava una risposta riprova su una connessione nuova), e così quelle HTTP di Graph e delle API di Google
+    /// (ResetConnections: le letture in attesa ripartono su una nuova), gli IDLE caduti riprovano subito, la query delta di
     /// Graph ripartita da capo, e tutti gli account si controllano insieme (WakeCheckAsync: se la rete non è ancora pronta,
     /// di nuovo dopo pochi secondi); a controllo riuscito si rileggono cartelle e prima pagina dell'elenco aperto. Una riga
     /// nel registro all'inizio e una alla fine, anche nella versione installata (A-04, A-10).
@@ -390,6 +391,10 @@ public sealed class App : Application
         lastWake = DateTime.UtcNow;
         var list = providers.ToList();
         Log.Write($"{why}: rifaccio le connessioni, controllo tutti gli account ({list.Count}) e rileggo cartelle ed elenco");
+        // Anche quelle HTTP di Graph e delle API di Google: dopo la sospensione la connessione tenuta per riusarla era morta,
+        // e per un minuto ogni richiesta agli account Microsoft finiva sul tempo scaduto (registro dell'autore, 26 ottobre).
+        GraphProvider.ResetConnections();
+        GoogleApi.ResetConnections();
         foreach (var p in list)
         {
             try { p.DropConnections(); }

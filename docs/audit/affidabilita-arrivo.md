@@ -489,3 +489,44 @@ solo nel registro, con `strumenti\arrivo\finestra.ps1`, `ripresa.ps1` e `rete-le
   nel registro sono quelle degli errori di collegamento ("non risponde sulla porta") e "ripresa dalla sospensione".
 - Che il secondo tentativo dopo un tempo scaduto non rifaccia una ricerca lunga su una casella grande (si ripete al più una
   volta, e solo per le letture).
+
+## Dopo l'installazione: A-11, le connessioni HTTP di Graph (26 ottobre 2026)
+
+Il giorno dell'installazione della 0.3.681 l'autore ha scritto che "l'account microsoft non funziona più", con il
+riquadro che diceva "Non riesco ad aprire il messaggio: An error occurred while sending the request." Il suo registro
+(letto in sola lettura, nulla copiato qui) diceva che cosa era successo: alla ripresa dalla sospensione, vista
+dall'orologio dopo 32 minuti, le connessioni IMAP e Gmail si sono rifatte come previsto (Gmail ha ripreso subito), ma
+tutte le richieste a Graph dell'account Microsoft sono rimaste ferme fino al tempo scaduto di 60 s
+(TaskCanceledException dentro Http2Connection, in attesa delle intestazioni della risposta), e quattro secondi dopo le
+successive sono cadute con 10054 (elenco, conversazione, corpo). CONFERMATO nel codice: `App.WakeAsync` buttava le
+connessioni IMAP (`DropConnections`), ma il gestore HTTP di Graph e delle API di Google (`Network.ApiHandler`, uno solo per
+tutta l'app) restava quello di prima, con la connessione tenuta per riusarla. Graph ora risponde in HTTP/2 (il 4 ottobre
+rispondeva in HTTP/1.1), e .NET riusa una connessione HTTP/2 senza guardare da quanto è ferma: dopo la sospensione era
+morta senza che arrivasse nulla, e ogni richiesta ci aspettava. Probabilmente un minuto dopo la ripresa l'account tornava
+a funzionare da solo, su una connessione nuova.
+
+Corretto:
+
+- `GraphProvider.ResetConnections` e `GoogleApi.ResetConnections`, chiamate da `App.WakeAsync` prima di tutto il resto
+  (ripresa dalla sospensione e cambio di rete vero): un gestore nuovo per le richieste dopo, e i client di prima chiusi.
+  Chiudere un `HttpClient` annulla le sue richieste in attesa, quindi quelle ferme sulla connessione morta si fermano
+  subito; chiudere solo il gestore non basterebbe (in HTTP/2 lascia finire le richieste in corso).
+- Le letture fermate così ripartono una volta sulla connessione nuova: `SendAsync` (GET), `DownloadAsync` (allegati e
+  messaggi interi, prima delle intestazioni), i pezzi degli allegati grandi, `GoogleApi.SendAsync` (GET). Le scritture
+  non si ripetono, perché non si sa se sono arrivate: cadono come una connessione caduta (IOException con il motivo,
+  tradotto), che la coda delle azioni rimette in coda (`ActionQueue.Passing`).
+- Una lettura caduta con la connessione (`HttpRequestException` senza codice HTTP, per esempio 10054 o un ping senza
+  risposta, e non per la rete assente: `Network.ConnectionLost`) si ripete una volta, su una connessione nuova; ogni
+  ripetizione lascia una riga nel registro ("Graph: lettura ripetuta su una connessione nuova (...)").
+- I ping di HTTP/2 nel gestore (`KeepAlivePingDelay` 30 s, `KeepAlivePingTimeout` 10 s, solo con richieste in corso):
+  una connessione morta senza che Missiva veda il risveglio (la rete cambiata in un modo che Windows non dice, o i
+  secondi fra la ripresa e il giro dell'orologio) si scopre in una decina di secondi invece che al tempo scaduto di 60.
+
+Prove: 8 controlli nuovi nel gruppo `affidabilita-arrivo` (`ArfHttpResetAsync`): una lettura di Graph ferma su un gestore
+finto che non risponde mai riparte dopo `ResetConnections` (514 ms in tutto, con 500 di attesa voluta, invece del tempo
+scaduto), lo stesso uno scaricamento e una lettura delle API di Google, una scrittura non si ripete e cade come
+connessione caduta, una lettura caduta con 10054 si ripete una volta e non due, senza rete (10051) mai; i ping del
+gestore; il gestore nuovo dopo `ResetConnections`, con quello di prima chiuso (senza mandare nulla); `App.WakeAsync`
+nei sorgenti. Non provati: una sospensione vera e Graph vero; che i ping arrivino a Graph come previsto (servirebbe un
+server HTTP/2 di prova); il tempo scaduto di un corpo già a metà dello scaricamento (dopo le intestazioni si interrompe
+con i ping o dopo 60 s senza dati, come prima).

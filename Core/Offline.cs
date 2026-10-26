@@ -89,14 +89,28 @@ public static class Network
     /// compresse (di serie HttpClient non le chiede), connessioni ferme tenute cinque minuti invece di uno e, con le
     /// richieste di ApiRequest, HTTP/2: quelle fatte insieme passano dalla stessa connessione invece di aprirne una ciascuna.
     /// Misurato il 4 ottobre 2026: Graph comprime con gzip (la prima pagina di un elenco da 64 a 8 KB, un corpo da 20 a 9)
-    /// ma risponde ancora in HTTP/1.1; le API di Google rispondono in HTTP/2.
+    /// ma risponde ancora in HTTP/1.1; le API di Google rispondono in HTTP/2. Il 26 ottobre 2026 anche Graph risponde in
+    /// HTTP/2 (registro dell'autore), e una connessione in HTTP/2 si riusa senza guardare quanto è stata ferma: dopo la
+    /// sospensione del PC era morta, e le richieste ci restavano ferme fino al tempo scaduto di 60 s. Per questo i ping:
+    /// con una richiesta in corso e nulla dal server da 30 s, un ping, e senza risposta in 10 s la connessione si chiude e
+    /// la richiesta fallisce (le letture si ripetono, GraphProvider.SendAsync). Senza richieste in corso nessun ping.
     /// </summary>
     internal static SocketsHttpHandler ApiHandler() => new()
     {
         AutomaticDecompression = System.Net.DecompressionMethods.All,
         PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
         EnableMultipleHttp2Connections = true,
+        KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+        KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
+        KeepAlivePingPolicy = HttpKeepAlivePingPolicy.WithActiveRequests,
     };
+
+    /// <summary>
+    /// Una richiesta HTTP caduta con la connessione (chiusa dal server, 10054, un ping senza risposta), non per un tempo
+    /// scaduto, un annullamento o la rete assente: una lettura si può ripetere subito, e va su una connessione nuova.
+    /// </summary>
+    internal static bool ConnectionLost(Exception ex, CancellationToken cancel) =>
+        !cancel.IsCancellationRequested && ex is HttpRequestException { StatusCode: null } && !IsOffline(ex);
 
     /// <summary>Una richiesta in HTTP/2, con ripiego su HTTP/1.1 se il server non lo parla (di serie è sempre 1.1).</summary>
     internal static HttpRequestMessage ApiRequest(HttpMethod method, string url) =>

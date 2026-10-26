@@ -7,10 +7,11 @@ using MailKit.Net.Imap;
 namespace Missiva;
 
 /// <summary>
-/// Le correzioni dell'audit di affidabilità, parte "arrivo" (25 ottobre 2026, docs/audit/affidabilita-arrivo.md, A-01..A-10):
-/// le mail che arrivano tardi. Server IMAP finti con le connessioni mute (leggono e non rispondono, senza chiudersi: una
-/// connessione morta dopo la ripresa del PC o un cambio di rete), i provider veri di Gmail e degli account IMAP, i pezzi
-/// del risveglio (Core/Arrival.cs) e, per quello che sta nella finestra, i sorgenti. Nessuna rete. I tempi di MailKit e
+/// Le correzioni dell'audit di affidabilità, parte "arrivo" (25 ottobre 2026, docs/audit/affidabilita-arrivo.md, A-01..A-10,
+/// e A-11 del 26 ottobre per Graph): le mail che arrivano tardi. Server IMAP finti con le connessioni mute (leggono e non
+/// rispondono, senza chiudersi: una connessione morta dopo la ripresa del PC o un cambio di rete), i provider veri di Gmail
+/// e degli account IMAP, un gestore HTTP finto che non risponde per Graph e Google, i pezzi del risveglio
+/// (Core/Arrival.cs) e, per quello che sta nella finestra, i sorgenti. Nessuna rete. I tempi di MailKit e
 /// dell'IDLE sono accorciati dove serve (secondi invece di minuti). Con "Missiva.exe --prova-audit risultato.txt
 /// affidabilita-arrivo" solo queste.
 /// </summary>
@@ -18,7 +19,7 @@ static partial class ProvaBozze
 {
     static void ArrivalFixTests() => Wait(async () =>
     {
-        Report.Add("--- Audit di affidabilità, arrivo dei messaggi nuovi: le correzioni (A-01..A-10)");
+        Report.Add("--- Audit di affidabilità, arrivo dei messaggi nuovi: le correzioni (A-01..A-11)");
         ImapProvider.TestPlain = true;
         var (renew, retry, done) = (InboxIdle.Renew, InboxIdle.FirstRetry, InboxIdle.DoneLimit);
         try
@@ -46,6 +47,7 @@ static partial class ProvaBozze
             foreach (var gmail in new[] { false, true }) await ArfAnnouncedAsync(gmail);
             ArfAnnouncedSources();
             await ArfDeltaRestartAsync();
+            await ArfHttpResetAsync();
             ArfLogSources();
             await ArfRulesBackgroundAsync();
         }
@@ -600,6 +602,159 @@ static partial class ProvaBozze
         Check(start == null && gone is { Restarted: true } && again is { Restarted: true, Any: false } && normal is { Restarted: false } n && n.Seen.Contains(("m3", false)) && checks,
               $"A-08: la query delta che riparte da capo (410) lo dice alla lettura che la rifà ({gone?.Restarted}) e a quella dopo, il punto di partenza nuovo ({again?.Restarted}), " +
               $"e App controlla l'account ({checks}); poi come prima ({normal?.Restarted}, m3 nuovo); il primo punto di partenza all'avvio no ({start == null})");
+    }
+
+    // ---------------------------------------------------------------- A-11: le connessioni HTTP dopo la ripresa
+
+    /// <summary>Un gestore HTTP finto che riceve anche l'annullamento: la richiesta che aspetta per sempre è la connessione morta.</summary>
+    sealed class ArfHttp(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> answer) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancel) => answer(request, cancel);
+    }
+
+    /// <summary>
+    /// A-11 (dopo l'installazione del 26 ottobre 2026, registro dell'autore): alla ripresa del PC le connessioni IMAP si
+    /// rifacevano, quelle HTTP di Graph no. La connessione in HTTP/2 tenuta per riusarla era morta, e per un minuto ogni
+    /// richiesta all'account Microsoft restava ferma fino al tempo scaduto (60 s), poi 10054: "Non riesco ad aprire il
+    /// messaggio". Qui un gestore finto che non risponde mai, come la connessione morta: GraphProvider.ResetConnections
+    /// ferma la richiesta in attesa e la lettura riparte sul client nuovo (anche uno scaricamento); una scrittura no, perché
+    /// non si sa se è arrivata, e cade come una connessione caduta, che la coda riprova; una lettura caduta con la
+    /// connessione (10054) si ripete una volta, senza rete no. Lo stesso per le API di Google. Poi il gestore vero: i ping
+    /// che dicono morta una connessione HTTP/2 in 10 s, il gestore nuovo dopo ResetConnections, e App.WakeAsync che lo fa.
+    /// </summary>
+    static async Task ArfHttpResetAsync()
+    {
+        static HttpResponseMessage Json(string text) => new(System.Net.HttpStatusCode.OK) { Content = new StringContent(text, System.Text.Encoding.UTF8, "application/json") };
+        static HttpRequestException Lost(int code) => new("connessione caduta", new IOException("connessione caduta", new System.Net.Sockets.SocketException(code)));
+        var account = new MailAccount { Kind = AccountKind.Microsoft, Email = "prova.a11@outlook.example" };
+        try
+        {
+            // Una lettura ferma sulla connessione morta.
+            int calls = 0;
+            bool firstStopped = false;
+            GraphProvider.UseTestHandler(new ArfHttp(async (request, cancel) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    try { await Task.Delay(Timeout.Infinite, cancel); }
+                    catch (OperationCanceledException) { firstStopped = true; throw; }
+                }
+                return Json("{\"unreadItemCount\":7}");
+            }));
+            var clock = Stopwatch.StartNew();
+            var read = new GraphProvider(account).GetInboxUnreadAsync();
+            await Task.Delay(500);
+            bool waiting = !read.IsCompleted;
+            GraphProvider.ResetConnections();
+            int unread = await read.WaitAsync(TimeSpan.FromSeconds(10));
+            long readMs = clock.ElapsedMilliseconds;
+            Check(waiting && firstStopped && unread == 7 && calls == 2 && readMs < 3000,
+                  $"A-11: una lettura di Graph ferma su una connessione morta (dopo 500 ms ancora in attesa: {waiting}) si ferma con le connessioni rifatte " +
+                  $"({firstStopped}) e riparte su quella nuova ({calls} richieste, risposta {unread}, in {readMs} ms; prima fino al tempo scaduto, 60 s)");
+
+            // Uno scaricamento fermo prima delle intestazioni: lo stesso.
+            calls = 0;
+            GraphProvider.UseTestHandler(new ArfHttp(async (request, cancel) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1) await Task.Delay(Timeout.Infinite, cancel);
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) };
+            }));
+            var download = new GraphProvider(account).GetAttachmentAsync(new MessageSummary { Id = "AQMkA11", FolderId = "inbox" }, new Attachment { Id = "AAMkA11" });
+            await Task.Delay(300);
+            GraphProvider.ResetConnections();
+            var bytes = await download.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(bytes.Length == 3 && calls == 2, $"A-11: uno scaricamento fermo riparte sulla connessione nuova ({calls} richieste, {bytes.Length} byte)");
+
+            // Una scrittura ferma: non si ripete, e cade come una connessione caduta (la coda la riprova).
+            calls = 0;
+            GraphProvider.UseTestHandler(new ArfHttp(async (request, cancel) =>
+            {
+                Interlocked.Increment(ref calls);
+                await Task.Delay(Timeout.Infinite, cancel);
+                return Json("{}");
+            }));
+            var write = new GraphProvider(account).SetFlagAsync([new MessageSummary { Id = "AQMkA11", FolderId = "inbox" }], true);
+            await Task.Delay(300);
+            GraphProvider.ResetConnections();
+            Exception? writeError = null;
+            try { await write.WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch (Exception ex) { writeError = ex; }
+            Check(writeError is IOException && ActionQueue.Passing(writeError) && calls == 1,
+                  $"A-11: una scrittura ferma non si ripete ({calls} richieste) e cade come una connessione caduta, che la coda riprova ({writeError?.GetType().Name}, {writeError is { } w && ActionQueue.Passing(w)})");
+
+            // Una lettura caduta con la connessione (10054): una volta di nuovo; due volte, l'errore; senza rete (10051) subito.
+            calls = 0;
+            GraphProvider.UseTestHandler(new ArfHttp((request, cancel) => Interlocked.Increment(ref calls) == 1
+                ? Task.FromException<HttpResponseMessage>(Lost(10054))
+                : Task.FromResult(Json("{\"unreadItemCount\":3}"))));
+            int afterReset = await new GraphProvider(account).GetInboxUnreadAsync();
+            int resetCalls = calls;
+            calls = 0;
+            GraphProvider.UseTestHandler(new ArfHttp((request, cancel) => { Interlocked.Increment(ref calls); return Task.FromException<HttpResponseMessage>(Lost(10054)); }));
+            Exception? twice = null;
+            try { await new GraphProvider(account).GetInboxUnreadAsync(); }
+            catch (Exception ex) { twice = ex; }
+            int twiceCalls = calls;
+            calls = 0;
+            GraphProvider.UseTestHandler(new ArfHttp((request, cancel) => { Interlocked.Increment(ref calls); return Task.FromException<HttpResponseMessage>(Lost(10051)); }));
+            Exception? offline = null;
+            try { await new GraphProvider(account).GetInboxUnreadAsync(); }
+            catch (Exception ex) { offline = ex; }
+            Check(afterReset == 3 && resetCalls == 2 && twice is HttpRequestException && twiceCalls == 2 && Network.IsOffline(offline) && calls == 1,
+                  $"A-11: una lettura caduta con la connessione (10054) si ripete una volta ({resetCalls} richieste, risposta {afterReset}); caduta due volte l'errore arriva " +
+                  $"({twice?.GetType().Name}, {twiceCalls} richieste); senza rete (10051) nessuna ripetizione ({calls} richiesta)");
+
+            // Le API di Google (calendario, contatti): lo stesso.
+            GoogleAuth.TestToken = "prova-google";
+            calls = 0;
+            GoogleApi.UseTestHandler(new ArfHttp(async (request, cancel) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1) await Task.Delay(Timeout.Infinite, cancel);
+                return Json("{\"ok\":1}");
+            }));
+            var google = GoogleApi.SendAsync(new GoogleService("Prova", "prova", "", ""), new MailAccount { Kind = AccountKind.Gmail, Email = "prova.a11@gmail.example" },
+                                             HttpMethod.Get, "https://www.googleapis.com/calendar/v3/users/me/calendarList");
+            await Task.Delay(300);
+            GoogleApi.ResetConnections();
+            var node = await google.WaitAsync(TimeSpan.FromSeconds(10));
+            Check(node?["ok"]?.GetValue<int>() == 1 && calls == 2, $"A-11: una lettura delle API di Google ferma riparte sulla connessione nuova ({calls} richieste)");
+
+            // Il gestore vero: i ping, e ResetConnections che lo cambia (senza mandare nulla).
+            using (var api = Network.ApiHandler())
+            {
+                bool pings = api.KeepAlivePingDelay == TimeSpan.FromSeconds(30) && api.KeepAlivePingTimeout == TimeSpan.FromSeconds(10) &&
+                             api.KeepAlivePingPolicy == HttpKeepAlivePingPolicy.WithActiveRequests;
+                Check(pings, $"A-11: il gestore di Graph e Google manda un ping dopo 30 s senza risposta con una richiesta in corso, e senza risposta al ping in 10 s chiude la connessione " +
+                             $"({api.KeepAlivePingDelay.TotalSeconds} s, {api.KeepAlivePingTimeout.TotalSeconds} s, {api.KeepAlivePingPolicy})");
+            }
+            GraphProvider.UseTestHandler(null);
+            var before = GraphProvider.TestNet;
+            GraphProvider.ResetConnections();
+            var after = GraphProvider.TestNet;
+            bool closed;
+            try
+            {
+                using var old = new HttpClient(before, disposeHandler: false);
+                using var _ = await old.GetAsync("http://127.0.0.1:9/");
+                closed = false;
+            }
+            catch (ObjectDisposedException) { closed = true; }
+            catch (Exception) { closed = false; }
+            Check(after != before && closed && after.KeepAlivePingPolicy == HttpKeepAlivePingPolicy.WithActiveRequests,
+                  $"A-11: con le connessioni rifatte Graph ha un gestore nuovo ({after != before}), con i ping, e quello di prima è chiuso ({closed})");
+
+            // App.WakeAsync le rifà, prima di tutto il resto (nei sorgenti, se ci sono).
+            bool wakes = Ch1Code("UI", "App.cs") is not { } app ||
+                         Ch3InOrder(Ch3Part(app, "internal async Task WakeAsync(", "\n    }"), "GraphProvider.ResetConnections();", "GoogleApi.ResetConnections();",
+                                    "p.DropConnections();", "_ = CheckDeltasAsync(again: true);");
+            Check(wakes, $"A-11 nei sorgenti: al risveglio (App.WakeAsync) le connessioni HTTP di Graph e Google si rifanno prima dei controlli ({wakes})");
+        }
+        finally
+        {
+            GraphProvider.UseTestHandler(new NoHandler("Graph"));
+            GoogleApi.UseTestHandler(new NoHandler("Google"));
+            GoogleAuth.TestToken = null;
+        }
     }
 
     // ---------------------------------------------------------------- A-07: le regole sul testo e la connessione principale

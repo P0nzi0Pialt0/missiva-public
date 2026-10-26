@@ -244,5 +244,7 @@
   "Rispondi": "Reply",
   "Elimina": "Delete",
   "Posponi di un'ora": "Snooze for 1 hour",
-  "Posponi...": "Snooze..."
+  "Posponi...": "Snooze...",
+  "La connessione con Microsoft si è interrotta (il PC è uscito dalla sospensione o la rete è cambiata): riprova.": "The connection to Microsoft was interrupted (the PC woke from sleep or the network changed): try again.",
+  "La connessione con Google si è interrotta (il PC è uscito dalla sospensione o la rete è cambiata): riprova.": "The connection to Google was interrupted (the PC woke from sleep or the network changed): try again."
 }

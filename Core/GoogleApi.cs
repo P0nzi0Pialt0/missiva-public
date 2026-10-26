@@ -19,18 +19,50 @@ public sealed record GoogleService(string Name, string Library, string NoPermiss
 public static class GoogleApi
 {
     /// <summary>Come per Graph (Network.ApiHandler): risposte compresse, HTTP/2, connessioni tenute cinque minuti.</summary>
-    static HttpClient Http = new(Network.ApiHandler()) { Timeout = TimeSpan.FromSeconds(MailLimits.GoogleHttpSeconds) };
+    static SocketsHttpHandler handler = Network.ApiHandler();
+    static HttpClient Http = Client(handler);
+    static HttpClient Client(HttpMessageHandler h) => new(h, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(MailLimits.GoogleHttpSeconds) };
+    /// <summary>Quante volte le connessioni sono state rifatte (ResetConnections).</summary>
+    static int generation;
+
+    /// <summary>
+    /// Dopo la ripresa del PC o un cambio di rete (App.WakeAsync), come GraphProvider.ResetConnections: un gestore nuovo,
+    /// e il client di prima chiuso, che ferma le richieste ferme sulle connessioni morte; le letture si ripetono.
+    /// </summary>
+    internal static void ResetConnections()
+    {
+        var old = (Http, handler: (HttpMessageHandler?)handler);
+#if DEBUG
+        if (testHandler is { } fake) (Http, old.handler) = (Client(fake), null);
+        else
+#endif
+        {
+            handler = Network.ApiHandler();
+            Http = Client(handler);
+        }
+        Interlocked.Increment(ref generation);
+        old.Http.Dispose();
+        old.handler?.Dispose();
+    }
 
 #if DEBUG
+    static HttpMessageHandler? testHandler;
+
     /// <summary>Prove (Missiva.exe --prova-bozze): un gestore HTTP finto al posto di Google.</summary>
-    internal static void UseTestHandler(HttpMessageHandler handler) => Http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(MailLimits.GoogleHttpSeconds) };
+    internal static void UseTestHandler(HttpMessageHandler handler)
+    {
+        testHandler = handler;
+        Http = Client(handler);
+    }
 #endif
 
     /// <summary>
-    /// Una richiesta a un indirizzo intero. Un 401 (token rifiutato) lo fa dimenticare e riprova una volta.
+    /// Una richiesta a un indirizzo intero. Un 401 (token rifiutato) lo fa dimenticare e riprova una volta. Una lettura
+    /// caduta con le connessioni rifatte (ResetConnections) o con la connessione si ripete una volta, su una nuova.
     /// </summary>
     public static async Task<JsonNode?> SendAsync(GoogleService service, MailAccount account, HttpMethod method, string url, JsonNode? body = null, CancellationToken cancel = default)
     {
+        bool again = false;
         for (int attempt = 0; ; attempt++)
         {
             var token = await GoogleAuth.TokenAsync(account);
@@ -38,7 +70,26 @@ public static class GoogleApi
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             if (body != null) request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            using var response = await Http.SendAsync(request, cancel);
+            int sentOn = Volatile.Read(ref generation);
+            HttpResponseMessage answer;
+            try
+            {
+                answer = await Http.SendAsync(request, cancel);
+            }
+            catch (Exception ex) when (!cancel.IsCancellationRequested && (Volatile.Read(ref generation) != sentOn &&
+                                       ex is OperationCanceledException or ObjectDisposedException or HttpRequestException or IOException || Network.ConnectionLost(ex, cancel)))
+            {
+                if (method != HttpMethod.Get || again)
+                {
+                    if (Volatile.Read(ref generation) != sentOn)
+                        throw new IOException(T("La connessione con Google si è interrotta (il PC è uscito dalla sospensione o la rete è cambiata): riprova."), ex);
+                    throw;
+                }
+                again = true;
+                Log.Write($"Google: lettura ripetuta su una connessione nuova ({ex.GetBaseException().GetType().Name})");
+                continue;
+            }
+            using var response = answer;
             var text = await response.Content.ReadAsStringAsync(cancel);
             Log.Time($"Google {method} {url.Split('?')[0]} ({text.Length / 1024} KB, HTTP/{response.Version}{(response.IsSuccessStatusCode ? "" : $", risposta {(int)response.StatusCode}")})", clock);
             if (response.IsSuccessStatusCode) return text.Length == 0 ? null : JsonNode.Parse(text);
