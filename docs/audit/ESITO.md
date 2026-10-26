@@ -8143,3 +8143,26 @@ Dopo l'unione in main e l'installazione.
    "La regola vale per tutti i messaggi" nomina l'indirizzo. Alla fine elimina la regola di prova.
 3. **U-01.** Da un account Gmail rispondi o inoltra a te stesso una newsletter normale: il messaggio arrivato è come
    prima.
+
+## Audit di affidabilità del 25 ottobre 2026
+
+La richiesta dell'autore: "ogni tanto sembra che le mail arrivano tardi, che non si aggiorni in tempo, che i messaggi letti
+o non letti ogni tanto si perdano per strada". Tre rapporti, ognuno con l'esito delle sue correzioni in fondo, nella
+sezione "Esito delle correzioni":
+
+- `docs/audit/affidabilita-arrivo.md` (A-01..A-10): l'arrivo dei messaggi nuovi. Blocco 1 delle correzioni, risveglio e
+  connessioni (ramo `correzioni-arrivo`): Missiva si accorge della ripresa del PC e dei cambi di rete, rifà le
+  connessioni, controlla tutti gli account insieme, e il controllo di riserva è ogni minuto per Gmail e IMAP. Gruppo
+  `affidabilita-arrivo`, 35 controlli.
+- `docs/audit/affidabilita-letti.md` (L-01..L-10): letti e non letti. Blocco 2 (ramo `correzioni-letti`): un segno non
+  riuscito resta in attesa e si ripete, la riapertura dall'area di notifica non segna letto, un segno nuovo vince su uno
+  vecchio in attesa, i cambi fatti sul telefono non si ignorano più. Gruppo `affidabilita-letti`, 23 controlli. L-10 è
+  passato al blocco 3.
+- `docs/audit/affidabilita-elenco.md` (E-01..E-15): l'elenco, le cartelle e i numeri. Blocco 3 (ramo `correzioni-elenco`):
+  l'elenco si rilegge dopo un errore o un risveglio e se resta vecchio lo dice, i numeri delle altre cartelle si
+  aggiornano con il controllo di riserva, due correzioni piccole su Outlook.com, e i punti minori. Gruppo
+  `affidabilita-elenco`, 30 controlli.
+
+La suite: 1335 controlli prima dell'audit (22 ottobre), 1393 all'unione dei blocchi 1 e 2 (main `5d53818`, "tutto bene"),
+1423 con il blocco 3 (26 ottobre 2026, ramo `correzioni-elenco` al commit `e089cf7`, "tutto bene", in 286 s). Le scelte lasciate
+all'autore e quello che non si è potuto provare sono nelle sezioni di esito dei tre rapporti.

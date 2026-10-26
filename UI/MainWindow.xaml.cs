@@ -54,6 +54,7 @@ public partial class MainWindow : Window
         MessageList.ItemsSource = view;
         Reader.ReplyRequested += OpenCompose;
         Reader.MessageRead += OnReaderRead;
+        Reader.ReadUndone += OnReaderReadUndone;
         Reader.MailtoRequested += OnMailto;
         Reader.EditRequested += OpenDraft;
         Reader.MoreRequested += (provider, summary) => ShowMessageMenu(provider, summary, Reader, null);
@@ -67,12 +68,14 @@ public partial class MainWindow : Window
         if (only == null) Log.Startup("loghi");
         ReadingView.ZoomChanged += ShowZoom;
         if (only == null) WatchDownloads(); // il gestore degli scaricamenti nella barra del titolo (MainWindow.Downloads.cs)
+        if (only == null) ReadMarks.QueuedAfterError += OnReadQueued;
         Closed += (_, _) =>
         {
             App.ThemeChanged -= OnThemeChanged;
             Logos.Arrived -= OnLogo;
             ReadingView.ZoomChanged -= ShowZoom;
             if (only == null) UnwatchDownloads();
+            if (only == null) ReadMarks.QueuedAfterError -= OnReadQueued;
             // Anche se non si è mai vista (avviata nascosta nell'area di notifica), con lei esce Missiva.
             if (only == null && Application.Current.MainWindow == this) Application.Current.Shutdown();
         };
@@ -598,9 +601,13 @@ public partial class MainWindow : Window
         {
             // Il messaggio che era aperto torna nel riquadro (WebView2 si era chiuso con la finestra); altrimenti WebView2 si
             // prepara in sottofondo per il primo clic.
-            if (MessageList.SelectedItems.Count == 1 && MessageList.SelectedItem is MessageItem item) _ = ShowInReaderAsync(item);
+            // Torna com'era, senza segnarlo letto: un "da leggere" a mano resta tale (L-02, audit di affidabilità del 25 ottobre 2026).
+            if (MessageList.SelectedItems.Count == 1 && MessageList.SelectedItem is MessageItem item) _ = ShowInReaderAsync(item, restore: true);
             else Dispatcher.BeginInvoke(Reader.Prepare, DispatcherPriority.ApplicationIdle);
         }
+        // L'elenco rimasto vecchio, o letto più di qualche minuto fa, si rilegge: prima la finestra riaperta mostrava quello di
+        // quando era stata chiusa (audit di affidabilità del 25 ottobre 2026, elenco, E-01).
+        RefreshAfterTray();
         Log.Time("finestra dall'area di notifica", clock);
     }
 
@@ -1244,6 +1251,7 @@ public partial class MainWindow : Window
     public void AccountReached(IMailProvider provider, string how)
     {
         if (accounts.FirstOrDefault(a => a.Provider.Account.Id == provider.Account.Id) is not { } item) return;
+        RetryStaleList(provider, how); // l'elenco rimasto vecchio si rilegge (E-01), anche se l'account non era segnato non in linea
         if (!item.FoldersFailed && !Network.KnownOffline(provider.Account)) return;
         Log.Write($"{provider.Account.Email} di nuovo raggiungibile ({how}): stato, cartelle e azioni in coda senza aspettare il controllo");
         NoteAccountState(provider, null);
@@ -1251,6 +1259,28 @@ public partial class MainWindow : Window
 
     /// <summary>Le cartelle di qualche account non si sono lette: al cambio della rete il controllo parte anche per loro (App.OnNetworkChanged).</summary>
     public bool AnyFoldersFailed => accounts.Any(a => a.FoldersFailed);
+
+    /// <summary>
+    /// Dopo la ripresa del PC o un cambio di rete (App.WakeAsync), quando il controllo dei nuovi messaggi dell'account è
+    /// riuscito: le cartelle dal server (non letti, albero, coda delle azioni) e, se l'elenco aperto è una cartella di
+    /// quell'account, la sua prima pagina, unita alle righe che ci sono (RefreshListAsync): dopo ore di sospensione i
+    /// numeri e la prima pagina erano quelli della sera prima (audit di affidabilità del 25 ottobre 2026, A-04). Il resto
+    /// dell'elenco (le pagine dopo) resta com'è.
+    /// </summary>
+    internal void AfterWake(IMailProvider provider)
+    {
+        foreach (var window in FolderWindows) window.AfterWake(provider);
+        if (accounts.FirstOrDefault(a => a.Provider.Account.Id == provider.Account.Id) is not { } item) return;
+        _ = LoadFoldersAsync(item);
+        if (folder?.Account == item && !searching) _ = RefreshListAsync("ripresa o rete cambiata"); // con un caricamento in corso, alla sua fine (E-08)
+    }
+
+    /// <summary>Dopo il risveglio, finiti i controlli di tutti gli account: la vista di tutti gli account aperta si rilegge una volta.</summary>
+    internal void AfterWakeAll()
+    {
+        foreach (var window in FolderWindows) window.AfterWakeAll();
+        if (folder == null && unified != null && !searching) _ = RefreshListAsync("ripresa o rete cambiata");
+    }
 
     /// <summary>
     /// Il controllo dei nuovi messaggi di un account (App.CheckNewAsync): una password rifiutata o un nuovo accesso chiesto
@@ -1284,6 +1314,8 @@ public partial class MainWindow : Window
             item.Fix = AccountFix.None;
             item.Status = "";
         }
+        // Il controllo è riuscito: un elenco rimasto vecchio (la prima pagina non era arrivata) si rilegge adesso (E-01).
+        if (error == null) RetryStaleList(provider, "controllo riuscito");
     }
 
     void OnAccountFix(object sender, RoutedEventArgs e)
@@ -1904,21 +1936,31 @@ public partial class MainWindow : Window
             await f.Account.Provider.EmptyFolderAsync(f.Folder, permanent ? null : trash);
             BodyCache.ForgetFolder(f.Account.Provider.Account, f.Folder.Id); // con i messaggi escono le loro copie su disco
         });
-        if (open) await ReloadAsync();
+        // Con una ricerca aperta intanto i risultati restano (una fotografia, come sempre): prima ReloadAsync con la ricerca in
+        // corso alzava la versione senza caricare nulla, e l'elenco restava vuoto su "Ricerca in corso…" (E-15).
+        if (open && !searching) await ReloadAsync();
     }
 
     async Task MarkAllReadAsync(FolderItem f)
     {
-        await FolderActionAsync(f.Account, "segna tutti come letti", () => f.Account.Provider.MarkAllReadAsync(f.Folder));
+        // Le righe solo se il server l'ha fatto: senza rete, o con un errore, prima diventavano lette lo stesso dopo l'avviso,
+        // e il server no (audit di affidabilità del 25 ottobre 2026, L-09). Le cartelle rilette rimettono comunque i numeri.
+        if (!await TryFolderActionAsync(f.Account, "segna tutti come letti", () => f.Account.Provider.MarkAllReadAsync(f.Folder))) return;
         if (folder == f) foreach (var row in rows.Rows) row.IsRead = true;
     }
 
     /// <summary>Un'azione sulle cartelle: errori in una finestra, poi l'elenco delle cartelle si ricarica.</summary>
-    async Task FolderActionAsync(AccountItem account, string what, Func<Task> action, Func<FolderItem?>? reopen = null)
+    async Task FolderActionAsync(AccountItem account, string what, Func<Task> action, Func<FolderItem?>? reopen = null) =>
+        await TryFolderActionAsync(account, what, action, reopen);
+
+    /// <summary>Come FolderActionAsync, e dice se l'azione è riuscita.</summary>
+    async Task<bool> TryFolderActionAsync(AccountItem account, string what, Func<Task> action, Func<FolderItem?>? reopen = null)
     {
+        bool done = false;
         try
         {
             await action();
+            done = true;
         }
         catch (Exception ex)
         {
@@ -1927,6 +1969,7 @@ public partial class MainWindow : Window
         }
         await LoadFoldersAsync(account);
         if (reopen?.Invoke() is { } again) SelectFolder(again);
+        return done;
     }
 
     /// <summary>
@@ -2374,6 +2417,7 @@ public partial class MainWindow : Window
         rows.ByDue = unified is { View: UnifiedView.Flagged }; // Contrassegnati di tutti gli account: per scadenza
         searchAcross = null;
         next = null;
+        ResetFreshness(null); // un elenco nuovo: non ancora letto dal server (E-01)
         Reader.Clear();
         await LoadMoreAsync(first: true);
     }
@@ -2404,26 +2448,41 @@ public partial class MainWindow : Window
             firstPage = listOptions.IsDefault ? MailCache.LoadMessages(account, current.Folder.Id, focused) ?? new() : new();
             ApplyWoken(firstPage, current.Account, listOptions);
             ActionQueue.Apply(account.Id, firstPage); // senza rete: spostati e segni in coda come se fossero fatti
+            ReadMarks.Apply(account.Id, firstPage, DateTime.MinValue); // la copia è più vecchia dei segni di questi minuti (L-05)
             fromCache = firstPage.Count > 0;
+            if (fromCache) listCopyAt = MailCache.SavedAt(account, current.Folder.Id, focused); // di quando è, se il server non risponde (E-01)
             if (fromCache) rows.Append(firstPage, current.Account);
             SetListStatus(fromCache ? null : T("Caricamento…"));
         }
         try
         {
             var clock = Stopwatch.StartNew();
+            var asked = ReadMarks.Asked();
+            var since = journal.Asked(); // le righe tolte e arrivate mentre la pagina è in viaggio (E-07)
             var page = await current.Account.Provider.GetMessagesAsync(current.Folder, focused, first ? null : next, listOptions);
             Log.Time($"elenco di {current.Folder.Name} ({account.Email}, {(first ? "prima pagina" : "pagina successiva")}{(fromCache ? ", copia locale già visibile" : "")})", clock);
             if (current.Folder.Kind != FolderKind.Junk) AddressBook.Received(page.Messages); // per i suggerimenti dei destinatari
             if (version != listVersion) return; // nel frattempo è cambiata cartella
             ApplyWoken(page.Messages, current.Account, listOptions);
             ActionQueue.Apply(account.Id, page.Messages); // la rete è tornata, ma la coda non è ancora ripartita
+            // Un messaggio segnato qui mentre la pagina era in viaggio resta come l'ha messo l'utente (L-05).
+            ReadMarks.Apply(account.Id, page.Messages, asked);
+            // E uno eliminato intanto non torna, uno arrivato intanto non sparisce (E-07).
+            journal.Apply(since, account.Id, current.Folder.Id, page.Messages, arrivals: first, ByDateNewest);
+            if (first) MarkListRead();
             if (first) ShowFirstPage(page.Messages, current.Account, fromCache);
             else
             {
                 // Dopo una prima pagina riletta e unita (MergeFirstPage) le pagine dopo si richiedono da capo: una già tutta
                 // nell'elenco non aggiunge righe, e allora si chiede subito la successiva.
                 int before = rows.Rows.Count;
-                AppendKeepingPosition(() => rows.Append(page.Messages, current.Account));
+                // Una pagina con messaggi più recenti del più vecchio già in elenco (in fondo alla prima pagina un messaggio rimesso
+                // con una data vecchia) in fondo starebbe fuori ordine, con i suoi gruppi dopo quelli più vecchi: l'elenco si rifà
+                // in ordine di data (E-12).
+                var shownDates = rows.Rows.Where(r => !r.IsPinned).SelectMany(MessageRows.MessagesOf).Select(m => m.Instant).ToList();
+                if (ByDateNewest && shownDates.Count > 0 && ListRefresh.OutOfOrder(shownDates.Min(), page.Messages))
+                    AppendKeepingPosition(() => RebuildInOrder(page.Messages, current.Account));
+                else AppendKeepingPosition(() => rows.Append(page.Messages, current.Account));
                 nothingNew = rows.Rows.Count == before && page.Messages.Count > 0;
             }
             next = page.Next;
@@ -2434,11 +2493,16 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Log.Error("elenco messaggi", ex);
+            // La prima pagina non è arrivata: con la copia locale a schermo la riga sopra l'elenco lo dice, e l'elenco si rilegge
+            // da solo quando l'account torna a rispondere (RetryStaleList). Prima la copia restava, in silenzio e senza le
+            // pagine dopo, finché non si cambiava cartella (audit di affidabilità del 25 ottobre 2026, E-01).
+            if (version == listVersion && first) MarkListStale(account, ex);
             if (version == listVersion && !fromCache) SetListStatus(Network.Explain(ex) ?? T("Non riesco a caricare i messaggi: {0}", ex.Message), () => _ = LoadMoreAsync(first));
         }
         finally
         {
             if (version == listVersion) loading = false; // un caricamento superato non sblocca quello nuovo
+            RefreshIfAsked(version); // una rilettura chiesta intanto (E-08)
         }
         if (nothingNew && version == listVersion && next != null) await LoadMoreAsync();
     }
@@ -2459,13 +2523,20 @@ public partial class MainWindow : Window
             foreach (var m in fresh)
             {
                 var old = known[m.Id];
-                if (old.IsRead == m.IsRead && old.IsFlagged == m.IsFlagged) continue;
+                // Anche le categorie e la scadenza del contrassegno cambiate altrove (audit di affidabilità del 25 ottobre 2026,
+                // elenco, E-15): prima restavano vecchie finché la prima pagina non cambiava.
+                bool categories = !old.Categories.SequenceEqual(m.Categories), due = old.FlagDue != m.FlagDue;
+                if (old.IsRead == m.IsRead && old.IsFlagged == m.IsFlagged && !categories && !due) continue;
                 old.IsRead = m.IsRead;
                 old.IsFlagged = m.IsFlagged;
+                if (categories) old.Categories = m.Categories;
+                if (due) old.FlagDue = m.FlagDue;
                 foreach (var row in rowsById.GetValueOrDefault(m.Id) ?? new())
                 {
                     row.IsRead = m.IsRead;
                     row.IsFlagged = m.IsFlagged;
+                    if (categories) row.RefreshCategories();
+                    if (due) row.RefreshFlag();
                 }
             }
             return;
@@ -2495,14 +2566,14 @@ public partial class MainWindow : Window
     /// più. Prima l'elenco si rifaceva con la sola prima pagina e le pagine caricate sparivano. Solo per data, dal più recente
     /// (per mittente o oggetto la pagina non dice dove stanno gli altri); falso se non c'è nulla da unire.
     /// </summary>
-    bool MergeFirstPage(List<MessageSummary> fresh, AccountItem account)
+    /// <param name="more">La pagina ha un seguito (MessagePage.Next): senza, è tutta la cartella, e sotto non c'è nessuno.</param>
+    bool MergeFirstPage(List<MessageSummary> fresh, AccountItem account, bool more = true)
     {
         if (listOptions.Sort != SortBy.Date || listOptions.Ascending || fresh.Count == 0) return false;
         var loaded = rows.Rows.SelectMany(MessageRows.MessagesOf).DistinctBy(m => (m.FolderId, m.Id)).ToList();
-        var freshIds = fresh.Select(m => m.Id).ToHashSet();
-        var oldest = fresh.Min(m => m.Date);
-        // Più vecchi dell'ultimo della pagina: le pagine caricate scorrendo (anche i messaggi scesi dalla prima alla seconda).
-        var older = loaded.Where(m => !freshIds.Contains(m.Id) && m.Date <= oldest).ToList();
+        // Sotto la pagina: le pagine caricate scorrendo (anche i messaggi scesi dalla prima alla seconda). Con Gmail e IMAP per UID,
+        // non per data: un messaggio rimesso con una data vecchia in fondo alla pagina faceva sparire le pagine caricate (E-12).
+        var older = ListRefresh.Below(loaded, fresh, byUid: account.Provider.Account.Kind != AccountKind.Microsoft, more);
         if (older.Count == 0) return false;
         if (fresh.Select(m => m.Id).SequenceEqual(firstPage.Select(m => m.Id)))
         {
@@ -2516,13 +2587,32 @@ public partial class MainWindow : Window
         var selectedIds = Selected.Select(i => i.Summary.Id).ToHashSet();
         regrouping = true;
         rows.Clear();
-        rows.Append(fresh.Concat(older.OrderByDescending(m => m.Date)), account);
+        // Tutto in ordine di data: con un messaggio dalla data vecchia nella pagina, quelli caricati scorrendo vanno sopra di lui (E-12).
+        rows.Append(fresh.Concat(older).OrderByDescending(m => m.Instant).ToList(), account);
         foreach (var item in rows.Rows.Where(r => selectedIds.Contains(r.Summary.Id))) MessageList.SelectedItems.Add(item);
         regrouping = false;
         UpdateCommands();
         MarkArrived(rows.Rows.Where(r => !known.ContainsKey(r.Summary.Id)));
         Log.Write($"elenco riletto: prima pagina unita a {older.Count} messaggi già caricati scorrendo");
         return true;
+    }
+
+    /// <summary>
+    /// L'elenco di una cartella rifatto in ordine di data con i messaggi che ha e quelli di una pagina dopo, con la selezione
+    /// (audit di affidabilità del 25 ottobre 2026, elenco, E-12): prima la pagina andava in fondo, e un gruppo di date nuovo (Questo
+    /// mese) finiva dopo uno più vecchio (Mese scorso), perché WPF mette in fondo i gruppi che nascono dopo.
+    /// </summary>
+    void RebuildInOrder(List<MessageSummary> extra, AccountItem account)
+    {
+        var all = rows.Rows.SelectMany(MessageRows.MessagesOf).Concat(extra).DistinctBy(m => (m.FolderId, m.Id)).OrderByDescending(m => m.Instant).ToList();
+        var selectedIds = Selected.Select(i => (i.Summary.FolderId, i.Summary.Id)).ToHashSet();
+        regrouping = true;
+        rows.Clear();
+        rows.Append(all, account);
+        foreach (var item in rows.Rows.Where(r => selectedIds.Contains((r.Summary.FolderId, r.Summary.Id)))) MessageList.SelectedItems.Add(item);
+        regrouping = false;
+        UpdateCommands();
+        Log.Write($"elenco rifatto in ordine di data: la pagina dopo aveva messaggi più recenti del più vecchio già in elenco ({extra.Count} messaggi, {rows.Rows.Count} righe)");
     }
 
     /// <summary>Anteprime che mancano (Gmail): arrivano a gruppi, in sottofondo, su una connessione separata.</summary>
@@ -2607,14 +2697,15 @@ public partial class MainWindow : Window
     /// sottofondo; Graph solo il successivo, anche dopo la conversazione, per non superare le quattro richieste insieme che
     /// Outlook accetta per casella.
     /// </summary>
-    async Task ShowInReaderAsync(MessageItem item)
+    /// <param name="restore">Il messaggio torna nel riquadro senza una scelta dell'utente: non diventa letto (ReadingView.ShowAsync).</param>
+    async Task ShowInReaderAsync(MessageItem item, bool restore = false)
     {
         neighborPrefetch.Cancel();
         neighborPrefetch = new CancellationTokenSource();
         var cancel = neighborPrefetch.Token;
         bool many = item.Provider.PrefetchesMany;
         var shown = Reader.ShowAsync(item.Provider, item.Summary, S.ReadingWholeConversation, JunkOf(item.Provider),
-            many ? () => _ = PrefetchNeighborsAsync(item, cancel) : null);
+            many ? () => _ = PrefetchNeighborsAsync(item, cancel) : null, restore: restore);
         if (many) return;
         await shown;
         await PrefetchNeighborsAsync(item, cancel);
@@ -2737,14 +2828,32 @@ public partial class MainWindow : Window
     /// Con unread: il biglietto preso prima di chiedere il conteggio (UnreadSync.Ticket). Un numero chiesto prima di una
     /// lettura fatta qui, o con una scrittura di Missiva in viaggio, non si scrive: si riconta (App.RecountSoon).
     /// </param>
+    /// <summary>
+    /// Quanti dei messaggi arrivati si sommano ai non letti della Posta in arrivo nel numero stimato con la notifica (prima di
+    /// quello del server, che arriva subito dopo): i non letti, tranne quelli arrivati più di CountedMargin prima che fosse
+    /// chiesto il numero del server che la cartella ha adesso (FolderItem.CountedAt), che ci sono già. Prima si sommavano
+    /// tutti, e dopo le cartelle rilette alla ripresa del PC (che contano già gli arrivati durante la sospensione) il numero
+    /// saltava per un attimo al doppio dei nuovi ("5 -> 11", poi "11 -> 17 (6 arrivati)" e "17 -> 11": registro dell'autore,
+    /// quattro volte in dieci giorni).
+    /// </summary>
+    internal static int ArrivedUnread(FolderItem inbox, IEnumerable<MessageSummary> incoming) =>
+        incoming.Count(m => !m.IsRead && !(inbox.CountedAt is { } counted && m.Date.ToUniversalTime() < counted - CountedMargin));
+
+    /// <summary>
+    /// Il margine di ArrivedUnread: Gmail mostra un arrivo alle altre connessioni anche qualche secondo dopo, e l'orologio del
+    /// server non è quello del PC. Un arrivo più vicino al conteggio si somma come prima.
+    /// </summary>
+    static readonly TimeSpan CountedMargin = TimeSpan.FromSeconds(30);
+
     public void AddIncoming(IMailProvider provider, List<MessageSummary> incoming, int? unread = null, long? ticket = null, string who = "contati dal server")
     {
         // Anche nelle finestre di una sola cartella aperte sulla Posta in arrivo: solo le righe (ShowIncoming).
         if (incoming.Count > 0) foreach (var window in FolderWindows) window.ShowIncoming(provider, incoming);
         var inbox = accounts.FirstOrDefault(a => a.Provider == provider)?.Folders.FirstOrDefault(f => f.Folder.Kind == FolderKind.Inbox);
         if (inbox == null) return;
-        if (unread == null) inbox.SetUnread(inbox.Unread + incoming.Count(m => !m.IsRead), $"{incoming.Count} arrivati");
+        if (unread == null) inbox.SetUnread(inbox.Unread + ArrivedUnread(inbox, incoming), $"{incoming.Count} arrivati");
         else if (!inbox.ApplyServerUnread(unread.Value, ticket, who)) App.Current.RecountSoon(provider);
+        else RereadIfCountBelowRows(inbox, unread.Value); // il numero e il grassetto non dicono due cose diverse (L-10)
         if (incoming.Count > 0) KeepInSavedPage(inbox, incoming);
         if (AddIncomingUnified(inbox.Account, incoming))
         {
@@ -2757,8 +2866,15 @@ public partial class MainWindow : Window
             LogIncoming(inbox.Account, incoming.Count, searching ? "ricerca aperta" : folder != inbox ? "aperta un'altra cartella" : "aperta la scheda Altra");
             return;
         }
-        MarkArrived(PrependRows(incoming, inbox.Account));
-        LogIncoming(inbox.Account, incoming.Count, null);
+        // Con Evidenziata aperta solo i messaggi di Evidenziata: prima anche quelli di Altra entravano in cima e sparivano alla
+        // rilettura (audit di affidabilità del 25 ottobre 2026, elenco, E-09). E solo quelli che l'elenco con il suo filtro, il
+        // suo ordine e "Vai a" mostrerebbe in cima (E-10): gli altri arrivano alla rilettura.
+        var entering = incoming.Where(m => ListRefresh.Enters(m, focused, listOptions)).ToList();
+        if (entering.Count < incoming.Count) LogIncoming(inbox.Account, incoming.Count - entering.Count, listOptions.IsDefault ? "della scheda Altra" : "fuori dal filtro, dall'ordine o da \"Vai a\"");
+        if (entering.Count == 0) return;
+        MarkArrived(PrependRows(entering, inbox.Account));
+        journal.Arrived(provider.Account.Id, entering); // una prima pagina chiesta prima non li toglie (E-07)
+        LogIncoming(inbox.Account, entering.Count, null);
     }
 
     /// <summary>
@@ -2778,8 +2894,10 @@ public partial class MainWindow : Window
         var inbox = accounts.FirstOrDefault(a => a.Provider == provider)?.Folders.FirstOrDefault(f => f.Folder.Kind == FolderKind.Inbox);
         if (inbox == null || folder != inbox || searching || focused == false) return;
         var known = rows.Rows.SelectMany(MessageRows.MessagesOf).Where(m => m.FolderId == inbox.Folder.Id).Select(m => m.Id).ToHashSet();
-        var fresh = incoming.Where(m => !known.Contains(m.Id)).Select(m => m.WithId(m.Id)).ToList();
-        if (fresh.Count > 0) MarkArrived(PrependRows(fresh, inbox.Account));
+        var fresh = incoming.Where(m => !known.Contains(m.Id) && ListRefresh.Enters(m, focused, listOptions)).Select(m => m.WithId(m.Id)).ToList();
+        if (fresh.Count == 0) return;
+        MarkArrived(PrependRows(fresh, inbox.Account));
+        journal.Arrived(provider.Account.Id, fresh); // E-07
     }
 
     /// <summary>
@@ -2799,7 +2917,7 @@ public partial class MainWindow : Window
             return;
         }
         var known = firstPage.Select(m => m.Id).ToHashSet();
-        firstPage.InsertRange(0, incoming.Where(m => known.Add(m.Id)).OrderByDescending(m => m.Date));
+        firstPage.InsertRange(0, incoming.Where(m => known.Add(m.Id)).OrderByDescending(m => m.Instant));
         SaveFirstPage(account, inbox.Folder.Id, focused, firstPage);
     }
 
@@ -3032,10 +3150,30 @@ public partial class MainWindow : Window
         string Row(MessageItem r) => $"{r.Summary.Id}{(r.IsRead ? "" : "*")}{(r.Count > 1 ? $"({r.Count})" : "")}[{r.Group}]";
         var groups = view.Groups?.OfType<CollectionViewGroup>().Select(g => $"{g.Name}:{g.ItemCount}:{(g.Items.FirstOrDefault() is MessageItem first ? first.Summary.Id : "-")}") ?? [];
         var drawn = rows.Rows.Where(r => MessageList.ItemContainerGenerator.ContainerFromItem(r) is ListBoxItem { IsVisible: true }).Select(r => r.Summary.Id).ToList();
+        // Dalle correzioni dell'audit di affidabilità del 25 ottobre 2026 (elenco): anche la riga sopra l'elenco, gli
+        // identificativi di tutte le righe (per sapere se un messaggio c'è) e i non letti delle cartelle che ne hanno.
+        var folderCounts = accounts.SelectMany(a => a.Folders.Where(f => f.Folder.Kind != FolderKind.Inbox && (f.Folder.Unread > 0 || f.Folder.Total > 0))
+                                                             .Select(f => $"{a.LogName}/{f.Name}={f.Folder.Unread}/{f.Folder.Total}"));
         Log.Write($"prova stato elenco: {(unified != null ? "tutti gli account, " + unified.Name : folder == null ? "nessuna cartella" : folder.Name + " di " + folder.Account.LogName)}" +
                   $"{(searching ? ", ricerca" : "")}{(IsVisible ? "" : ", finestra nascosta")}, {rows.Rows.Count} righe: {string.Join(' ', rows.Rows.Take(8).Select(Row))}; " +
                   $"gruppi {string.Join(' ', groups)}; disegnate {drawn.Count} (prima {drawn.FirstOrDefault() ?? "-"}); " +
-                  $"non letti {string.Join(' ', accounts.Select(a => $"{a.LogName}={a.InboxUnread}"))}, icona {badge}");
+                  $"non letti {string.Join(' ', accounts.Select(a => $"{a.LogName}={a.InboxUnread}"))}, icona {badge}; " +
+                  $"riga di stato \"{ListStatus.Text}\"; tutte le righe [{string.Join(' ', rows.Rows.Select(r => r.Summary.Id))}]; cartelle {string.Join(' ', folderCounts)}");
+    }
+
+    /// <summary>
+    /// Prove ("apri cartella Nome" in MISSIVA_KEYS, dalle correzioni dell'audit di affidabilità del 25 ottobre 2026, elenco): la
+    /// cartella con quel nome del primo account che ce l'ha, come il clic nella barra laterale.
+    /// </summary>
+    internal void TestOpenFolder(string name)
+    {
+        if (accounts.SelectMany(a => a.Folders).FirstOrDefault(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || f.Folder.Id.EndsWith(name, StringComparison.OrdinalIgnoreCase)) is not { } target)
+        {
+            Log.Write($"prova: nessuna cartella si chiama {name}");
+            return;
+        }
+        SelectFolder(target);
+        Log.Write($"prova: aperta la cartella {target.Name} di {target.Account.LogName}, subito {rows.Rows.Count} righe");
     }
 
     /// <summary>
@@ -3224,6 +3362,7 @@ public partial class MainWindow : Window
         var reader = new ReadingView();
         reader.ReplyRequested += OpenCompose;
         reader.MessageRead += OnReaderRead;
+        reader.ReadUndone += OnReaderReadUndone;
         reader.MailtoRequested += OnMailto;
         reader.EditRequested += OpenDraft;
         reader.MoreRequested += (provider, summary) => ShowMessageMenu(provider, summary, reader, reader);
@@ -3389,13 +3528,40 @@ public partial class MainWindow : Window
     /// Il riquadro ha segnato letto un messaggio: si aggiornano l'elenco e i non letti della sua cartella, che con "quando
     /// la selezione cambia" può non essere più quella aperta.
     /// </summary>
-    void OnReaderRead(IMailProvider provider, MessageSummary summary)
+    void OnReaderRead(IMailProvider provider, MessageSummary summary) => ReadReaderRows(provider, summary, true, "letto nel riquadro");
+
+    /// <summary>
+    /// Il letto del riquadro rifiutato dal server (ReadingView.ReadUndone): il messaggio è di nuovo da leggere, nell'elenco e
+    /// nei non letti della sua cartella, come sul server (audit di affidabilità del 25 ottobre 2026, L-01).
+    /// </summary>
+    void OnReaderReadUndone(IMailProvider provider, MessageSummary summary) => ReadReaderRows(provider, summary, false, "letto rifiutato dal server");
+
+    /// <summary>
+    /// Le righe del messaggio del riquadro e i non letti delle loro cartelle. Le righe si cercano per messaggio
+    /// (ReadMarks.Matches), e il numero cambia nella cartella del messaggio e in quella di ogni riga dello stesso messaggio
+    /// che cambia: con Gmail il messaggio della conversazione viene da "Tutti i messaggi", e prima diventava letta la riga
+    /// della Posta in arrivo con lo stesso UID (un altro messaggio), la sua no, e scendeva solo il numero di "Tutti i
+    /// messaggi" (audit di affidabilità del 25 ottobre 2026, L-07).
+    /// </summary>
+    void ReadReaderRows(IMailProvider provider, MessageSummary summary, bool read, string who)
     {
-        foreach (var row in rows.Rows.Where(r => r.Provider == provider && r.Summary.Id == summary.Id)) row.IsRead = true;
-        if (accounts.FirstOrDefault(a => a.Provider == provider)?.Folders.FirstOrDefault(f => f.Folder.Id == summary.FolderId) is { } where)
-            where.SetUnread(where.Unread - 1, "letto nel riquadro");
+        var same = ReadMarks.Matches(provider.Account.Kind, [summary]);
+        var changed = new HashSet<(string Folder, string Id)> { (summary.FolderId, summary.Id) };
+        foreach (var row in rows.Rows.Where(r => r.Provider == provider && same(r.Summary)).ToList())
+        {
+            if (row.IsRead != read) changed.Add((row.Summary.FolderId, row.Summary.Id));
+            row.IsRead = read; // anche quella dello stesso MessageSummary, già cambiato dal riquadro: l'aspetto della riga
+        }
+        var account = accounts.FirstOrDefault(a => a.Provider == provider);
+        foreach (var inFolder in changed.GroupBy(c => c.Folder))
+            if (account?.Folders.FirstOrDefault(f => f.Folder.Id == inFolder.Key) is { } where)
+                where.SetUnread(where.Unread + (read ? -inFolder.Count() : inFolder.Count()), who);
+        if (account != null) ShareRead(account, [summary], read); // anche nelle altre finestre (E-13)
         UpdateCommands();
     }
+
+    /// <summary>Un segno di letto in coda per un errore che passa (ReadMarks.QueuedAfterError, da qualunque thread): la coda poco dopo.</summary>
+    void OnReadQueued(string accountId) => Dispatcher.BeginInvoke(() => ReplayLaterAsync(accountId));
 
     // ---------------------------------------------------------------- azioni
 
@@ -3465,6 +3631,8 @@ public partial class MainWindow : Window
         var clock = Stopwatch.StartNew();
         var (changes, opens, clears) = (selectionChanges, readerOpens, readerClears);
         var removed = items.Select(i => (Index: rows.Rows.IndexOf(i), Messages: MessageRows.MessagesOf(i))).Where(r => r.Index >= 0).ToList();
+        // Una pagina chiesta prima e arrivata dopo non le rimette (E-07).
+        foreach (var i in items) journal.Removed(i.Account.Provider.Account.Id, MessageRows.MessagesOf(i));
         if (removed.Count > 0)
         {
             if (rows.After(items) is { } next) MessageList.SelectedItem = next;
@@ -3536,6 +3704,7 @@ public partial class MainWindow : Window
                     break;
             }
             if (moved is { Count: > 0 }) parts.Add(new MovePart(account, target!, moved, queued));
+            if (moved is { Count: > 0 }) ShareRemoved(account, moved.Select(x => x.Original).ToList()); // anche dalle altre finestre (E-13)
         }
         if (parts.Count > 0) OfferUndo(new LastMove(parts, removed, version, dry));
         PutBackFailed(removed, failed, version);
@@ -3557,6 +3726,7 @@ public partial class MainWindow : Window
             return;
         }
         var restored = rows.RestoreFailed(removed, failed);
+        foreach (var g in failed.GroupBy(f => f.Value)) journal.Arrived(g.Key.Provider.Account.Id, g.Select(f => f.Key)); // sono rimasti nella loro cartella (E-07)
         Log.Write($"{failed.Count} messaggi non spostati (rifiutati dal server): {restored.Count} righe tornate nell'elenco");
     }
 
@@ -3641,6 +3811,7 @@ public partial class MainWindow : Window
                 }
                 if (forever.Count > 0 && trashed != false && await RunAsync("eliminazione", () => account.Provider.DeletePermanentlyAsync(forever)))
                 {
+                    ShareRemoved(account, forever); // anche dalle altre finestre (E-13)
                     BodyCache.Forget(account.Provider.Account, forever);
                     foreach (var m in forever) Flags.Forget(account.Provider.Account, m); // eliminati per sempre: nemmeno le date
                     Store.Save();
@@ -3653,6 +3824,7 @@ public partial class MainWindow : Window
             }
             // Quelli eliminati per sempre non tornano: Annulla vale per quelli andati nel Cestino.
             if (moved is { Count: > 0 }) parts.Add(new MovePart(account, trash, moved, queued));
+            if (moved is { Count: > 0 }) ShareRemoved(account, moved.Select(x => x.Original).ToList()); // anche dalle altre finestre (E-13)
         }
         if (parts.Count > 0) OfferUndo(new LastMove(parts, removed, version, dry));
         PutBackFailed(removed, failed, version);
@@ -3844,6 +4016,7 @@ public partial class MainWindow : Window
         var now = back.ToDictionary(x => x.Moved.Original, x => x.Moved.NewId == x.Moved.Original.Id ? x.Moved.Original : x.Moved.Original.WithId(x.Moved.NewId));
         var accountOf = back.ToDictionary(x => now[x.Moved.Original], x => x.Account);
         var restored = rows.Restore(last.Rows, now, m => accountOf[m]);
+        foreach (var g in accountOf.GroupBy(x => x.Value)) journal.Arrived(g.Key.Provider.Account.Id, g.Select(x => x.Key)); // tornati, anche per le pagine in viaggio (E-07)
         if (restored.Count == 0)
         {
             if (stale) await RefreshListAsync();
@@ -3964,14 +4137,25 @@ public partial class MainWindow : Window
             // Le righe si cercano una volta sola, e i non letti di ogni cartella cambiano una volta sola (prima una scansione
             // dell'elenco e un cambio del conteggio per messaggio: 50 messaggi 91-127 ms di interfaccia ferma).
             foreach (var m in mine) m.IsRead = read;
-            var ids = mine.Select(m => m.Id).ToHashSet();
-            foreach (var row in rows.Rows.Where(r => r.Account == group.Key && ids.Contains(r.Summary.Id))) row.IsRead = read;
+            // Per messaggio, non per solo identificativo: nella ricerca IMAP in tutte le cartelle due risultati con lo stesso
+            // UID in due cartelle cambiavano insieme (L-07).
+            var same = ReadMarks.Matches(group.Key.Provider.Account.Kind, mine);
+            foreach (var row in rows.Rows.Where(r => r.Account == group.Key && same(r.Summary))) row.IsRead = read;
+            ShareRead(group.Key, mine, read); // anche nelle altre finestre (E-13)
             group.Key.CountRead(mine, read);
             foreach (var item in group) item.IsRead = item.Summary.IsRead; // aggiorna l'aspetto anche delle teste
             Log.Time($"{mine.Count} messaggi segnati {(read ? "letti" : "da leggere")} nell'elenco", clock);
-            if (mine.Count > 0)
-                await RunOrQueueAsync(group.Key, "stato di lettura", () => group.Key.Provider.SetReadAsync(mine, read),
-                                      () => Enqueue(group.Key, mine, read ? QueuedKind.Read : QueuedKind.Unread));
+            if (mine.Count > 0 && await MarkOnServerAsync(group.Key, mine, read) is { Count: > 0 } undo)
+            {
+                // Rifiutato dal server: righe e numero tornano com'erano, cioè come sono sul server. Prima restavano come le
+                // aveva messe l'utente, e solo l'avviso diceva che non era riuscito (audit di affidabilità del 25 ottobre 2026, L-01).
+                foreach (var m in undo) m.IsRead = !read;
+                var back = ReadMarks.Matches(group.Key.Provider.Account.Kind, undo);
+                foreach (var row in rows.Rows.Where(r => r.Account == group.Key && back(r.Summary))) row.IsRead = !read;
+                ShareRead(group.Key, undo, !read);
+                group.Key.CountRead(undo, !read, "segno rifiutato dal server");
+                foreach (var item in group) item.IsRead = item.Summary.IsRead;
+            }
         }
         UpdateCommands();
     }
@@ -4545,37 +4729,69 @@ public partial class MainWindow : Window
                 changed = true;
             }
         if (!changed || order is not { Sort: SortBy.Date }) return;
-        var sorted = order.Ascending ? messages.OrderBy(m => m.Date).ToList() : messages.OrderByDescending(m => m.Date).ToList();
+        var sorted = order.Ascending ? messages.OrderBy(m => m.Instant).ToList() : messages.OrderByDescending(m => m.Instant).ToList();
         messages.Clear();
         messages.AddRange(sorted);
     }
 
-    /// <summary>Aggiorna la prima pagina della cartella aperta senza svuotare l'elenco né il riquadro di lettura.</summary>
-    async Task RefreshListAsync()
+    /// <summary>
+    /// Aggiorna la prima pagina della cartella aperta senza svuotare l'elenco né il riquadro di lettura; la vista di tutti gli
+    /// account allo stesso modo (LoadUnifiedAsync con again). Dalle correzioni dell'audit di affidabilità del 25 ottobre 2026
+    /// (elenco, E-01) una riga nel registro dice perché e che cosa è arrivato, e se non riesce la riga sopra l'elenco dice
+    /// che l'elenco non è aggiornato (MarkListStale), e si riprova quando l'account torna a rispondere.
+    /// </summary>
+    async Task RefreshListAsync() => await RefreshListAsync("aggiornamento");
+
+    /// <summary>Come RefreshListAsync(), con il motivo nel registro.</summary>
+    /// <param name="why">Il motivo, per il registro.</param>
+    async Task RefreshListAsync(string why)
     {
-        if (folder == null && unified != null && !searching && !loading)
+        if (folder == null && unified != null && !searching)
         {
-            await ReloadAsync(); // la vista di tutti gli account si rilegge da capo
+            // Prima la vista di tutti gli account si rileggeva da capo (ReloadAsync), con il riquadro vuoto e la selezione persa.
+            if (loading) DeferRefresh(why); // parte alla fine del caricamento in corso (E-08)
+            else await LoadUnifiedAsync(first: true, again: why);
             return;
         }
-        if (folder == null || searching || loading) return;
+        if (folder == null || searching) return;
+        // Con un caricamento o un'altra rilettura in corso, parte quando finiscono: prima si buttava (E-08).
+        if (loading || refreshing)
+        {
+            DeferRefresh(why);
+            return;
+        }
+        refreshing = true;
         var current = folder;
         var version = listVersion;
+        var account = current.Account.Provider.Account;
         try
         {
+            var asked = ReadMarks.Asked();
+            var since = journal.Asked();
             var page = await current.Account.Provider.GetMessagesAsync(current.Folder, focused, null, listOptions);
             if (version != listVersion) return;
             ApplyWoken(page.Messages, current.Account, listOptions);
             ActionQueue.Apply(current.Account.Provider.Account.Id, page.Messages);
-            if (!MergeFirstPage(page.Messages, current.Account)) ShowFirstPage(page.Messages, current.Account, fromCache: true);
+            ReadMarks.Apply(current.Account.Provider.Account.Id, page.Messages, asked); // i segni fatti qui mentre la pagina era in viaggio (L-05)
+            journal.Apply(since, account.Id, current.Folder.Id, page.Messages, arrivals: true, ByDateNewest); // e le righe tolte e arrivate (E-07)
+            bool shown = rows.Rows.Count > 0;
+            if (!MergeFirstPage(page.Messages, current.Account, more: page.Next != null)) ShowFirstPage(page.Messages, current.Account, fromCache: shown);
             next = page.Next;
+            MarkListRead();
             SetListStatus(rows.Rows.Count == 0 ? T("Non ci sono messaggi qui.") : null);
+            Log.Write($"elenco riletto ({why}): {current.Folder.Name} di {current.Account.LogName}, {page.Messages.Count} messaggi dal server, {rows.Rows.Count} righe");
             SaveFirstPage(current.Account.Provider.Account, current.Folder.Id, focused, firstPage);
             _ = FillPreviewsAsync(current, version, firstPage, prefetch: true);
         }
         catch (Exception ex)
         {
-            Log.Error("aggiornamento dell'elenco", ex);
+            Log.Error($"aggiornamento dell'elenco ({why})", ex);
+            if (version == listVersion) MarkListStale(account, ex);
+        }
+        finally
+        {
+            refreshing = false;
+            RefreshIfAsked(version);
         }
     }
 
@@ -4799,6 +5015,7 @@ public partial class MainWindow : Window
     void ShowCompose(ComposeWindow window)
     {
         window.DraftsChanged += OnDraftsChanged;
+        window.Sent += OnSent;
         window.Show();
     }
 

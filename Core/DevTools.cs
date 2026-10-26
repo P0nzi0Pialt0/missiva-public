@@ -21,7 +21,7 @@ namespace Missiva;
 /// Missiva.exe --scrivi-pec cartella
 ///   scrive buste PEC e fatture .p7m di prova (firmate con certificati fatti al volo) da aprire con --eml; con
 ///   --pec-radice cartella\radice-di-prova.cer la radice di prova vale come attendibile nella versione di prova.
-/// Missiva.exe --imap-finto porta [senza-cestino] [password=...] [foto studio|personale|pec [en]]
+/// Missiva.exe --imap-finto porta [senza-cestino] [password=...] [riempi=N] [foto studio|personale|pec [en]]
 ///   tiene aperto il server IMAP finto con qualche messaggio, per un account IMAP nella versione di prova
 ///   (MISSIVA_IMAP_FINTO=1: senza TLS verso 127.0.0.1), e un server SMTP finto sulla porta dopo; con senza-cestino il
 ///   server non ha il Cestino, con password=... IMAP e SMTP accettano solo quella; con foto una delle caselle finte
@@ -70,7 +70,8 @@ static partial class DevTools
         if (args is ["--imap-finto", var port, ..] && int.TryParse(port, out var number))
         {
             ProvaBozze.ServeImap(number, args.Contains("senza-cestino"), args.FirstOrDefault(a => a.StartsWith("password="))?["password=".Length..], args.Contains("vecchi"),
-                                 args.SkipWhile(a => a != "foto").Skip(1).FirstOrDefault(), args.SkipWhile(a => a != "foto").Skip(2).FirstOrDefault() == "en");
+                                 args.SkipWhile(a => a != "foto").Skip(1).FirstOrDefault(), args.SkipWhile(a => a != "foto").Skip(2).FirstOrDefault() == "en",
+                                 int.TryParse(args.FirstOrDefault(a => a.StartsWith("riempi="))?["riempi=".Length..], out var fill) ? fill : 0);
             return true;
         }
         if (args is ["--page-thread", var threadEmail, var threadOut, ..])
@@ -277,10 +278,18 @@ static partial class DevTools
                 // e fa come Windows che dice che è cambiata (App.OnNetworkBack, senza i suoi 5 s); "rete tornata in silenzio" la
                 // rimette senza dirlo (un firewall che comincia a far passare); "rete assente" la toglie; "stato account" scrive
                 // nel registro lo stato sotto ogni account.
+                // Dalle correzioni dell'audit di affidabilità del 25 ottobre 2026 (A-04) "rete tornata" è un cambio di rete vero
+                // (la rete in una riga cambiata: App.WakeAsync, come dopo la ripresa), non più solo App.OnNetworkBack.
                 case "rete tornata" or "rete tornata in silenzio" or "rete assente":
                     Network.TestOffline = combo.EndsWith("assente", StringComparison.OrdinalIgnoreCase);
                     Log.Write($"prova: {combo}");
-                    if (combo.Equals("rete tornata", StringComparison.OrdinalIgnoreCase)) App.Current.OnNetworkBack();
+                    if (combo.Equals("rete tornata", StringComparison.OrdinalIgnoreCase)) _ = App.Current.WakeAsync("rete cambiata (prova: rete tornata)");
+                    return;
+                // La ripresa dalla sospensione, che sul PC dell'autore nelle prove non si fa: lo stesso gestore di
+                // SystemEvents.PowerModeChanged (App.WakeAsync), con le connessioni mute del server finto (strumenti\arrivo).
+                case "ripresa":
+                    Log.Write("prova: ripresa dalla sospensione");
+                    _ = App.Current.WakeAsync("ripresa dalla sospensione (prova)");
                     return;
                 case "stato account":
                     foreach (var account in main.TestAccounts())
@@ -472,6 +481,12 @@ static partial class DevTools
             if (combo.StartsWith("apri posta ", StringComparison.OrdinalIgnoreCase) && int.TryParse(combo[11..], out var inboxOf))
             {
                 main.TestOpenInbox(inboxOf);
+                return;
+            }
+            // "apri cartella Clienti": quella cartella (correzioni dell'audit di affidabilità del 25 ottobre 2026, elenco).
+            if (combo.StartsWith("apri cartella ", StringComparison.OrdinalIgnoreCase))
+            {
+                main.TestOpenFolder(combo[14..].Trim());
                 return;
             }
             if (combo.StartsWith("notifica ", StringComparison.OrdinalIgnoreCase) && int.TryParse(combo[9..], out var shown))

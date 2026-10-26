@@ -94,11 +94,12 @@ public sealed class AccountItem : Observable
     /// Prima uno per messaggio: 50 messaggi erano 50 cambi, e per la Posta in arrivo 50 volte icona, area di notifica e
     /// registro (audit, v2 V-05).
     /// </summary>
-    public void CountRead(IEnumerable<MessageSummary> changed, bool read)
+    /// <param name="who">Chi li ha cambiati, per il registro; di base "segnati letti" o "segnati da leggere".</param>
+    public void CountRead(IEnumerable<MessageSummary> changed, bool read, string? who = null)
     {
         foreach (var inFolder in changed.GroupBy(m => m.FolderId))
             if (Folders.FirstOrDefault(f => f.Folder.Id == inFolder.Key) is { } where)
-                where.SetUnread(where.Unread + (read ? -inFolder.Count() : inFolder.Count()), read ? "segnati letti" : "segnati da leggere");
+                where.SetUnread(where.Unread + (read ? -inFolder.Count() : inFolder.Count()), who ?? (read ? "segnati letti" : "segnati da leggere"));
     }
 
     /// <summary>
@@ -314,7 +315,10 @@ public sealed class AccountItem : Observable
         if (superseded)
             foreach (var f in folders.Where(f => f.Kind == FolderKind.Inbox))
                 if (Folders.FirstOrDefault(x => x.Folder.Id == f.Id) is { } shown) f.Unread = shown.Unread;
+        var asked = superseded ? null : UnreadSync.AskedAt(Id, ticket);
         SetFolders(folders);
+        // Il numero delle Posta in arrivo è quello del server, chiesto allora: comprende gli arrivati prima (FolderItem.CountedAt).
+        if (asked != null) foreach (var inbox in Folders.Where(f => f.Folder.Kind == FolderKind.Inbox)) inbox.CountedAt = asked;
         return !superseded;
     }
 
@@ -644,8 +648,16 @@ public sealed class FolderItem : Observable
     /// I non letti contati dal server, chiesti con quel biglietto (UnreadSync.Ticket): si scrivono solo se da allora Missiva
     /// non li ha cambiati né ha scritture in viaggio. Falso se il numero è superato: resta quello di qui, e chi chiama riconta.
     /// </summary>
+    /// <summary>
+    /// Quando è stato chiesto il numero del server su cui si regge quello di adesso (UnreadSync.AskedAt; in UTC): i messaggi
+    /// arrivati prima ci sono già, e il numero stimato all'arrivo non li somma di nuovo (MainWindow.ArrivedUnread). null
+    /// finché il numero viene dalla copia locale.
+    /// </summary>
+    public DateTime? CountedAt { get; internal set; }
+
     internal bool ApplyServerUnread(int unread, long? ticket, string who)
     {
+        if (UnreadSync.AskedAt(Account.Provider.Account.Id, ticket) is { } asked && UnreadSync.Valid(Account.Provider.Account.Id, ticket)) CountedAt = asked;
         if (unread == Folder.Unread) return true; // lo stesso numero di qui: niente da scrivere né da ricontare
         if (!UnreadSync.Valid(Account.Provider.Account.Id, ticket))
         {
@@ -1126,7 +1138,7 @@ public sealed class MessageRows
     public bool ByDue { get; set; }
 
     static (DateTime Due, long Newer) DueKey(MessageSummary m, AccountItem account) =>
-        (Flags.DueOf(account.Provider.Account, m) ?? DateTime.MaxValue, -m.Date.Ticks);
+        (Flags.DueOf(account.Provider.Account, m) ?? DateTime.MaxValue, -m.Instant.Ticks);
 
     /// <summary>Dove va una riga nuova: in fondo, o per scadenza (ByDue), fra le teste e dopo i figli delle conversazioni aperte.</summary>
     int PlaceOf(MessageSummary m, AccountItem account)
@@ -1220,7 +1232,7 @@ public sealed class MessageRows
     public List<MessageItem> Prepend(IEnumerable<MessageSummary> messages, AccountItem account)
     {
         var added = new List<MessageItem>();
-        foreach (var m in messages.OrderBy(m => m.Date))
+        foreach (var m in messages.OrderBy(m => m.Instant))
         {
             var key = KeyOf(m, account);
             if (groups.TryGetValue(key, out var old))
@@ -1331,6 +1343,59 @@ public sealed class MessageRows
     }
 
     /// <summary>
+    /// Un messaggio uscito dalla cartella (eliminato o spostato altrove, o da Missiva dalla notifica, da una regola): esce dalla
+    /// sua riga. Da solo esce la riga; in una conversazione esce il messaggio, la riga resta con gli altri e il numero scende, e se
+    /// era la testa la testa diventa il più recente di quelli che restano, al suo posto per data (byDate: l'elenco è per data,
+    /// dal più recente) o dov'era. Prima uscivano solo le righe di un messaggio solo (Count == 1): una conversazione restava,
+    /// anche con tutti i suoi messaggi eliminati dal telefono, con il "(2)" e l'oggetto del messaggio uscito (audit di
+    /// affidabilità del 25 ottobre 2026, elenco, E-04). folderId null: in qualunque cartella (Graph, dove l'id basta). Vero se
+    /// il messaggio era nell'elenco.
+    /// </summary>
+    public bool RemoveMessage(AccountItem account, string? folderId, string id, bool byDate)
+    {
+        foreach (var g in groups.Values)
+        {
+            if (g.Head is not { } old || old.Account != account || g.Messages.FirstOrDefault(m => m.Id == id && (folderId == null || m.FolderId == folderId)) is not { } gone) continue;
+            if (g.Messages.Count == 1)
+            {
+                Remove(g);
+                groups.Remove(g.Key);
+                return true;
+            }
+            bool wasHead = ReferenceEquals(old.Summary, gone) || old.Summary.Id == gone.Id && old.Summary.FolderId == gone.FolderId;
+            g.Messages.Remove(gone);
+            if (g.Children.FirstOrDefault(c => ReferenceEquals(c.Summary, gone)) is { } child)
+            {
+                g.Children.Remove(child);
+                Rows.Remove(child);
+            }
+            if (!wasHead)
+            {
+                old.RefreshConversation();
+                return true;
+            }
+            bool expanded = g.Expanded;
+            int at = Rows.IndexOf(old);
+            Remove(g);
+            var head = new MessageItem(g.Messages[0], account) { Conversation = g, ShowAccount = ShowAccounts };
+            g.Head = head;
+            g.Children.Clear();
+            g.Expanded = false;
+            head.Group = head.IsPinned ? "" : GroupOf(head.Summary, account);
+            if (ByDue && !head.IsPinned) at = PlaceOf(head.Summary, account);
+            else if (byDate && !head.IsPinned)
+            {
+                at = PinnedEnd();
+                while (at < Rows.Count && (Rows[at].IsChild || Rows[at].Summary.Instant > head.Summary.Instant)) at++;
+            }
+            Rows.Insert(Math.Clamp(at, 0, Rows.Count), head);
+            if (expanded) Toggle(head);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Annulla: le righe tolte tornano dov'erano, con i messaggi come sono ora (back: dall'originale a quello tornato, con
     /// l'identificativo nuovo). Una conversazione torna chiusa; un suo messaggio tolto da solo rientra nella sua, se
     /// nell'elenco c'è ancora. Restituisce le righe tornate, da selezionare.
@@ -1341,14 +1406,14 @@ public sealed class MessageRows
         var restored = new List<MessageItem>();
         foreach (var (index, messages) in removed.OrderBy(r => r.Index))
         {
-            var now = messages.Where(back.ContainsKey).Select(m => back[m]).OrderByDescending(m => m.Date).ToList();
+            var now = messages.Where(back.ContainsKey).Select(m => back[m]).OrderByDescending(m => m.Instant).ToList();
             if (now.Count == 0) continue;
             var account = accountOf(now[0]);
             var key = KeyOf(now[0], account);
             if (groups.TryGetValue(key, out var g) && g.Head != null)
             {
                 g.Messages.AddRange(now.Where(m => !g.Messages.Any(x => x.Id == m.Id)));
-                g.Messages.Sort((a, b) => b.Date.CompareTo(a.Date));
+                g.Messages.Sort((a, b) => b.Instant.CompareTo(a.Instant));
                 if (g.Expanded)
                 {
                     Toggle(g.Head);
@@ -1399,7 +1464,7 @@ public sealed class MessageRows
         else
         {
             int i = PinnedEnd();
-            while (i < Rows.Count && Rows[i].Summary.Date > head.Summary.Date) i++;
+            while (i < Rows.Count && Rows[i].Summary.Instant > head.Summary.Instant) i++;
             Rows.Insert(i, head);
         }
         head.RefreshPin();

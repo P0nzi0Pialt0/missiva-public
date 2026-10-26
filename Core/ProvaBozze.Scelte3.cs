@@ -687,6 +687,7 @@ static partial class ProvaBozze
         "GetListHeadersAsync", "GetRecentAsync", "GetRecentKeysAsync", "GetConversationAsync", "GetAttachmentAsync", "StillThereAsync", "GetCategoriesAsync",
         "GetRawAsync", "GetNewAsync", "GetArrivedAsync", "GetInboxUnreadAsync", "WatchInboxAsync", "GetInboxChangesAsync", "GetSentRecipientsAsync",
         "GetCalendarAsync", "GetScheduleAsync", "GetContactsAsync", "SearchPeopleAsync", "GetAutoRepliesAsync", "GetRulesAsync", "ResetConnectionsAsync",
+        "DropConnections", // audit di affidabilità del 25 ottobre 2026, A-04: butta le connessioni di Missiva, senza mandare nulla al server
     ];
 
     /// <summary>

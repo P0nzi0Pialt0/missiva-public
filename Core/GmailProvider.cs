@@ -37,6 +37,29 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
             Client = ready;
         }
 
+        /// <summary>Quante volte la connessione è stata buttata (Drop): chi la stava usando lo vede e riprova su quella nuova.</summary>
+        public int Generation => Volatile.Read(ref generation);
+        int generation;
+
+        /// <summary>Finisce quando la connessione di adesso viene buttata (Drop): RunAsync smette di aspettarla.</summary>
+        public Task Dropped => Volatile.Read(ref dropped).Task;
+        TaskCompletionSource dropped = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>
+        /// Dopo la ripresa del PC o un cambio di rete (DropConnections), come in ImapProvider: al posto del client un altro,
+        /// non collegato, e quello di prima si chiude subito, senza saluto e senza aspettare chi lo sta usando, che smette di
+        /// aspettarla e riprova sul client nuovo (A-04).
+        /// </summary>
+        public void Drop()
+        {
+            var old = Client;
+            Client = new() { Timeout = old.Timeout };
+            Interlocked.Increment(ref generation);
+            Interlocked.Exchange(ref dropped, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+            ImapSockets.Abort(old);
+            try { old.Dispose(); } catch { }
+        }
+
         /// <summary>Il LOGOUT in sottofondo, con cinque secondi di tetto, come ImapProvider: chi chiude il provider non lo aspetta.</summary>
         public void Dispose()
         {
@@ -89,7 +112,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         try
         {
             Network.Check(); // --senza-rete (solo Debug)
-            await client.ConnectAsync("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
+            await ImapSockets.ConnectAsync(client, "imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
             await client.AuthenticateAsync(new SaslMechanismOAuth2(account.Email, await GoogleAuth.TokenAsync(account)));
             Log.Time($"collegamento IMAP principale in anticipo ({account.Email})", clock);
             return client;
@@ -170,44 +193,66 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// gli scaricamenti che si annullano a mano (un allegato, il messaggio intero: AttachmentAsync, GetRawAsync senza
     /// limit) lo passano anche ai loro comandi, dentro l'azione.
     /// </param>
-    async Task<T> RunAsync<T>(Func<ImapClient, Task<T>> action, Connection? on = null, CancellationToken cancel = default)
+    /// <summary>
+    /// Come RunAsync, per le letture (elenco, cartelle, corpi, nuovi messaggi, non letti, IDLE): anche un tempo scaduto si
+    /// riprova una volta su una connessione nuova, come in ImapProvider.ReadAsync (A-02). Mai per una scrittura.
+    /// </summary>
+    Task<T> ReadAsync<T>(Func<ImapClient, Task<T>> action, Connection? on = null, CancellationToken cancel = default) => RunAsync(action, on, cancel, read: true);
+
+    async Task<T> RunAsync<T>(Func<ImapClient, Task<T>> action, Connection? on = null, CancellationToken cancel = default, bool read = false)
     {
         var connection = on ?? main;
         ThrowIfClosed();
         var waiting = System.Diagnostics.Stopwatch.StartNew();
         await connection.Gate.WaitAsync(cancel);
         if (waiting.ElapsedMilliseconds > 20) Log.Time($"attesa della connessione {connection.Name}", waiting);
-        var imap = connection.Client; // dopo l'attesa: la richiesta di prima può aver preso la connessione aperta all'avvio (Adopt)
         try
         {
             cancel.ThrowIfCancellationRequested();
             ThrowIfClosed(); // chiuso mentre aspettava il suo turno
             for (int attempt = 0; ; attempt++)
             {
+                // Dopo l'attesa, e a ogni tentativo: la richiesta di prima può aver preso la connessione aperta all'avvio
+                // (Adopt), e DropConnections può aver cambiato il client mentre si usava quello di prima.
+                var imap = connection.Client;
+                int generation = connection.Generation;
+                var gone = connection.Dropped;
                 try
                 {
-                    var clock = System.Diagnostics.Stopwatch.StartNew();
-                    if (connection == main && !imap.IsConnected && early.TryRemove(Account.Id, out var pending) && await pending is { IsAuthenticated: true } ready)
+                    async Task<T> AttemptAsync()
                     {
-                        connection.Adopt(ready); // collegata all'avvio, mentre si preparava la finestra
-                        imap = ready;
-                        Log.Time("attesa della connessione principale aperta in anticipo", clock);
-                    }
-                    bool connecting = !imap.IsAuthenticated;
-                    if (!imap.IsConnected) Network.Check(); // --senza-rete (solo Debug)
+                        var clock = System.Diagnostics.Stopwatch.StartNew();
+                        if (connection == main && !imap.IsConnected && early.TryRemove(Account.Id, out var pending) && await pending is { IsAuthenticated: true } ready)
+                        {
+                            connection.Adopt(ready); // collegata all'avvio, mentre si preparava la finestra
+                            imap = ready;
+                            Log.Time("attesa della connessione principale aperta in anticipo", clock);
+                        }
+                        bool connecting = !imap.IsAuthenticated;
+                        if (!imap.IsConnected) Network.Check(); // --senza-rete (solo Debug)
 #if DEBUG
-                    if (!imap.IsConnected && TestPort is { } port) await imap.ConnectAsync("127.0.0.1", port, SecureSocketOptions.None);
+                        if (!imap.IsConnected && TestPort is { } port) await ImapSockets.ConnectAsync(imap, "127.0.0.1", port, SecureSocketOptions.None);
 #endif
-                    if (!imap.IsConnected) await imap.ConnectAsync("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
-                    if (connecting) Log.Time($"collegamento IMAP {connection.Name}: connesso", clock);
-                    if (!imap.IsAuthenticated)
-                    {
-                        var credentials = await CredentialsAsync();
-                        Log.Time($"collegamento IMAP {connection.Name}: token pronto", clock);
-                        await imap.AuthenticateAsync(credentials);
+                        if (!imap.IsConnected) await ImapSockets.ConnectAsync(imap, "imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
+                        if (connecting) Log.Time($"collegamento IMAP {connection.Name}: connesso", clock);
+                        if (!imap.IsAuthenticated)
+                        {
+                            var credentials = await CredentialsAsync();
+                            Log.Time($"collegamento IMAP {connection.Name}: token pronto", clock);
+                            await imap.AuthenticateAsync(credentials);
+                        }
+                        if (connecting) Log.Time($"collegamento IMAP {connection.Name}", clock);
+                        return await action(imap);
                     }
-                    if (connecting) Log.Time($"collegamento IMAP {connection.Name}", clock);
-                    return await action(imap);
+                    var work = AttemptAsync();
+                    // La connessione buttata mentre si aspettava (la ripresa del PC): non si aspetta più quella, che resta
+                    // indietro e finisce da sola con un errore (osservato qui), e si riprova sulla nuova (ImapProvider.RunAsync).
+                    if (await Task.WhenAny(work, gone) != work)
+                    {
+                        _ = work.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                        throw new IOException($"la connessione {connection.Name} è stata rifatta mentre aspettava una risposta");
+                    }
+                    return await work;
                 }
                 catch (AuthenticationException ex) when (ImapDisabled(ex.Message))
                 {
@@ -221,9 +266,17 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
                 {
                     throw new MailException(Lingua.T("Gmail ha rifiutato l'accesso di {0}: rifallo con Accedi di nuovo (Impostazioni, Account, Gestisci).", Account.Email), ex) { Fix = AccountFix.SignIn };
                 }
-                catch (Exception ex) when (attempt == 0 && ex is IOException or ServiceNotConnectedException or ImapProtocolException)
+                catch (Exception ex) when (!closed &&
+                                           (attempt == 0 && (ex is IOException or ServiceNotConnectedException or ImapProtocolException ||
+                                                             !cancel.IsCancellationRequested && read && ex is TimeoutException) ||
+                                            !cancel.IsCancellationRequested && connection.Generation != generation))
                 {
-                    // Connessione caduta (sospensione, cambio di rete): si riprova una volta da capo.
+                    // Dopo una connessione buttata si riprova sempre, anche al secondo tentativo (ImapProvider.RunAsync).
+                    // Connessione caduta (sospensione, cambio di rete): si riprova una volta da capo. Per le letture anche dopo
+                    // un tempo scaduto (ReadAsync), che con Gmail sono due minuti: MailKit ha già chiuso la connessione. E con
+                    // qualunque errore se intanto la connessione è stata buttata (DropConnections, la ripresa del PC).
+                    if (connection.Generation != generation) Log.Write($"connessione {connection.Name} di {Account.Email} rifatta dopo la ripresa o un cambio di rete: riprovo su quella nuova");
+                    else if (ex is TimeoutException) Log.Write($"tempo scaduto sulla connessione {connection.Name} di {Account.Email}: riprovo su una connessione nuova");
                     try { await imap.DisconnectAsync(false); } catch { }
                 }
             }
@@ -250,7 +303,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
 
     // ---------------------------------------------------------------- cartelle
 
-    public Task<List<MailFolder>> GetFoldersAsync() => RunAsync(async client =>
+    public Task<List<MailFolder>> GetFoldersAsync() => ReadAsync(async client =>
     {
 #if DEBUG
         var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -321,8 +374,11 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
 
     public async Task SetCategoryAsync(IReadOnlyList<MessageSummary> messages, string category, bool on)
     {
-        await EachFolderAsync(messages, (_, f, uids, _) =>
-            f.StoreAsync(uids, new StoreLabelsRequest(on ? StoreAction.Add : StoreAction.Remove, new[] { category }) { Silent = true }), affectsUnread: false);
+        await EachFolderAsync(messages, (_, f, uids, folderId) =>
+        {
+            InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Any);
+            return f.StoreAsync(uids, new StoreLabelsRequest(on ? StoreAction.Add : StoreAction.Remove, new[] { category }) { Silent = true });
+        }, affectsUnread: false);
         foreach (var message in messages)
         {
             message.Categories.RemoveAll(c => c.Equals(category, StringComparison.OrdinalIgnoreCase));
@@ -372,6 +428,8 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
             throw new MailException(T("In Gmail \"{0}\" non si svuota: contiene anche i messaggi delle altre cartelle.", folder.Name));
         if (f.Count == 0) return;
         var all = await f.SearchAsync(SearchQuery.All);
+        InboxIdle.Expect(folder.Id, all, InboxIdle.EchoOf.Removed);
+        InboxIdle.Expect(folder.Id, all, InboxIdle.EchoOf.Any);
         if (folder.Kind is FolderKind.Deleted or FolderKind.Junk || trash == null)
         {
             await f.AddFlagsAsync(all, MessageFlags.Deleted, true);
@@ -387,6 +445,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     {
         var f = await OpenAsync(client, folder.Id);
         var unread = await f.SearchAsync(SearchQuery.NotSeen);
+        InboxIdle.Expect(folder.Id, unread, InboxIdle.EchoOf.Seen, true);
         if (unread.Count > 0) await f.AddFlagsAsync(unread, MessageFlags.Seen, true);
     }));
 
@@ -415,7 +474,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         searches[key] = uids;
     }
 
-    public Task<MessagePage> GetMessagesAsync(MailFolder folder, bool? focused, string? next, ListOptions? options = null) => RunAsync(async client =>
+    public Task<MessagePage> GetMessagesAsync(MailFolder folder, bool? focused, string? next, ListOptions? options = null) => ReadAsync(async client =>
     {
         options ??= ListOptions.Default;
         if (next == null) WarmThreads();
@@ -437,7 +496,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         {
             // Nell'ordine della data mostrata (INTERNALDATE), come Outlook: un messaggio arrivato nella cartella dopo (spostato,
             // tornato da Posponi) non sta fra due più recenti. A parità, l'ordine di arrivo.
-            Messages = items.OrderByDescending(i => i.Index).Select(i => Summary(i, folder.Id)).OrderByDescending(m => m.Date).ToList(),
+            Messages = items.OrderByDescending(i => i.Index).Select(i => Summary(i, folder.Id)).OrderByDescending(m => m.Instant).ToList(),
             Next = start > 0 ? (start - 1).ToString() : null,
         };
     });
@@ -451,7 +510,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         var items = await f.FetchAsync(start, end, MimeOptions.ListRequest(ListItems));
         return new MessagePage
         {
-            Messages = items.OrderBy(i => i.Index).Select(i => Summary(i, folder.Id)).OrderBy(m => m.Date).ToList(),
+            Messages = items.OrderBy(i => i.Index).Select(i => Summary(i, folder.Id)).OrderBy(m => m.Instant).ToList(),
             Next = end < f.Count - 1 ? (end + 1).ToString() : null,
         };
     }
@@ -494,7 +553,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         };
     }
 
-    public Task<Dictionary<string, string>> GetPreviewsAsync(MailFolder folder, IReadOnlyList<MessageSummary> messages) => RunAsync(async client =>
+    public Task<Dictionary<string, string>> GetPreviewsAsync(MailFolder folder, IReadOnlyList<MessageSummary> messages) => ReadAsync(async client =>
     {
         var result = new Dictionary<string, string>();
         if (messages.Count == 0) return result;
@@ -519,7 +578,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// ricerca di Gmail), sulla connessione che ci resta ferma; la cartella di ogni risultato viene dalle sue etichette.
     /// Senza anteprime, che costano 8 s ogni 50 messaggi: arrivano dopo, come per l'elenco.
     /// </summary>
-    public Task<MessagePage> SearchAsync(MailFolder? folder, string query, string? next = null, CancellationToken cancel = default) => RunAsync(async client =>
+    public Task<MessagePage> SearchAsync(MailFolder? folder, string query, string? next = null, CancellationToken cancel = default) => ReadAsync(async client =>
     {
         var folderId = folder?.Id ?? await AllMailAsync(client) ?? "INBOX";
         var f = await OpenAsync(client, folderId);
@@ -570,7 +629,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// ogni volta le anteprime di tutti, 2-3 s sulla connessione principale. Ora gira su quella in sottofondo, in sola
     /// lettura: aprire un messaggio o una cartella non la aspetta.
     /// </summary>
-    public Task<List<MessageSummary>> GetNewAsync(DateTime sinceUtc) => RunAsync(async client =>
+    public Task<List<MessageSummary>> GetNewAsync(DateTime sinceUtc) => ReadAsync(async client =>
     {
         var f = await ImapProvider.FreshInboxAsync(client); // aggiornata con NOOP: vedi FreshInboxAsync
         var uids = await f.SearchAsync(SearchQuery.NotSeen.And(SearchQuery.DeliveredAfter(sinceUtc.ToLocalTime().Date.AddDays(-1))));
@@ -585,10 +644,23 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     readonly ImapProvider.ArrivalDates arrivalDates = new();
 
     /// <summary>
+    /// Per le notifiche: i nuovi da leggere per UID dopo il mark (ImapProvider.NewSinceAsync, audit di affidabilità del 25
+    /// ottobre 2026, A-06), sulla connessione in sottofondo in sola lettura, con l'anteprima solo di quelli.
+    /// </summary>
+    public Task<Arrivals> GetNewAsync(string? mark, DateTime sinceUtc) => ReadAsync(async client =>
+    {
+        var f = await ImapProvider.FreshInboxAsync(client); // aggiornata con NOOP: vedi FreshInboxAsync
+        var (fresh, next) = await ImapProvider.NewSinceAsync(f, mark, sinceUtc, arrivalDates);
+        if (fresh.Count == 0) return new Arrivals([], next);
+        var items = await f.FetchAsync(fresh, MimeOptions.ListRequest(SummaryItems));
+        return new Arrivals(ImapProvider.Recent(items, sinceUtc).Select(i => Summary(i, "INBOX")).ToList(), next);
+    }, background);
+
+    /// <summary>
     /// Le regole di Missiva: i messaggi arrivati dopo il mark, letti o no e senza il limite dei 20 delle notifiche
     /// (ImapProvider.ArrivedAsync), sulla connessione in sottofondo in sola lettura.
     /// </summary>
-    public Task<Arrivals?> GetArrivedAsync(string? mark, DateTime sinceUtc) => RunAsync(async client =>
+    public Task<Arrivals?> GetArrivedAsync(string? mark, DateTime sinceUtc) => ReadAsync(async client =>
     {
         var f = await ImapProvider.FreshInboxAsync(client);
         var (items, next) = await ImapProvider.ArrivedAsync(f, mark, sinceUtc, MimeOptions.ListRequest(ListItems));
@@ -604,7 +676,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// dimensione (senza anteprime, che costano), sulla connessione in sottofondo con EXAMINE: poi PrefetchAsync ne scarica i
     /// corpi, uno alla volta.
     /// </summary>
-    public Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, DateTime sinceUtc, int max) => RunAsync(async client =>
+    public Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, DateTime sinceUtc, int max) => ReadAsync(async client =>
     {
         var f = client.Inbox;
         if (!f.IsOpen) await f.OpenAsync(FolderAccess.ReadOnly);
@@ -618,7 +690,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// Lo stesso, ma solo quello che serve a BodyCache.Has (UID, X-GM-MSGID, segni e data): la copia degli ultimi 30 giorni
     /// rileggeva ogni mezz'ora busta e struttura di 400 messaggi (0,7-5,3 s, 360-530 ms di CPU) per trovarli già tutti sul PC.
     /// </summary>
-    public Task<List<MessageSummary>> GetRecentKeysAsync(MailFolder inbox, DateTime sinceUtc, int max) => RunAsync(async client =>
+    public Task<List<MessageSummary>> GetRecentKeysAsync(MailFolder inbox, DateTime sinceUtc, int max) => ReadAsync(async client =>
     {
         var f = client.Inbox;
         if (!f.IsOpen) await f.OpenAsync(FolderAccess.ReadOnly);
@@ -630,7 +702,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     }, background);
 
     /// <summary>Busta e struttura dei soli messaggi dati (quelli che mancano alla copia su disco), per scaricarne i corpi.</summary>
-    public Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, IReadOnlyList<MessageSummary> keys) => RunAsync(async client =>
+    public Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, IReadOnlyList<MessageSummary> keys) => ReadAsync(async client =>
     {
         if (keys.Count == 0) return new List<MessageSummary>();
         var f = client.Inbox;
@@ -639,7 +711,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         return items.OrderByDescending(i => i.InternalDate).Select(i => Summary(i, "INBOX")).ToList();
     }, background);
 
-    public Task<int> GetInboxUnreadAsync() => RunAsync(async client =>
+    public Task<int> GetInboxUnreadAsync() => ReadAsync(async client =>
     {
         var f = await ImapProvider.FreshInboxAsync(client, counting: true);
         return client.Capabilities.HasFlag(ImapCapabilities.ESearch)
@@ -651,7 +723,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// Buste (ENVELOPE, con A e Cc) degli ultimi messaggi della Posta inviata, sulla connessione in sottofondo in sola
     /// lettura: nessuna richiesta dell'utente la aspetta.
     /// </summary>
-    public Task<List<SentRecipients>> GetSentRecipientsAsync(int max) => RunAsync(async client =>
+    public Task<List<SentRecipients>> GetSentRecipientsAsync(int max) => ReadAsync(async client =>
     {
         var sent = (await client.GetFoldersAsync(client.PersonalNamespaces[0])).FirstOrDefault(f => f.Attributes.HasFlag(FolderAttributes.Sent));
         if (sent == null) return new List<SentRecipients>();
@@ -727,7 +799,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// volta apre "Tutti i messaggi", 0,2-0,3 s, mentre arriva il corpo). Prima la conversazione di un risultato arrivava
     /// dopo il suo corpo, fino a 1,3 s dal clic.
     /// </summary>
-    public Task<List<MessageSummary>> GetConversationAsync(MessageSummary message, CancellationToken cancel = default) => RunAsync(async client =>
+    public Task<List<MessageSummary>> GetConversationAsync(MessageSummary message, CancellationToken cancel = default) => ReadAsync(async client =>
     {
         if (!ulong.TryParse(message.ConversationId, out var thread)) return new List<MessageSummary> { message };
         // In Gmail la conversazione intera (comprese le tue risposte) sta in "Tutti i messaggi".
@@ -738,7 +810,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         if (uids.Count <= 1) return new List<MessageSummary> { message }; // c'è solo questo messaggio: niente da scaricare
         var items = await f.FetchAsync(uids.Reverse().Take(50).ToList(), MimeOptions.ListRequest(ListItems));
         Log.Time($"conversazione cercata e scaricata ({items.Count} messaggi)", clock);
-        return items.Select(i => Summary(i, all)).OrderBy(m => m.Date).ToList();
+        return items.Select(i => Summary(i, all)).OrderBy(m => m.Instant).ToList();
     }, ConnectionFor(message) == threads ? main : threads, cancel);
 
     static UniqueId Uid(MessageSummary m) => new(uint.Parse(m.Id));
@@ -760,7 +832,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
             try { return await coming.WaitAsync(cancel); }
             catch (Exception) when (!cancel.IsCancellationRequested) { } // non riuscito: si chiede come sempre
         }
-        return await RunAsync(async client =>
+        return await ReadAsync(async client =>
         {
             if (Cached(key) is { } body) return body;
             try { return await DownloadAsync(OpenAsync(client, message.FolderId), message, key, early: false); }
@@ -790,7 +862,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     public MessageBody? SavedBody(MessageSummary message) => OnDisk(message) ? BodyCache.LoadOnline(Account, message) : null;
 
     /// <summary>Come in ImapProvider: le sole intestazioni di "Annulla iscrizione", in sottofondo con EXAMINE.</summary>
-    public Task<ListHeaders?> GetListHeadersAsync(MessageSummary message, CancellationToken cancel = default) => RunAsync(async client =>
+    public Task<ListHeaders?> GetListHeadersAsync(MessageSummary message, CancellationToken cancel = default) => ReadAsync(async client =>
     {
         var headers = await SenderCheck.FetchIfThereAsync(await ExamineAsync(client, message.FolderId), Uid(message));
         return headers == null ? null : new ListHeaders(headers["List-Unsubscribe"], headers["List-Unsubscribe-Post"]);
@@ -872,7 +944,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
             if (!Wanted() || !known.TryGetValue(key, out var s) || !ImapProvider.Prefetchable(s) || OnDisk(message)) continue;
             try
             {
-                if (await RunAsync(async client =>
+                if (await ReadAsync(async client =>
                     {
                         if (!Wanted()) return false; // intanto l'ha aperto l'utente
                         await DownloadAsync(ExamineAsync(client, message.FolderId), message, key, early: true);
@@ -1037,14 +1109,18 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         }
     }, affectsUnread);
 
-    public Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool read) => EachFolderAsync(messages, async (_, f, uids, _) =>
+    public Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool read) => EachFolderAsync(messages, async (_, f, uids, folderId) =>
     {
+        // L'eco all'IDLE, per messaggio (L-04): dalla Posta in arrivo con il suo UID. Da "Tutti i messaggi" (conversazioni,
+        // ricerca) l'UID della Posta in arrivo non si sa, e il suo avviso passa: dice lo stato giusto, costa un controllo.
+        InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Seen, read);
         if (read) await f.AddFlagsAsync(uids, MessageFlags.Seen, true);
         else await f.RemoveFlagsAsync(uids, MessageFlags.Seen, true);
     });
 
-    public Task SetFlagAsync(IReadOnlyList<MessageSummary> messages, bool flagged) => EachFolderAsync(messages, async (_, f, uids, _) =>
+    public Task SetFlagAsync(IReadOnlyList<MessageSummary> messages, bool flagged) => EachFolderAsync(messages, async (_, f, uids, folderId) =>
     {
+        InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Flagged, flagged);
         if (flagged) await f.AddFlagsAsync(uids, MessageFlags.Flagged, true);
         else await f.RemoveFlagsAsync(uids, MessageFlags.Flagged, true);
     }, affectsUnread: false);
@@ -1057,6 +1133,8 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// </summary>
     public async Task<List<MovedMessage>> MoveAsync(IReadOnlyList<MessageSummary> messages, MailFolder destination)
     {
+        // Nella Posta in arrivo con un UID nuovo, ma non sono posta nuova (A-06).
+        if (ImapProvider.IsInbox(destination)) InboxIdle.OwnArrivals(Account.Id, messages.Select(m => m.StableId));
         var moved = new List<MovedMessage>();
         await EachFolderAsync(messages, async (client, f, uids, folderId) =>
         {
@@ -1066,11 +1144,16 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
             IReadOnlyList<string>? Before(MessageSummary m) => labels?.GetValueOrDefault(Uid(m));
             if (folderId == allMailFolder && destination.Kind is not (FolderKind.Deleted or FolderKind.Junk))
             {
+                // Chi era in Posta in arrivo ne esce (\Inbox tolta): l'IDLE ne riceve l'EXPUNGE, uno per messaggio (L-04, E-14).
+                if (destination.Kind != FolderKind.Inbox && labels != null)
+                    InboxIdle.Expect("INBOX", uids.Where(u => labels.GetValueOrDefault(u)?.Contains(@"\Inbox", StringComparer.OrdinalIgnoreCase) == true).Select(u => "tutti:" + u.Id), InboxIdle.EchoOf.Removed);
                 await LeaveInboxAsync(f, uids, destination, target);
                 moved.AddRange(here.Select(m => new MovedMessage(m, m.Id, Before(m)))); // restano in "Tutti i messaggi", con lo stesso UID
             }
             else if (folderId != destination.Id)
             {
+                InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Removed);
+                InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Any);
                 UniqueIdMap map;
                 try { map = await f.MoveToAsync(uids, target); }
                 catch (ImapCommandException ex)
@@ -1114,8 +1197,12 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     /// toglie l'etichetta della cartella a chi non l'aveva (mai un EXPUNGE, che secondo le impostazioni IMAP di Gmail può
     /// eliminare); da Cestino e Spam tornano con uno spostamento vero, e chi era in Posta in arrivo ci torna.
     /// </summary>
-    public Task<List<MovedMessage>> UndoMoveAsync(IReadOnlyList<MovedMessage> moved, MailFolder destination) =>
-        InboxIdle.OwnAsync(Account.Id, () => UndoMoveNowAsync(moved, destination));
+    public Task<List<MovedMessage>> UndoMoveAsync(IReadOnlyList<MovedMessage> moved, MailFolder destination)
+    {
+        // Annulla li rimette dov'erano, anche nella Posta in arrivo (con l'etichetta, da "Tutti i messaggi"): non sono posta nuova (A-06).
+        InboxIdle.OwnArrivals(Account.Id, moved.Select(x => x.Original.StableId));
+        return InboxIdle.OwnAsync(Account.Id, () => UndoMoveNowAsync(moved, destination));
+    }
 
     async Task<List<MovedMessage>> UndoMoveNowAsync(IReadOnlyList<MovedMessage> moved, MailFolder destination)
     {
@@ -1133,6 +1220,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
                     if (destination.Kind == FolderKind.Inbox)
                     {
                         var added = group.Except(hadInbox).Select(x => Uid(x.Original)).ToList();
+                        InboxIdle.Expect("INBOX", added.Select(u => "tutti:" + u.Id), InboxIdle.EchoOf.Removed); // escono dalla Posta in arrivo
                         if (added.Count > 0) await all.StoreAsync(added, Labels(StoreAction.Remove, @"\Inbox"));
                         return;
                     }
@@ -1158,6 +1246,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
                 {
                     if (part.Count == 0) return;
                     var uids = part.Select(NewUid).ToList();
+                    if (!copy) InboxIdle.Expect(destination.Id, uids, InboxIdle.EchoOf.Removed); // tornano via dalla Posta in arrivo
                     var map = copy ? await there.CopyToAsync(uids, origin) : await there.MoveToAsync(uids, origin);
                     foreach (var x in part)
                     {
@@ -1184,7 +1273,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         foreach (var group in messages.GroupBy(m => m.FolderId))
         {
             var uids = group.Select(Uid).Distinct().ToList();
-            var found = await RunAsync(async client =>
+            var found = await ReadAsync(async client =>
                 await (await ExamineAsync(client, group.Key)).FetchAsync(uids, MessageSummaryItems.UniqueId | MessageSummaryItems.GMailMessageId), background);
             foreach (var m in group)
                 if (found.FirstOrDefault(s => s.UniqueId == Uid(m)) is { } s && (m.StableId.Length == 0 || s.GMailMessageId?.ToString() == m.StableId))
@@ -1241,6 +1330,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
             key = (await f.FetchAsync(new[] { Uid(message) }, MessageSummaryItems.GMailMessageId)).FirstOrDefault()?.GMailMessageId?.ToString()
                   ?? throw new MailException(T("Gmail non ha dato l'identificativo del messaggio."));
         var target = await client.GetFolderAsync(snoozeFolder.Id);
+        InboxIdle.Expect(message.FolderId, [Uid(message)], InboxIdle.EchoOf.Removed);
         if (message.FolderId == allMailFolder) await LeaveInboxAsync(f, new[] { Uid(message) }, snoozeFolder, target);
         else await f.MoveToAsync(Uid(message), target);
         return key;
@@ -1248,6 +1338,7 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
 
     public Task<string?> WakeAsync(string key, MailFolder snoozeFolder, MailFolder inbox) => InboxIdle.OwnAsync(Account.Id, () => RunAsync(async client =>
     {
+        InboxIdle.OwnArrivals(Account.Id, [key]); // il ritorno di Posponi non è posta nuova (A-06): come prima, nessuna notifica
         if (!ulong.TryParse(key, out var id)) return null;
         var f = await OpenAsync(client, snoozeFolder.Id);
         var uids = await f.SearchAsync(SearchQuery.GMailMessageId(id));
@@ -1258,8 +1349,11 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
     }));
 
     /// <summary>In Gmail copiare in una cartella significa aggiungere quell'etichetta.</summary>
-    public Task CopyAsync(IReadOnlyList<MessageSummary> messages, MailFolder destination) => EachFolderAsync(messages, async (client, f, uids, _) =>
-        await f.CopyToAsync(uids, await client.GetFolderAsync(destination.Id)));
+    public Task CopyAsync(IReadOnlyList<MessageSummary> messages, MailFolder destination) => EachFolderAsync(messages, async (client, f, uids, folderId) =>
+    {
+        InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Any); // un'etichetta in più
+        await f.CopyToAsync(uids, await client.GetFolderAsync(destination.Id));
+    });
 
     /// <summary>
     /// Il messaggio com'è sul server (BODY.PEEK[], con limit solo l'inizio), allegati compresi, senza analizzarlo né
@@ -1283,8 +1377,10 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
         return raw;
     }, limit < int.MaxValue ? background : drafts, cancel);
 
-    public Task DeletePermanentlyAsync(IReadOnlyList<MessageSummary> messages) => EachFolderAsync(messages, async (_, f, uids, _) =>
+    public Task DeletePermanentlyAsync(IReadOnlyList<MessageSummary> messages) => EachFolderAsync(messages, async (_, f, uids, folderId) =>
     {
+        InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Removed);
+        InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Any);
         await f.AddFlagsAsync(uids, MessageFlags.Deleted, true);
         await f.ExpungeAsync(uids);
     });
@@ -1486,7 +1582,19 @@ public sealed partial class GmailProvider(MailAccount account) : IMailProvider, 
 
     /// <summary>Nuovi messaggi subito: IDLE sulla Posta in arrivo, rinnovato e ripreso da InboxIdle, sulla sua connessione.</summary>
     public Task WatchInboxAsync(Action<InboxNotice> changed, CancellationToken cancel) =>
-        InboxIdle.RunAsync(Account.Email, token => RunAsync(client => InboxIdle.SessionAsync(client, changed, token), idle, token), cancel);
+        InboxIdle.RunAsync(Account.Email, token => ReadAsync(client => InboxIdle.SessionAsync(Account.Email, client, changed, token), idle, token), cancel);
+
+    /// <summary>
+    /// Dopo la ripresa del PC o un cambio di rete (App.WakeAsync), come in ImapProvider: tutte le connessioni, anche quella
+    /// dell'IDLE con la sua sessione in corso, si buttano subito (A-04). Prima Gmail non aveva nemmeno ResetConnectionsAsync:
+    /// dopo la sospensione il primo clic e il primo controllo aspettavano il tempo scaduto di due minuti (V-37 di velocita-2).
+    /// </summary>
+    public void DropConnections()
+    {
+        if (closed) return;
+        foreach (var connection in new[] { main, background, threads, drafts, idle }) connection.Drop();
+        InboxIdle.Break(Account.Email);
+    }
 
     /// <summary>Chiuso con Dispose: da lì ogni richiesta, anche l'invio, esce con MailException.Closed (audit dell'11 ottobre, X-1).</summary>
     volatile bool closed;

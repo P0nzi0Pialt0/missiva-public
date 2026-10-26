@@ -38,6 +38,8 @@ public sealed class TestingProvider(IMailProvider real) : IMailProvider, IDispos
     public Task<byte[]> GetRawAsync(MessageSummary message, int limit = int.MaxValue, CancellationToken cancel = default, IProgress<long>? progress = null) =>
         real.GetRawAsync(message, limit, cancel, progress);
     public Task<List<MessageSummary>> GetNewAsync(DateTime sinceUtc) => real.GetNewAsync(sinceUtc);
+    /// <summary>I nuovi messaggi per UID: SEARCH e FETCH in sola lettura, al provider vero.</summary>
+    public Task<Arrivals> GetNewAsync(string? mark, DateTime sinceUtc) => real.GetNewAsync(mark, sinceUtc);
     /// <summary>Per le regole di Missiva: UID SEARCH e FETCH in sola lettura, al provider vero; le azioni delle regole restano scritture.</summary>
     public Task<Arrivals?> GetArrivedAsync(string? mark, DateTime sinceUtc) => real.GetArrivedAsync(mark, sinceUtc);
     public Task<int> GetInboxUnreadAsync() => real.GetInboxUnreadAsync();
@@ -48,6 +50,8 @@ public sealed class TestingProvider(IMailProvider real) : IMailProvider, IDispos
     public Task<List<SentRecipients>> GetSentRecipientsAsync(int max) => real.GetSentRecipientsAsync(max);
     /// <summary>Non tocca la casella: chiude soltanto le connessioni di Missiva.</summary>
     public Task ResetConnectionsAsync() => real.ResetConnectionsAsync();
+    /// <summary>Lo stesso, dopo la ripresa del PC o un cambio di rete: non manda nulla al server.</summary>
+    public void DropConnections() => real.DropConnections();
     public bool HasCalendar => real.HasCalendar;
     public Task<CalendarData?> GetCalendarAsync(DateTime from, DateTime to, CancellationToken cancel = default) => real.GetCalendarAsync(from, to, cancel);
     public bool HasAutoReplies => real.HasAutoReplies;

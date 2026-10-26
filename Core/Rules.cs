@@ -812,6 +812,16 @@ public static class Rules
             Store.SaveSoon();
         }
         Outcome? outcome = null;
+        if (fresh.Count + again.Count > 0 && rules.Any(NeedsBody))
+        {
+            // I corpi per le regole sul testo in anticipo, sulla connessione in sottofondo (PrefetchAsync: EXAMINE e BODY.PEEK,
+            // poi KeptBody), non con GetBodyAsync sulla principale, dove passano elenco, messaggi aperti e allegati: con uno
+            // scaricamento in corso lì le regole, e con loro la notifica che viene dopo, lo aspettavano (audit di affidabilità
+            // del 25 ottobre 2026, A-07). Al più quanti il provider ne tiene in memoria; gli altri, e quelli che l'anticipo non
+            // scarica (grandi, della Posta indesiderata), dalla principale come prima.
+            var wanting = again.Select(u => u.Message).Concat(fresh).Where(m => provider.KeptBody(m) == null).Take(MailLimits.BodyCacheSize).ToList();
+            if (wanting.Count > 0) await provider.PrefetchAsync(wanting);
+        }
         if (fresh.Count + again.Count > 0)
         {
             var tried = again.ToDictionary(u => u.Message);

@@ -296,7 +296,7 @@ too: if the steps change, they're fixed only in that file and in its Italian ver
   while Missiva is open (also in the notification area), on all those that arrived since the last time (even those
   already read on your phone, even after a night with the laptop closed), once per message; what they move or delete
   doesn't arrive as a notification. If the server refuses an action the others go ahead anyway, and Missiva tries that
-  message again at the next checks (every two minutes), up to three times in all, then leaves it in the Inbox; a copy
+  message again at the next checks (every minute), up to three times in all, then leaves it in the Inbox; a copy
   already made isn't made again. Run now says what worked and what didn't.
 - Recipient suggestions in To, Cc and Bcc (and among a meeting's attendees) as you type, from the people you write to
   (Sent Items of every account), those you get mail from and your contacts in People (also those you've never written
@@ -432,7 +432,9 @@ too: if the steps change, they're fixed only in that file and in its Italian ver
 - New messages right away, like Thunderbird: with Gmail and the other IMAP accounts the server tells Missiva as soon as
   a message arrives (IDLE), and likewise for messages read or moved from your phone; with Microsoft accounts Missiva
   asks for the Inbox changes every 30 seconds (messages read and deleted elsewhere update in the list). Also with
-  Missiva in the notification area. The check every two minutes stays for all.
+  Missiva in the notification area. The backup check stays for all: every minute with Gmail and the other IMAP accounts,
+  every two minutes with Microsoft accounts. When the PC resumes from sleep and when the network changes, Missiva redoes
+  its connections right away and checks all accounts.
 - Windows notifications for new messages, also while Missiva is in the notification area: a click on a message's
   notification opens it in its own window (from there a button brings it into the reading pane of the main window); a
   click on "N new messages" opens that account's Inbox. A message's notification has three buttons: Reply (opens the
@@ -510,7 +512,7 @@ too: if the steps change, they're fixed only in that file and in its Italian ver
 - All accounts: filter, "Go to" and sort apply to the folders of single accounts; Move to, Copy, Categorize and Snooze
   work on the messages of one account at a time.
 - IMAP accounts: conversations aren't grouped (the server doesn't know them); on servers without IDLE new messages
-  arrive with the check every two minutes.
+  arrive with the check every minute.
 - Drafts resumed with Edit: the text returns to Missiva's editor with the formatting Missiva can write (font, colors,
   alignment, indent, lists, tables, links, pictures added in Missiva); rarer styles, pictures from the Internet and
   those of the quoted message are left out or become plain text. A reply resumed from Drafts goes out as a new message

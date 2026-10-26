@@ -182,6 +182,11 @@ public partial class ReadingView : UserControl
     /// <summary>Un messaggio della conversazione è stato letto aprendolo (o lasciandolo, secondo Gestione messaggi).</summary>
     public event Action<IMailProvider, MessageSummary>? MessageRead;
     /// <summary>
+    /// Il letto di MessageRead non è riuscito perché il server l'ha rifiutato (un NO di IMAP, un 400 o un 403 di Graph): il
+    /// messaggio è di nuovo da leggere, riga e numero tornano com'erano (audit di affidabilità del 25 ottobre 2026, L-01).
+    /// </summary>
+    public event Action<IMailProvider, MessageSummary>? ReadUndone;
+    /// <summary>
     /// Link mailto: nel messaggio: si scrive con Missiva, non con il programma di posta predefinito. Il terzo argomento è
     /// l'altro indirizzo dell'account da cui scrivere (Annulla iscrizione di una lista arrivata a un alias), o null.
     /// </summary>
@@ -224,6 +229,11 @@ public partial class ReadingView : UserControl
 #if DEBUG
     /// <summary>Prova del cambio di tema senza toccare Windows (--theme-flip): il tema che Missiva crede di Windows.</summary>
     public static bool? TestDark;
+    /// <summary>
+    /// Prove della suite (gruppo affidabilita-letti): il riquadro apre i messaggi come sempre (ShowAsync, il corpo dal provider,
+    /// il letto secondo Gestione messaggi) ma il disegno si ferma prima di WebView2, che senza una finestra non nasce.
+    /// </summary>
+    internal static bool TestWithoutWeb;
 #endif
 
     /// <summary>
@@ -301,7 +311,13 @@ public partial class ReadingView : UserControl
 
     /// <param name="junkFolderId">La Posta indesiderata dell'account: i destinatari dei suoi messaggi non vanno nella rubrica.</param>
     /// <param name="bodyShown">Il corpo si vede (non se nel frattempo si è aperto altro): per scaricare in anticipo i vicini.</param>
-    public async Task ShowAsync(IMailProvider p, MessageSummary selected, bool wholeConversation, string? junkFolderId = null, Action? bodyShown = null)
+    /// <param name="restore">
+    /// Il messaggio torna nel riquadro com'era, senza che l'utente l'abbia scelto (la finestra riaperta dall'area di notifica,
+    /// MainWindow.ShowFromTray): si mostra e basta, letto o no, in ogni modo di Gestione messaggi. Prima era un'apertura
+    /// nuova, e un messaggio segnato da leggere a mano (Ctrl+U, la busta) tornava letto, anche sul server, ogni volta che si
+    /// riapriva la finestra: il "da leggere" stava sull'apertura di prima (audit di affidabilità del 25 ottobre 2026, L-02).
+    /// </param>
+    public async Task ShowAsync(IMailProvider p, MessageSummary selected, bool wholeConversation, string? junkFolderId = null, Action? bodyShown = null, bool restore = false)
     {
         bool hurried = entries.Count > 0 && arrived != version;
         FlushReadOnLeave();
@@ -357,7 +373,7 @@ public partial class ReadingView : UserControl
             Render(keepScroll: false); // uno script per lo scorrimento aspetterebbe la pagina del segnaposto
         }
         arrived = v;
-        MarkRead(current);
+        if (!restore) MarkRead(current);
         bodyShown?.Invoke();
         _ = TryPendingPreviewAsync();
 
@@ -436,7 +452,7 @@ public partial class ReadingView : UserControl
     {
         if (conversation == null || conversation.Count <= 1) return false;
         entries = conversation
-            .OrderByDescending(m => m.Date)
+            .OrderByDescending(m => m.Instant)
             .Select(m => m.Id == selected.Id || (m.Date == selected.Date && m.From.Email == selected.From.Email) ? current : new Entry(m))
             .ToList();
         if (!entries.Contains(current)) entries.Insert(0, current);
@@ -849,19 +865,17 @@ public partial class ReadingView : UserControl
 #endif
         entry.Summary.IsRead = true;
         MessageRead?.Invoke(p, entry.Summary);
-        // Letto senza rete (in treno, dalla copia sul PC): il segno va nella coda delle azioni e parte quando la rete torna.
-        if (Network.KnownOffline(p.Account) && p is not EmlProvider)
-        {
-            ActionQueue.Add(p.Account, [entry.Summary], QueuedKind.Read);
-            return;
-        }
-        try { await p.SetReadAsync(entry.Summary, true); }
-        catch (Exception ex) when (Network.IsOffline(ex) && p is not EmlProvider)
-        {
-            Network.Note(p.Account, ex);
-            ActionQueue.Add(p.Account, [entry.Summary], QueuedKind.Read);
-        }
-        catch (Exception ex) { Log.Error("stato di lettura", ex); }
+        // Letto senza rete (in treno, dalla copia sul PC), o con un errore che passa (tempo scaduto sulla connessione morta dopo
+        // la sospensione del PC, connessione caduta, Outlook che risponde 429 o 503): il segno va nella coda delle azioni e
+        // parte al prossimo controllo riuscito (ReadMarks.WriteAsync). Prima andava in coda solo senza rete, e con gli altri
+        // errori il messaggio restava letto qui e da leggere sul server (audit di affidabilità del 25 ottobre 2026, L-01). Un
+        // rifiuto del server lo rimette da leggere, com'è sul server: riga e numero li rimette chi ascolta ReadUndone.
+        var result = await ReadMarks.WriteAsync(p, [entry.Summary], true);
+        if (result.Outcome != ReadMarks.Outcome.Refused) return;
+        Log.Error("stato di lettura", result.Error!);
+        if (result.Undo is not { Count: > 0 }) return; // intanto segnato di nuovo, a mano: vale quello
+        entry.Summary.IsRead = false;
+        ReadUndone?.Invoke(p, entry.Summary);
     }
 
     // ---------------------------------------------------------------- disegno
@@ -979,6 +993,9 @@ public partial class ReadingView : UserControl
 
         foreach (var entry in entries.Where(e => e.Expanded && e.Body == null && !e.Loading && e.Error == null))
             _ = LoadBodyAsync(entry, version);
+#if DEBUG
+        if (TestWithoutWeb) return; // le prove della suite: il riquadro vero senza WebView2 (TestWithoutWeb)
+#endif
 
         var ready = webReady ??= InitWebAsync();
         try

@@ -166,6 +166,30 @@ public static class ActionQueue
         }
     }
 
+    /// <summary>
+    /// Un segno di lettura riuscito in linea (ReadMarks.WriteAsync): i segni di lettura di prima degli stessi messaggi
+    /// ancora in coda escono, dalla coda e dal file. Prima restavano, e al ritorno della rete (o al riavvio, con coda.dat)
+    /// la coda li ripeteva e rimetteva sul server lo stato vecchio: un "da leggere" fatto in treno vinceva sul letto fatto
+    /// dopo a casa (audit di affidabilità del 25 ottobre 2026, L-03). Anche quelli che una ripetizione ha già preso: lei li
+    /// salta (ReplayAsync guarda se ci sono ancora prima di farli). Chi chiama passa solo i messaggi per cui il suo segno è
+    /// il più nuovo: un segno in coda fatto dopo resta.
+    /// </summary>
+    public static void Supersede(MailAccount account, IReadOnlyList<MessageSummary> messages)
+    {
+        if (messages.Count == 0) return;
+        int removed;
+        lock (gate)
+        {
+            if (Items.Count == 0) return;
+            removed = Items.RemoveAll(a => a.AccountId == account.Id && a.Kind is (QueuedKind.Read or QueuedKind.Unread)
+                                           && messages.Any(m => ReadMarks.Same(account.Kind, a.Message(), m)));
+            if (removed > 0) Save();
+        }
+        if (removed == 0) return;
+        Log.Write($"coda di {account.Email}: {removed} segni di lettura tolti, superati da uno fatto dopo in linea");
+        Changed?.Invoke();
+    }
+
     /// <summary>Account rimosso: le sue azioni escono.</summary>
     public static void Forget(string accountId)
     {
@@ -217,7 +241,7 @@ public static class ActionQueue
     /// invalid_grant di Google), la password rifiutata, il consenso, Graph che risponde 429 o 5xx, un server che non risponde
     /// in tempo o chiude la connessione. L'azione non è partita e aspetta il prossimo ritorno, con il motivo vero.
     /// </summary>
-    static bool Passing(Exception ex) =>
+    internal static bool Passing(Exception ex) =>
         MailException.FixOf(ex) != AccountFix.None || ex is Microsoft.Identity.Client.MsalException ||
         ex is MailException { Status: 429 or >= 500 } || ex is TimeoutException or TaskCanceledException or IOException or System.Net.Sockets.SocketException ||
         ex is MailKit.ServiceNotConnectedException or MailKit.Net.Imap.ImapProtocolException || ex is MailException { InnerException: { } inner } && Passing(inner);
@@ -308,8 +332,13 @@ public static class ActionQueue
             if (there != null) while (end < mine.Count && mine[end].SameAs(mine[i])) end++;
             var group = mine.GetRange(i, end - i);
             var first = group[0];
-            var live = group.Select(a => messages[a]).Where(m => there == null || there.Contains(m)).ToList();
-            gone += group.Count - live.Count;
+            // I segni di lettura tolti intanto dalla coda (Supersede: lo stesso messaggio segnato in linea dopo) non si
+            // ripetono: rimetterebbero lo stato vecchio (L-03).
+            List<QueuedAction> pending;
+            lock (gate) pending = group.Where(a => a.Kind is not (QueuedKind.Read or QueuedKind.Unread) || Items.Contains(a)).ToList();
+            if (pending.Count < group.Count) Log.Write($"coda di {account.Email}: {group.Count - pending.Count} segni di lettura saltati, superati da uno fatto dopo in linea");
+            var live = pending.Select(a => messages[a]).Where(m => there == null || there.Contains(m)).ToList();
+            gone += pending.Count - live.Count;
             try
             {
                 if (live.Count > 0)

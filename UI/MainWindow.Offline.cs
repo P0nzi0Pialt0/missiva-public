@@ -55,6 +55,59 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>
+    /// Già letto o Da leggere sulla casella (Ctrl+Q, Ctrl+U, la busta, la barra della finestra del messaggio): come
+    /// RunOrQueueAsync, ma anche con un errore che passa (tempo scaduto, connessione caduta, 429 o 5xx di Outlook, un accesso
+    /// da rifare) il segno va in coda e si ripete, invece di perdersi dopo l'avviso; la strada è la stessa del letto del
+    /// riquadro (ReadMarks.WriteAsync; audit di affidabilità del 25 ottobre 2026, L-01). Con un rifiuto del server l'avviso
+    /// di sempre, e i messaggi da rimettere com'erano (righe e numero li rimette chi chiama); altrimenti nessuno.
+    /// </summary>
+    async Task<IReadOnlyList<MessageSummary>> MarkOnServerAsync(AccountItem account, List<MessageSummary> messages, bool read)
+    {
+        var mail = account.Provider.Account;
+        var result = await ReadMarks.WriteAsync(account.Provider, messages, read);
+        switch (result.Outcome)
+        {
+            case ReadMarks.Outcome.Queued:
+                if (Network.IsOffline(result.Error))
+                {
+                    account.Status = Network.Explain(result.Error) ?? account.Status;
+                    Log.Write($"stato di lettura: {mail.Email} non in linea, l'azione va in coda");
+                }
+                UpdateQueued(account);
+                return [];
+            case ReadMarks.Outcome.Refused:
+                Log.Error("stato di lettura", result.Error!);
+                Dialog.Show(this, T("Operazione non riuscita"), result.Error!.Message);
+                return result.Undo ?? [];
+            default:
+                return [];
+        }
+    }
+
+    /// <summary>
+    /// Un segno di letto andato in coda per un errore che passa (ReadMarks.QueuedAfterError): la coda dell'account si ripete
+    /// dopo qualche secondo, senza aspettare il controllo di ogni due minuti. Intanto il riconteggio dopo la scrittura dà il
+    /// numero del server, che conta ancora quel messaggio: prima della ripresa il numero sull'icona restava alto fino a due
+    /// minuti con la riga letta. Dopo un tempo scaduto la connessione è già rifatta, e il segno di solito riesce subito.
+    /// </summary>
+    async void ReplayLaterAsync(string accountId)
+    {
+        try
+        {
+            await Task.Delay(QueueRetry);
+            if (accounts.FirstOrDefault(a => a.Provider.Account.Id == accountId) is { } account && !Network.KnownOffline(account.Provider.Account))
+                await ReplayQueueAsync(account);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("coda delle azioni dopo un segno non riuscito", ex);
+        }
+    }
+
+    /// <summary>Quanto dopo un segno non riuscito per un errore che passa la coda si ripete (ReplayLaterAsync).</summary>
+    static readonly TimeSpan QueueRetry = TimeSpan.FromSeconds(5);
+
     /// <summary>Le azioni in coda per l'account (ActionQueue), e il conteggio sotto l'account.</summary>
     void Enqueue(AccountItem account, IReadOnlyList<MessageSummary> messages, QueuedKind kind, string targetFolderId = "")
     {

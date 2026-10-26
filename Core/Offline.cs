@@ -435,7 +435,7 @@ public static class BodyCache
             }
             found.Add(m);
         });
-        return found.OrderByDescending(m => m.Date).Take(max).ToList();
+        return found.OrderByDescending(m => m.Instant).Take(max).ToList();
     }
 
     /// <summary>

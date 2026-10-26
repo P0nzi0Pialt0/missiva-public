@@ -55,8 +55,15 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// <summary>Il percorso di un messaggio (me/messages/id) e quello di una cartella (me/mailFolders/id, anche con un alias come inbox).</summary>
     string MessageUrl(string id) => me + "messages/" + Segment(id);
     string FolderUrl(string id) => me + "mailFolders/" + Segment(id);
-    /// <summary>Con i destinatari (A): in Posta inviata e Bozze la riga dell'elenco mostra loro, non il mittente.</summary>
-    const string SummaryFields = "id,subject,from,toRecipients,replyTo,receivedDateTime,isRead,isDraft,flag,hasAttachments,bodyPreview,conversationId,parentFolderId,categories,importance,internetMessageId";
+    /// <summary>
+    /// Con i destinatari (A): in Posta inviata e Bozze la riga dell'elenco mostra loro, non il mittente. Con la scheda della
+    /// Posta in arrivo (inferenceClassification, Evidenziata o Altra), anche per i messaggi nuovi del controllo: prima un
+    /// messaggio di Altra entrava in cima a Evidenziata e spariva alla rilettura (audit di affidabilità del 25 ottobre 2026,
+    /// elenco, E-09). Non per le caselle condivise, che Evidenziata non l'hanno (SupportsFocused): lì non si chiede nulla della
+    /// scheda, come prima.
+    /// </summary>
+    const string BaseFields = "id,subject,from,toRecipients,replyTo,receivedDateTime,isRead,isDraft,flag,hasAttachments,bodyPreview,conversationId,parentFolderId,categories,importance,internetMessageId";
+    string SummaryFields => SupportsFocused ? BaseFields + ",inferenceClassification" : BaseFields;
     const string AttachmentNamesExpand = "&$expand=attachments($select=name,isInline)";
     /// <summary>
     /// Si spegne da sola se Graph non accetta l'espansione, cioè risponde 400. Con gli altri errori (429 scorrendo veloce,
@@ -584,7 +591,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         else page = await GetAsync(url, cancel: cancel);
         return new MessagePage
         {
-            Messages = Summaries(page, folder?.Id).Where(terms.Matches).OrderByDescending(m => m.Date).ToList(),
+            Messages = Summaries(page, folder?.Id).Where(terms.Matches).OrderByDescending(m => m.Instant).ToList(),
             Next = page?["@odata.nextLink"]?.GetValue<string>(),
         };
     }
@@ -674,10 +681,20 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         {
             Log.Write($"delta della Posta in arrivo di {Account.Email} da rifare: {ex.Message}");
             inboxDelta = null;
-            return null;
+            deltaRestarted = true;
+            return new InboxChanges { Restarted = true };
         }
-        return first ? null : changes;
+        if (!first) return changes;
+        // Il punto di partenza dopo un deltaLink rifatto: quello che è arrivato fra le due letture non lo dice nessuna delle due
+        // (audit di affidabilità del 25 ottobre 2026, A-08), quindi lo dice Restarted, e App controlla l'account. Il primo
+        // punto di partenza, all'avvio, no: lo fa il primo controllo dopo l'avvio.
+        if (!deltaRestarted) return null;
+        deltaRestarted = false;
+        return new InboxChanges { Restarted = true };
     }
+
+    /// <summary>Il deltaLink è stato rifatto: la lettura dopo, il punto di partenza nuovo, lo dice (InboxChanges.Restarted).</summary>
+    bool deltaRestarted;
 
     /// <summary>Una richiesta sola, con solo destinatari e data: 500 messaggi in poche centinaia di KB.</summary>
     public async Task<List<SentRecipients>> GetSentRecipientsAsync(int max)
@@ -713,6 +730,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
             ReplyTo = Address.ReplyToOf(Addresses(m?["replyTo"]), ParseAddress(m?["from"])),
             IsImportant = Str(m, "importance") == "high",
             InternetMessageId = Str(m, "internetMessageId"),
+            Focused = Str(m, "inferenceClassification") switch { "focused" => true, "other" => false, _ => null },
         }).ToList();
 
     // ---------------------------------------------------------------- categorie
@@ -780,7 +798,7 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
         var list = (page?["value"]?.AsArray() ?? new JsonArray())
             .Select(m => (Node: m, Folder: Str(m, "parentFolderId")))
             .SelectMany(x => Summaries(new JsonObject { ["value"] = new JsonArray(x.Node!.DeepClone()) }, x.Folder))
-            .OrderBy(m => m.Date).ToList();
+            .OrderBy(m => m.Instant).ToList();
         return list.Count > 0 ? list : new List<MessageSummary> { message };
     }
 
@@ -1026,7 +1044,54 @@ public sealed partial class GraphProvider(MailAccount account) : IMailProvider
     /// quando finiscono il numero si riconta.
     /// </remarks>
     public Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool read) => UnreadSync.WriteAsync(Account.Id, () => EachAsync(messages, m =>
-        SendAsync(HttpMethod.Patch, $"{MessageUrl(m.Id)}", new JsonObject { ["isRead"] = read })));
+        InReadOrder(m.Id, () => SendAsync(HttpMethod.Patch, $"{MessageUrl(m.Id)}", new JsonObject { ["isRead"] = read }))), ReadCountSettle);
+
+    /// <summary>
+    /// Quanto dopo il letto (o il da leggere) il numero dei non letti che Graph dà (unreadItemCount) è ancora quello di prima:
+    /// Exchange lo aggiorna qualche secondo dopo aver risposto al PATCH. Nel registro dell'autore (22 e 24 ottobre 2026) il
+    /// riconteggio un secondo dopo la lettura (UnreadSync.Settle) rimetteva il numero di prima, per 1-13 secondi, finché la
+    /// query delta non lo correggeva. Fino ad allora il conteggio del server non vale (UnreadSync.Ticket), e il riconteggio
+    /// (App.RecountSoon) aspetta. Cinque secondi: il 24 ottobre il numero vero c'era già 2-3 secondi dopo; il 22 era ancora
+    /// quello di prima dopo uno, e la query delta l'ha corretto dopo 13 (in mezzo il registro non dice).
+    /// </summary>
+    internal static TimeSpan ReadCountSettle = TimeSpan.FromSeconds(5);
+
+    /// <summary>Per messaggio, l'ultima scrittura di lettura chiesta (la fine della sua attesa): quella dopo parte quando è finita.</summary>
+    readonly Dictionary<string, Task> readOrder = new();
+
+    /// <summary>
+    /// Le scritture di lettura dello stesso messaggio, una dopo l'altra nell'ordine in cui sono state chieste. Ogni PATCH è
+    /// una richiesta a sé, fino a quattro insieme (MailboxGate), e un 429 si ripete dopo l'attesa che Outlook chiede: il letto
+    /// del riquadro respinto e ripetuto arrivava dopo il "da leggere" di Ctrl+U chiesto un attimo dopo, e vinceva (sul server
+    /// letto, in Missiva da leggere; audit di affidabilità del 25 ottobre 2026, L-06). Gmail e IMAP non ne hanno bisogno:
+    /// una connessione, un comando alla volta, nell'ordine. Messaggi diversi non si aspettano; quella prima, riuscita o no,
+    /// fa partire quella dopo.
+    /// </summary>
+    Task InReadOrder(string id, Func<Task> write)
+    {
+        var mine = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task before;
+        lock (readOrder)
+        {
+            before = readOrder.GetValueOrDefault(id) ?? Task.CompletedTask;
+            readOrder[id] = mine.Task;
+        }
+        return AfterAsync();
+
+        async Task AfterAsync()
+        {
+            try
+            {
+                await before; // non fallisce mai: è la fine dell'attesa di quella prima
+                await write();
+            }
+            finally
+            {
+                mine.SetResult();
+                lock (readOrder) if (readOrder.GetValueOrDefault(id) == mine.Task) readOrder.Remove(id);
+            }
+        }
+    }
 
     public Task SetFlagAsync(IReadOnlyList<MessageSummary> messages, bool flagged) => EachAsync(messages, m =>
         SendAsync(HttpMethod.Patch, $"{MessageUrl(m.Id)}",

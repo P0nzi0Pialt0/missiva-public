@@ -224,6 +224,15 @@ public sealed class MessageSummary
     public string Preview { get; set; } = "";
     /// <summary>Data di arrivo; per un messaggio tornato da Posponi, l'ora in cui è tornato (come in Outlook).</summary>
     public DateTime Date { get; set; }
+    /// <summary>
+    /// La data come istante (UTC), per ordinare le righe; quella da mostrare resta Date, nell'ora di Windows. Nell'ora ripetuta
+    /// della notte del ritorno all'ora solare due ore locali uguali sono due istanti diversi (DateTime confronta i tick, senza
+    /// guardare quale delle due è): per ora locale un messaggio delle 2:10 dopo il cambio finiva sotto uno delle 2:50 di prima
+    /// (audit di affidabilità del 25 ottobre 2026, elenco; nota del rapporto sull'arrivo). Le date locali delle righe vengono
+    /// dall'istante del server (ToLocalTime, LocalDateTime), che ricorda quale delle due ore è.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTime Instant => Date.Kind == DateTimeKind.Utc ? Date : Date.ToUniversalTime();
     /// <summary>Identificativo che non cambia spostando il messaggio (Gmail: X-GM-MSGID); serve a Posponi.</summary>
     public string StableId { get; init; } = "";
     public bool IsRead { get; set; }
@@ -277,6 +286,12 @@ public sealed class MessageSummary
     /// Graph StableId è l'id). Serve ai contrassegni per ritrovare il messaggio (Flags.KeyOf). Vuoto per Gmail e IMAP.
     /// </summary>
     public string InternetMessageId { get; init; } = "";
+    /// <summary>
+    /// Graph: la scheda della Posta in arrivo (inferenceClassification), vero per Evidenziata e falso per Altra; null altrove e
+    /// per Gmail e IMAP. Un messaggio nuovo entra in cima solo nella sua scheda (MainWindow.AddIncoming; audit di affidabilità
+    /// del 25 ottobre 2026, elenco, E-09).
+    /// </summary>
+    public bool? Focused { get; set; }
 
     /// <summary>
     /// Lo stesso messaggio con un altro identificativo, per esempio tornato nella sua cartella con Annulla (in Gmail l'UID e in
@@ -287,7 +302,7 @@ public sealed class MessageSummary
         Id = id, FolderId = FolderId, From = From, Subject = Subject, Preview = Preview, Date = Date, StableId = StableId,
         IsRead = IsRead, IsFlagged = IsFlagged, HasAttachments = HasAttachments, ConversationId = ConversationId,
         AttachmentNames = AttachmentNames, Categories = Categories, FolderName = FolderName, To = To, LabelKind = LabelKind,
-        IsDraft = IsDraft, ReplyTo = ReplyTo, IsImportant = IsImportant, FlagDue = FlagDue, InternetMessageId = InternetMessageId,
+        IsDraft = IsDraft, ReplyTo = ReplyTo, IsImportant = IsImportant, FlagDue = FlagDue, InternetMessageId = InternetMessageId, Focused = Focused,
     };
 }
 
@@ -660,6 +675,13 @@ public interface IMailProvider
     /// <summary>Messaggi non letti arrivati nella Posta in arrivo dopo l'istante indicato (per le notifiche).</summary>
     Task<List<MessageSummary>> GetNewAsync(DateTime sinceUtc);
     /// <summary>
+    /// Per le notifiche (App.CheckAccountAsync): i messaggi da leggere arrivati nella Posta in arrivo dopo mark
+    /// ("UIDVALIDITY:UID" dell'ultimo visto dal controllo di prima), con il mark nuovo da passare la volta dopo; senza mark
+    /// (la prima volta, o con una UIDVALIDITY nuova) quelli arrivati dopo sinceUtc, come GetNewAsync. Di base (Graph) è
+    /// GetNewAsync, senza mark.
+    /// </summary>
+    async Task<Arrivals> GetNewAsync(string? mark, DateTime sinceUtc) => new(await GetNewAsync(sinceUtc), null);
+    /// <summary>
     /// Per le regole di Missiva (Gmail, IMAP): i messaggi arrivati nella Posta in arrivo dopo mark (UIDVALIDITY e l'ultimo UID
     /// visto dalle regole), letti o no e senza il limite dei 20 delle notifiche, dal più vecchio, al massimo 500 per volta;
     /// senza mark (la prima volta, o con una UIDVALIDITY nuova) quelli arrivati dopo sinceUtc. Con il mark nuovo da passare
@@ -809,6 +831,13 @@ public interface IMailProvider
     /// richiesta si collega con le impostazioni nuove. Graph e Gmail prendono già i token nuovi da sé.
     /// </summary>
     Task ResetConnectionsAsync() => Task.CompletedTask;
+    /// <summary>
+    /// Dopo la ripresa del PC o un cambio di rete (App.WakeAsync): tutte le connessioni si buttano subito, senza saluto e
+    /// senza aspettare chi le sta usando, perché dopo la sospensione sono morte senza che TCP lo sappia. Chi stava aspettando
+    /// una risposta (un controllo, una sessione dell'IDLE) riceve un errore e riprova una volta su una connessione nuova
+    /// (audit di affidabilità del 25 ottobre 2026, A-04). Gmail e IMAP; Graph usa connessioni HTTP, che .NET rifà da sé.
+    /// </summary>
+    void DropConnections() { }
 }
 
 /// <summary>Un messaggio della Posta inviata, per la rubrica: quando è partito e per chi.</summary>

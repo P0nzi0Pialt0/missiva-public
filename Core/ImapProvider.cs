@@ -29,8 +29,35 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     sealed class Connection(string name) : IDisposable
     {
         public readonly string Name = name;
-        public readonly ImapClient Client = new() { Timeout = MailLimits.ImapSilenceMs };
+        public ImapClient Client { get; private set; } = new() { Timeout = MailLimits.ImapSilenceMs };
         public readonly SemaphoreSlim Gate = new(1, 1);
+
+        /// <summary>Quante volte la connessione è stata buttata (Drop): chi la stava usando lo vede e riprova su quella nuova.</summary>
+        public int Generation => Volatile.Read(ref generation);
+        int generation;
+
+        /// <summary>Finisce quando la connessione di adesso viene buttata (Drop): RunAsync smette di aspettarla.</summary>
+        public Task Dropped => Volatile.Read(ref dropped).Task;
+        TaskCompletionSource dropped = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>
+        /// Dopo la ripresa del PC o un cambio di rete (DropConnections): al posto del client un altro, non collegato, con lo
+        /// stesso tempo scaduto, e quello di prima si chiude subito, senza saluto e senza aspettare chi lo sta usando. Dopo
+        /// la sospensione la connessione è morta, e il LOGOUT o la fine del comando in corso aspetterebbero il tempo scaduto
+        /// di MailKit (A-04). Chi la stava usando (RunAsync) smette di aspettarla (Dropped) e riprova sul client nuovo: la
+        /// chiusura del socket (ImapSockets.Abort) di solito ferma il comando in attesa con un errore, ma non sempre (con il
+        /// server finto 1 volta su 6 il NOOP restava fermo fino al tempo scaduto, e la chiusura del client di MailKit non
+        /// ferma mai un IDLE). Sul thread di chi chiama, non in sottofondo: con il pool dei thread occupato arrivava tardi.
+        /// </summary>
+        public void Drop()
+        {
+            var old = Client;
+            Client = new() { Timeout = old.Timeout };
+            Interlocked.Increment(ref generation);
+            Interlocked.Exchange(ref dropped, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+            ImapSockets.Abort(old);
+            try { old.Dispose(); } catch { }
+        }
 
         /// <summary>
         /// Il LOGOUT aspetta la risposta del server: con la rete caduta a metà erano fino a 60 s (il Timeout) sul thread di
@@ -162,7 +189,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
             {
                 Network.Check(); // --senza-rete (solo Debug)
                 Validate(imap, server.ImapHost);
-                await imap.ConnectAsync(server.ImapHost, server.ImapPort, Options(server.ImapSecurity, server.ImapHost, imap: true), cancel);
+                await ImapSockets.ConnectAsync(imap, server.ImapHost, server.ImapPort, Options(server.ImapSecurity, server.ImapHost, imap: true), cancel);
             }
             if (credentials != null && !imap.IsAuthenticated) await imap.AuthenticateAsync(credentials, cancel);
         }
@@ -236,7 +263,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     /// </summary>
     public async Task ResetConnectionsAsync()
     {
-        // La connessione dell'IDLE resta presa fino al rinnovo (9 minuti): non la si aspetta, la sua sessione si interrompe da sé.
+        // La connessione dell'IDLE resta presa fino al rinnovo (InboxIdle.Renew): non la si aspetta, la sua sessione si interrompe da sé.
         Interlocked.Exchange(ref idleReset, new CancellationTokenSource()).Cancel();
         foreach (var connection in new[] { main, background, drafts })
         {
@@ -255,16 +282,36 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     }
 
     /// <summary>
+    /// Dopo la ripresa del PC o un cambio di rete (App.WakeAsync): tutte le connessioni, anche quella dell'IDLE con la sua
+    /// sessione in corso, si buttano subito (Connection.Drop), senza saluto e senza aspettare chi le usa: chi aspettava una
+    /// risposta riprova su una connessione nuova (RunAsync), e la sessione dell'IDLE si ricollega (A-04).
+    /// </summary>
+    public void DropConnections()
+    {
+        if (closed) return;
+        foreach (var connection in new[] { main, background, drafts, idle }) connection.Drop();
+        InboxIdle.Break(Account.Email);
+    }
+
+    /// <summary>
     /// Vero dentro la seconda prova di RunAsync, dopo una connessione caduta: le scritture che non si ripetono (APPEND in
     /// Posta inviata, COPY) guardano prima se la prima volta il server le aveva già fatte. AsyncLocal: vale per l'azione
     /// ripresa e per quello che chiama, non per le altre connessioni.
     /// </summary>
     static readonly AsyncLocal<bool> retrying = new();
 
-    async Task<T> RunAsync<T>(Func<ImapClient, Task<T>> action, Connection? on = null, CancellationToken cancel = default)
+    /// <summary>
+    /// Come RunAsync, per le letture (elenco, cartelle, corpi, nuovi messaggi, non letti, IDLE): anche un tempo scaduto si
+    /// riprova una volta su una connessione nuova. Dopo la ripresa del PC o un cambio di rete una connessione morta senza
+    /// che TCP dia errore fa scadere il tempo di MailKit (60 s con un account IMAP), e il controllo dei nuovi messaggi era
+    /// perso fino al giro dopo; la connessione nuova risponde in un secondo (audit di affidabilità del 25 ottobre 2026,
+    /// A-02). Mai per una scrittura, che può essere arrivata al server prima che il tempo scadesse.
+    /// </summary>
+    Task<T> ReadAsync<T>(Func<ImapClient, Task<T>> action, Connection? on = null, CancellationToken cancel = default) => RunAsync(action, on, cancel, read: true);
+
+    async Task<T> RunAsync<T>(Func<ImapClient, Task<T>> action, Connection? on = null, CancellationToken cancel = default, bool read = false)
     {
         var connection = on ?? main;
-        var imap = connection.Client;
         ThrowIfClosed();
         var waiting = System.Diagnostics.Stopwatch.StartNew();
         await connection.Gate.WaitAsync(cancel);
@@ -275,18 +322,45 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
             ThrowIfClosed(); // chiuso mentre aspettava il suo turno
             for (int attempt = 0; ; attempt++)
             {
+                // A ogni tentativo il client di adesso: DropConnections può averlo cambiato mentre si usava quello di prima.
+                var imap = connection.Client;
+                int generation = connection.Generation;
+                var gone = connection.Dropped;
+                bool again = attempt > 0;
                 try
                 {
-                    var clock = System.Diagnostics.Stopwatch.StartNew();
-                    bool connecting = !imap.IsAuthenticated;
-                    await ConnectAsync(imap, Server);
-                    if (connecting) Log.Time($"collegamento IMAP {connection.Name} a {Server.ImapHost}", clock);
-                    retrying.Value = attempt > 0;
-                    return await action(imap);
+                    async Task<T> AttemptAsync()
+                    {
+                        var clock = System.Diagnostics.Stopwatch.StartNew();
+                        bool connecting = !imap.IsAuthenticated;
+                        await ConnectAsync(imap, Server);
+                        if (connecting) Log.Time($"collegamento IMAP {connection.Name} a {Server.ImapHost}", clock);
+                        retrying.Value = again;
+                        return await action(imap);
+                    }
+                    var work = AttemptAsync();
+                    // La connessione buttata mentre si aspettava (la ripresa del PC): non si aspetta più quella, che resta
+                    // indietro e finisce da sola con un errore (osservato qui), e si riprova sulla nuova.
+                    if (await Task.WhenAny(work, gone) != work)
+                    {
+                        _ = work.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                        throw new IOException($"la connessione {connection.Name} è stata rifatta mentre aspettava una risposta");
+                    }
+                    return await work;
                 }
-                catch (Exception ex) when (attempt == 0 && ex is IOException or ServiceNotConnectedException or ImapProtocolException)
+                catch (Exception ex) when (!closed &&
+                                           (attempt == 0 && (ex is IOException or ServiceNotConnectedException or ImapProtocolException ||
+                                                             !cancel.IsCancellationRequested && read && ex is TimeoutException) ||
+                                            !cancel.IsCancellationRequested && connection.Generation != generation))
                 {
+                    // Dopo una connessione buttata si riprova sempre, anche al secondo tentativo: una sessione dell'IDLE ripresa
+                    // dopo la ripresa del PC sta nel secondo tentativo per tutta la sessione, e un cambio di rete dopo non deve
+                    // farla cadere.
                     // Connessione caduta (sospensione, cambio di rete, server che chiude dopo un po'): si riprova una volta.
+                    // Per le letture anche dopo un tempo scaduto (ReadAsync): MailKit ha già chiuso la connessione. E con
+                    // qualunque errore se intanto la connessione è stata buttata (DropConnections, la ripresa del PC).
+                    if (connection.Generation != generation) Log.Write($"connessione {connection.Name} di {Account.Email} rifatta dopo la ripresa o un cambio di rete: riprovo su quella nuova");
+                    else if (ex is TimeoutException) Log.Write($"tempo scaduto sulla connessione {connection.Name} di {Account.Email}: riprovo su una connessione nuova");
                     try { await imap.DisconnectAsync(false); } catch { }
                 }
             }
@@ -373,7 +447,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
 
     static bool Selectable(IMailFolder f) => !f.Attributes.HasFlag(FolderAttributes.NoSelect) && !f.Attributes.HasFlag(FolderAttributes.NonExistent);
 
-    public Task<List<MailFolder>> GetFoldersAsync() => RunAsync(async client =>
+    public Task<List<MailFolder>> GetFoldersAsync() => ReadAsync(async client =>
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
         IList<IMailFolder> all;
@@ -514,6 +588,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     {
         var f = await OpenAsync(client, folder.Id);
         var unread = await f.SearchAsync(SearchQuery.NotSeen);
+        InboxIdle.Expect(folder.Id, unread, InboxIdle.EchoOf.Seen, true);
         if (unread.Count > 0) await f.AddFlagsAsync(unread, MessageFlags.Seen, true);
     }));
 
@@ -551,8 +626,9 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
 
     public async Task SetCategoryAsync(IReadOnlyList<MessageSummary> messages, string category, bool on)
     {
-        await EachFolderAsync(messages, (_, f, uids, _) =>
+        await EachFolderAsync(messages, (_, f, uids, folderId) =>
         {
+            InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Any);
             var request = new StoreFlagsRequest(on ? StoreAction.Add : StoreAction.Remove, MessageFlags.None) { Silent = true };
             request.Keywords.Add(Keyword(category));
             return f.StoreAsync(uids, request);
@@ -619,7 +695,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         searches[key] = uids;
     }
 
-    public Task<MessagePage> GetMessagesAsync(MailFolder folder, bool? focused, string? next, ListOptions? options = null) => RunAsync(async client =>
+    public Task<MessagePage> GetMessagesAsync(MailFolder folder, bool? focused, string? next, ListOptions? options = null) => ReadAsync(async client =>
     {
         options ??= ListOptions.Default;
         var f = next == null ? await OpenFreshAsync(client, folder.Id, OpenAsync) : await OpenAsync(client, folder.Id);
@@ -635,7 +711,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
             // Quelli segnati \Deleted e non ancora eliminati (spostati da un server senza UIDPLUS) non si mostrano.
             // Come Gmail: nell'ordine della data mostrata, a parità l'ordine di arrivo.
             Messages = items.Where(i => i.Flags?.HasFlag(MessageFlags.Deleted) != true).OrderByDescending(i => i.Index).Select(i => Summary(i, folder.Id))
-                .OrderByDescending(m => m.Date).ToList(),
+                .OrderByDescending(m => m.Instant).ToList(),
             Next = start > 0 ? (start - 1).ToString() : null,
         };
     });
@@ -667,7 +743,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         };
     }
 
-    public Task<Dictionary<string, string>> GetPreviewsAsync(MailFolder folder, IReadOnlyList<MessageSummary> messages) => RunAsync(async client =>
+    public Task<Dictionary<string, string>> GetPreviewsAsync(MailFolder folder, IReadOnlyList<MessageSummary> messages) => ReadAsync(async client =>
     {
         var result = new Dictionary<string, string>();
         if (messages.Count == 0) return result;
@@ -720,7 +796,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     public async Task<MessagePage> SearchAsync(MailFolder? folder, string query, string? next = null, CancellationToken cancel = default)
     {
         var words = query.Trim();
-        if (folder != null) return await RunAsync(client => SearchFolderAsync(client, folder, words, next), main, cancel);
+        if (folder != null) return await ReadAsync(client => SearchFolderAsync(client, folder, words, next), main, cancel);
         var search = everywhere;
         if (search == null || search.Query != words || search.Hits.IsFaulted || search.Hits.IsCanceled
             || next == null && search.Hits.IsCompleted && DateTime.UtcNow - search.Started > ReuseSearch)
@@ -740,7 +816,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         }
         int start = next != null ? int.Parse(next) : 0;
         var slice = hits.Skip(start).Take(PageSize).ToList();
-        var messages = slice.Count == 0 ? new List<MessageSummary>() : await RunAsync(client => FetchHitsAsync(client, slice), background, cancel);
+        var messages = slice.Count == 0 ? new List<MessageSummary>() : await ReadAsync(client => FetchHitsAsync(client, slice), background, cancel);
         return new MessagePage { Messages = messages, Next = start + PageSize < hits.Count ? (start + PageSize).ToString() : null };
     }
 
@@ -768,7 +844,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     /// SEARCH cartella per cartella e, dei risultati, solo UID e data di arrivo (i 100 più recenti di ognuna). Fra una
     /// cartella e l'altra, se nessuno aspetta più questa ricerca, ci si ferma.
     /// </summary>
-    Task<List<Hit>> FindEverywhereAsync(Everywhere search) => RunAsync(async client =>
+    Task<List<Hit>> FindEverywhereAsync(Everywhere search) => ReadAsync(async client =>
     {
         void StopIfUnwanted()
         {
@@ -828,7 +904,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
                 Log.Write($"risultati in {group.Key} non letti: {ex.Message}");
             }
         }
-        return found.OrderByDescending(m => m.Date).ToList();
+        return found.OrderByDescending(m => m.Instant).ToList();
     }
 
     /// <summary>
@@ -896,7 +972,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
 
     readonly ArrivalDates arrivalDates = new();
 
-    public Task<List<MessageSummary>> GetNewAsync(DateTime sinceUtc) => RunAsync(async client =>
+    public Task<List<MessageSummary>> GetNewAsync(DateTime sinceUtc) => ReadAsync(async client =>
     {
         var f = await FreshInboxAsync(client);
         var uids = await f.SearchAsync(SearchQuery.NotSeen.And(SearchQuery.NotDeleted).And(SearchQuery.DeliveredAfter(sinceUtc.ToLocalTime().Date.AddDays(-1))));
@@ -907,8 +983,66 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         return items.Select(i => Summary(i, "INBOX")).ToList();
     }, background);
 
+    /// <summary>Per le notifiche: i nuovi da leggere dopo il mark (NewSinceAsync), sulla connessione in sottofondo in sola lettura.</summary>
+    public Task<Arrivals> GetNewAsync(string? mark, DateTime sinceUtc) => ReadAsync(async client =>
+    {
+        var f = await FreshInboxAsync(client);
+        var (fresh, next) = await NewSinceAsync(f, mark, sinceUtc, arrivalDates, SearchQuery.NotDeleted);
+        if (fresh.Count == 0) return new Arrivals([], next);
+        var items = await f.FetchAsync(fresh, MimeOptions.ListRequest(SummaryItems));
+        return new Arrivals(Recent(items, sinceUtc).Select(i => Summary(i, "INBOX")).ToList(), next);
+    }, background);
+
+    /// <summary>Quanto può essere vecchia la data di arrivo di un messaggio nuovo per UID (NewSinceAsync), prima del controllo di prima.</summary>
+    internal static readonly TimeSpan NewAge = TimeSpan.FromDays(1);
+
+    /// <summary>
+    /// I nuovi per UID, fra quelli con la data di arrivo di non più di NewAge prima del controllo di prima: uno di giorni fa
+    /// messo adesso nella Posta in arrivo (dal web, dal telefono, da un filtro del server, anche in massa) non è posta nuova,
+    /// come non lo era con la data.
+    /// </summary>
+    internal static IEnumerable<IMessageSummary> Recent(IEnumerable<IMessageSummary> items, DateTime sinceUtc) =>
+        items.Where(i => i.InternalDate is not { } date || date.UtcDateTime > sinceUtc - NewAge);
+
+    /// <summary>
+    /// I nuovi da leggere della Posta in arrivo per le notifiche (anche Gmail), sulla cartella già aggiornata: gli UID dopo
+    /// quello del mark con la stessa UIDVALIDITY, da leggere (e non \Deleted, con also), i 20 più recenti; il mark nuovo è
+    /// l'UID più alto visto, letto o no, così un messaggio arrivato già letto non torna "nuovo" se poi lo si segna da leggere.
+    /// Senza mark (la prima volta, o con una UIDVALIDITY nuova) come prima: i non letti arrivati dopo sinceUtc
+    /// (ArrivalDates), e il mark è l'UID dell'ultimo messaggio della cartella. Prima della correzione A-06 dell'audit di
+    /// affidabilità del 25 ottobre 2026 si andava sempre per data di arrivo e orologio del PC, con un minuto di margine: un
+    /// messaggio con la data di arrivo più vecchia (reso visibile tardi, tolto dalla posta indesiderata, l'orologio del PC
+    /// avanti) non si annunciava e non entrava nell'elenco. Gli UID crescono nell'ordine in cui i messaggi entrano nella
+    /// cartella (RFC 3501), quindi uno non ancora visibile ha un UID più alto e si trova la volta dopo.
+    /// </summary>
+    internal static async Task<(List<UniqueId> Fresh, string? Mark)> NewSinceAsync(IMailFolder inbox, string? mark, DateTime sinceUtc, ArrivalDates dates, SearchQuery? also = null)
+    {
+        uint validity = inbox.UidValidity, last = 0;
+        bool known = mark?.Split(':') is [var v, var u] && uint.TryParse(v, out var was) && was == validity && uint.TryParse(u, out last);
+        if (!known)
+        {
+            SearchQuery unseen = SearchQuery.NotSeen.And(SearchQuery.DeliveredAfter(sinceUtc.ToLocalTime().Date.AddDays(-1)));
+            if (also != null) unseen = unseen.And(also);
+            var uids = await inbox.SearchAsync(unseen);
+            List<UniqueId> byDate = uids.Count == 0 ? [] : await dates.AfterAsync(inbox, uids.Reverse().Take(20).ToList(), sinceUtc);
+            // L'ultimo messaggio della cartella ha l'UID più alto (gli UID crescono con l'ordine).
+            uint top = inbox.Count == 0 ? 0 : (await inbox.FetchAsync(inbox.Count - 1, inbox.Count - 1, MessageSummaryItems.UniqueId)).FirstOrDefault()?.UniqueId.Id ?? 0;
+            top = Math.Max(top, byDate.Count == 0 ? 0 : byDate.Max(x => x.Id));
+            return (byDate, $"{validity}:{top}");
+        }
+        // "UID n:*" dà sempre almeno il più recente, anche se è già stato visto: contano solo quelli dopo last.
+        var after = (await inbox.SearchAsync(SearchQuery.Uids(new UniqueIdRange(new UniqueId(validity, last + 1), UniqueId.MaxValue)))).Where(x => x.Id > last).ToList();
+        if (after.Count == 0) return ([], mark);
+        var next = $"{validity}:{after.Max(x => x.Id)}";
+        SearchQuery query = SearchQuery.Uids(after).And(SearchQuery.NotSeen);
+        if (also != null) query = query.And(also);
+        var candidates = after.Select(x => x.Id).ToHashSet();
+        var fresh = (await inbox.SearchAsync(query)).Where(x => candidates.Contains(x.Id)).OrderBy(x => x.Id).TakeLast(20).ToList();
+        return (fresh, next);
+    }
+
     /// <summary>Le regole di Missiva: i messaggi arrivati dopo il mark (ArrivedAsync), sulla connessione in sottofondo in sola lettura.</summary>
-    public Task<Arrivals?> GetArrivedAsync(string? mark, DateTime sinceUtc) => RunAsync(async client =>
+    public Task<Arrivals?> GetArrivedAsync(string? mark, DateTime sinceUtc) => ReadAsync(async client =>
     {
         var f = await FreshInboxAsync(client);
         var (items, next) = await ArrivedAsync(f, mark, sinceUtc, MimeOptions.ListRequest(ListItems), SearchQuery.NotDeleted);
@@ -945,7 +1079,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     /// Lavoro senza rete: i messaggi della Posta in arrivo degli ultimi giorni, dal più recente, con busta, struttura e
     /// dimensione (senza anteprime), sulla connessione in sottofondo con EXAMINE: poi PrefetchAsync ne scarica i corpi.
     /// </summary>
-    public Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, DateTime sinceUtc, int max) => RunAsync(async client =>
+    public Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, DateTime sinceUtc, int max) => ReadAsync(async client =>
     {
         var f = client.Inbox;
         if (!f.IsOpen) await f.OpenAsync(FolderAccess.ReadOnly);
@@ -959,7 +1093,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     /// Lo stesso, ma solo quello che serve a BodyCache.Has (UID, Message-Id con BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)], segni e
     /// data): come in Gmail, la copia degli ultimi 30 giorni non rilegge ogni mezz'ora busta e struttura di tutti.
     /// </summary>
-    public Task<List<MessageSummary>> GetRecentKeysAsync(MailFolder inbox, DateTime sinceUtc, int max) => RunAsync(async client =>
+    public Task<List<MessageSummary>> GetRecentKeysAsync(MailFolder inbox, DateTime sinceUtc, int max) => ReadAsync(async client =>
     {
         var f = client.Inbox;
         if (!f.IsOpen) await f.OpenAsync(FolderAccess.ReadOnly);
@@ -979,7 +1113,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     }, background);
 
     /// <summary>Busta e struttura dei soli messaggi dati (quelli che mancano alla copia su disco), per scaricarne i corpi.</summary>
-    public Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, IReadOnlyList<MessageSummary> keys) => RunAsync(async client =>
+    public Task<List<MessageSummary>> GetRecentAsync(MailFolder inbox, IReadOnlyList<MessageSummary> keys) => ReadAsync(async client =>
     {
         if (keys.Count == 0) return new List<MessageSummary>();
         var f = client.Inbox;
@@ -988,14 +1122,14 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         return items.OrderByDescending(i => i.InternalDate).Select(i => Summary(i, "INBOX")).ToList();
     }, background);
 
-    public Task<int> GetInboxUnreadAsync() => RunAsync(async client =>
+    public Task<int> GetInboxUnreadAsync() => ReadAsync(async client =>
     {
         var f = await FreshInboxAsync(client, counting: true);
         var query = SearchQuery.NotSeen.And(SearchQuery.NotDeleted);
         return client.Capabilities.HasFlag(ImapCapabilities.ESearch) ? (await f.SearchAsync(SearchOptions.Count, query)).Count : (await f.SearchAsync(query)).Count;
     }, background);
 
-    public Task<List<SentRecipients>> GetSentRecipientsAsync(int max) => RunAsync(async client =>
+    public Task<List<SentRecipients>> GetSentRecipientsAsync(int max) => ReadAsync(async client =>
     {
         if (await SpecialAsync(client, FolderKind.Sent) is not { } id) return new List<SentRecipients>();
         var sent = await ExamineAsync(client, id);
@@ -1054,7 +1188,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
             try { return await coming.WaitAsync(cancel); }
             catch (Exception) when (!cancel.IsCancellationRequested) { }
         }
-        return await RunAsync(async client =>
+        return await ReadAsync(async client =>
         {
             if (Cached(key) is { } body) return body;
             try { return await DownloadAsync(OpenAsync(client, message.FolderId), message, key, early: false); }
@@ -1082,7 +1216,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     /// Per una copia su disco che non ha mai letto List-Unsubscribe: la stessa richiesta leggera delle Authentication-Results
     /// (SenderCheck.FetchIfThereAsync, tre intestazioni e niente corpo), in sottofondo con EXAMINE.
     /// </summary>
-    public Task<ListHeaders?> GetListHeadersAsync(MessageSummary message, CancellationToken cancel = default) => RunAsync(async client =>
+    public Task<ListHeaders?> GetListHeadersAsync(MessageSummary message, CancellationToken cancel = default) => ReadAsync(async client =>
     {
         var headers = await SenderCheck.FetchIfThereAsync(await ExamineAsync(client, message.FolderId), Uid(message));
         return headers == null ? null : new ListHeaders(headers["List-Unsubscribe"], headers["List-Unsubscribe-Post"]);
@@ -1156,7 +1290,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
             if (!Wanted() || !known.TryGetValue(key, out var s) || !Prefetchable(s) || OnDisk(message)) continue;
             try
             {
-                if (await RunAsync(async client =>
+                if (await ReadAsync(async client =>
                     {
                         if (!Wanted()) return false;
                         await DownloadAsync(ExamineAsync(client, message.FolderId), message, key, early: true);
@@ -1319,14 +1453,16 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         }
     }, affectsUnread);
 
-    public Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool read) => EachFolderAsync(messages, async (_, f, uids, _) =>
+    public Task SetReadAsync(IReadOnlyList<MessageSummary> messages, bool read) => EachFolderAsync(messages, async (_, f, uids, folderId) =>
     {
+        InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Seen, read); // l'eco all'IDLE, per messaggio (L-04)
         if (read) await f.AddFlagsAsync(uids, MessageFlags.Seen, true);
         else await f.RemoveFlagsAsync(uids, MessageFlags.Seen, true);
     });
 
-    public Task SetFlagAsync(IReadOnlyList<MessageSummary> messages, bool flagged) => EachFolderAsync(messages, async (_, f, uids, _) =>
+    public Task SetFlagAsync(IReadOnlyList<MessageSummary> messages, bool flagged) => EachFolderAsync(messages, async (_, f, uids, folderId) =>
     {
+        InboxIdle.Expect(folderId, uids, InboxIdle.EchoOf.Flagged, flagged);
         if (flagged) await f.AddFlagsAsync(uids, MessageFlags.Flagged, true);
         else await f.RemoveFlagsAsync(uids, MessageFlags.Flagged, true);
     }, affectsUnread: false);
@@ -1338,6 +1474,9 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     /// </summary>
     static async Task<UniqueIdMap> MoveUidsAsync(ImapClient client, IMailFolder from, IList<UniqueId> uids, IMailFolder to)
     {
+        // L'eco all'IDLE di chi esce dalla Posta in arrivo: l'EXPUNGE e, senza MOVE, il \Deleted (L-04, E-14).
+        InboxIdle.Expect(from.FullName, uids, InboxIdle.EchoOf.Removed);
+        InboxIdle.Expect(from.FullName, uids, InboxIdle.EchoOf.Any);
         if (client.Capabilities.HasFlag(ImapCapabilities.Move)) return await from.MoveToAsync(uids, to);
         // Ripresa dopo una connessione caduta: la COPY forse era già fatta, e rifarla lascerebbe doppioni nella cartella di
         // arrivo. Quelli già copiati non hanno il nuovo UID: Annulla li ritrova con il Message-Id, come senza UIDPLUS.
@@ -1370,6 +1509,8 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
     /// <summary>Eliminazione definitiva: \Deleted e UID EXPUNGE; senza UIDPLUS un EXPUNGE (Cestino e Svuota, dove tutto va via).</summary>
     static async Task DeleteNowAsync(ImapClient client, IMailFolder f, IList<UniqueId> uids)
     {
+        InboxIdle.Expect(f.FullName, uids, InboxIdle.EchoOf.Removed);
+        InboxIdle.Expect(f.FullName, uids, InboxIdle.EchoOf.Any);
         await f.AddFlagsAsync(uids, MessageFlags.Deleted, true);
         if (client.Capabilities.HasFlag(ImapCapabilities.UidPlus)) await f.ExpungeAsync(uids);
         else await f.ExpungeAsync();
@@ -1377,6 +1518,8 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
 
     public async Task<List<MovedMessage>> MoveAsync(IReadOnlyList<MessageSummary> messages, MailFolder destination)
     {
+        // Nella Posta in arrivo con un UID nuovo, ma non sono posta nuova (A-06).
+        if (IsInbox(destination)) InboxIdle.OwnArrivals(Account.Id, messages.Select(m => m.StableId));
         var moved = new List<MovedMessage>();
         await EachFolderAsync(messages, async (client, f, uids, folderId) =>
         {
@@ -1398,8 +1541,15 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         return moved;
     }
 
-    public Task<List<MovedMessage>> UndoMoveAsync(IReadOnlyList<MovedMessage> moved, MailFolder destination) =>
-        InboxIdle.OwnAsync(Account.Id, () => UndoMoveNowAsync(moved, destination));
+    public Task<List<MovedMessage>> UndoMoveAsync(IReadOnlyList<MovedMessage> moved, MailFolder destination)
+    {
+        // Annulla li rimette dov'erano, anche nella Posta in arrivo: non sono posta nuova (A-06).
+        InboxIdle.OwnArrivals(Account.Id, moved.Select(x => x.Original.StableId));
+        return InboxIdle.OwnAsync(Account.Id, () => UndoMoveNowAsync(moved, destination));
+    }
+
+    /// <summary>La Posta in arrivo (per tipo o per nome).</summary>
+    internal static bool IsInbox(MailFolder folder) => folder.Kind == FolderKind.Inbox || folder.Id.Equals("INBOX", StringComparison.OrdinalIgnoreCase);
 
     async Task<List<MovedMessage>> UndoMoveNowAsync(IReadOnlyList<MovedMessage> moved, MailFolder destination)
     {
@@ -1448,7 +1598,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         foreach (var group in messages.GroupBy(m => m.FolderId))
         {
             var uids = group.Select(Uid).Distinct().ToList();
-            var found = await RunAsync(async client =>
+            var found = await ReadAsync(async client =>
                 await (await ExamineAsync(client, group.Key)).FetchAsync(uids, MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope | MessageSummaryItems.Flags), background);
             foreach (var m in group)
                 if (found.FirstOrDefault(s => s.UniqueId == Uid(m)) is { } s && s.Flags?.HasFlag(MessageFlags.Deleted) != true
@@ -1471,6 +1621,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
 
     public Task<string?> WakeAsync(string key, MailFolder snoozeFolder, MailFolder inbox) => InboxIdle.OwnAsync(Account.Id, () => RunAsync(async client =>
     {
+        InboxIdle.OwnArrivals(Account.Id, [key]); // il ritorno di Posponi non è posta nuova (A-06): come prima, nessuna notifica
         var f = await OpenAsync(client, snoozeFolder.Id);
         if (await FindAsync(f, key) is not { } uid) return null;
         await f.RemoveFlagsAsync(uid, MessageFlags.Seen, true);
@@ -1672,7 +1823,7 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
 
     /// <summary>
     /// Annullato da ResetConnectionsAsync (server o password cambiati in Gestisci account): la sessione dell'IDLE in corso,
-    /// che tiene la sua connessione fino a 9 minuti, si chiude subito e la prossima si collega al server nuovo. Prima l'IDLE
+    /// che tiene la sua connessione fino al rinnovo (InboxIdle.Renew), si chiude subito e la prossima si collega al server nuovo. Prima l'IDLE
     /// restava sul server di prima e annunciava la casella vecchia.
     /// </summary>
     CancellationTokenSource idleReset = new();
@@ -1683,11 +1834,11 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         {
             var reset = idleReset;
             using var session = CancellationTokenSource.CreateLinkedTokenSource(token, reset.Token);
-            return await RunAsync(async client =>
+            return await ReadAsync(async client =>
             {
                 try
                 {
-                    return await InboxIdle.SessionAsync(client, changed, session.Token);
+                    return await InboxIdle.SessionAsync(Account.Email, client, changed, session.Token);
                 }
                 catch (OperationCanceledException) when (reset.IsCancellationRequested && !token.IsCancellationRequested)
                 {
@@ -1716,6 +1867,54 @@ public sealed class ImapProvider(MailAccount account) : IMailProvider, IDisposab
         background.Dispose();
         drafts.Dispose();
         idle.Dispose();
+    }
+}
+
+/// <summary>
+/// Il collegamento delle connessioni IMAP (account IMAP e Gmail) con un socket aperto da Missiva e dato a MailKit
+/// (ImapClient.ConnectAsync con il socket), invece di lasciarlo aprire a MailKit: così si può chiudere anche con un comando
+/// in attesa (Abort), dopo la ripresa del PC o un cambio di rete. Chiudere il client di MailKit (Dispose, Disconnect) non
+/// ferma sempre un comando in attesa su una connessione muta: con il server finto un NOOP a volte sì e a volte no, un IDLE
+/// mai; chiudere il socket li ferma subito, con IOException (audit di affidabilità del 25 ottobre 2026, A-04). Il
+/// collegamento è quello di MailKit: il nome risolto con il DNS e gli indirizzi provati uno alla volta (IPv6 e IPv4 con un
+/// socket solo), al più il tempo scaduto del client; TLS, certificato e SNI li fa MailKit come prima.
+/// </summary>
+static class ImapSockets
+{
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ImapClient, Socket> sockets = new();
+
+    public static async Task ConnectAsync(ImapClient client, string host, int port, SecureSocketOptions options, CancellationToken cancel = default)
+    {
+        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+        try
+        {
+            using (var limit = CancellationTokenSource.CreateLinkedTokenSource(cancel))
+            {
+                if (client.Timeout > 0) limit.CancelAfter(client.Timeout);
+                try
+                {
+                    await socket.ConnectAsync(host, port, limit.Token);
+                }
+                catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
+                {
+                    throw new TimeoutException($"{host} non ha risposto al collegamento sulla porta {port} in {client.Timeout / 1000} s");
+                }
+            }
+            await client.ConnectAsync(socket, host, port, options, cancel);
+            sockets.AddOrUpdate(client, socket);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>Chiude subito il socket del client, anche con un comando in attesa (che riceve IOException).</summary>
+    public static void Abort(ImapClient client)
+    {
+        if (!sockets.TryGetValue(client, out var socket)) return;
+        try { socket.Dispose(); } catch { }
     }
 }
 

@@ -109,6 +109,9 @@ static partial class ProvaBozze
         new("lingua-lettura", LanguageReadingTests), // l'inglese dell'area lettura (ProvaBozze.LinguaLettura.cs)
         new("lingua-agenda", LanguageCalendarTests), // l'inglese dell'area agenda (ProvaBozze.LinguaAgenda.cs)
         new("lingua-servizio", LanguageServiceTests), // l'inglese dell'area servizio (ProvaBozze.LinguaServizio.cs)
+        new("affidabilita-arrivo", ArrivalFixTests, Audit: true), // audit di affidabilità del 25 ottobre, arrivo dei messaggi nuovi: le correzioni, A-01..A-10 (ProvaBozze.AffidabilitaArrivo.cs)
+        new("affidabilita-letti", ReadReliabilityTests), // audit di affidabilità del 25 ottobre 2026, letti e non letti: le correzioni (ProvaBozze.AffidabilitaLetti.cs); sul thread STA per il riquadro
+        new("affidabilita-elenco", ListFixTests, Audit: true), // audit di affidabilità del 25 ottobre 2026, elenco e conteggi: le correzioni, E-01..E-15 (ProvaBozze.AffidabilitaElenco.cs)
         new("caduta", RobCrash, Manual: true), // solo a mano: chiude il processo con un errore su un altro thread (C-24)
     ];
 

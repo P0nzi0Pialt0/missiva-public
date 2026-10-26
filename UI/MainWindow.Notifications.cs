@@ -269,27 +269,55 @@ public partial class MainWindow
     {
         foreach (var window in FolderWindows) window.ApplyInboxChanges(provider, changes);
         if (accounts.FirstOrDefault(a => a.Provider == provider) is not { } account) return;
-        var read = changes.Seen.GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.Last().Read);
-        var removed = changes.Removed.ToHashSet();
+        // I messaggi segnati qui intanto (la scrittura in viaggio o in coda) restano come li ha messi l'utente: una delta
+        // partita un attimo prima del PATCH li riportava com'erano (L-05).
+        var inbox = Special(account, FolderKind.Inbox)?.Id ?? "inbox";
+        var seen = changes.Seen.GroupBy(s => s.Id).Select(g => new MessageSummary { Id = g.Key, FolderId = inbox, IsRead = g.Last().Read }).ToList();
+        ActionQueue.Apply(provider.Account.Id, seen);
+        ReadMarks.Apply(provider.Account.Id, seen, changes.Asked);
+        var read = seen.ToDictionary(m => m.Id, m => m.IsRead);
         foreach (var row in rows.Rows.Where(r => r.Account == account).ToList())
-        {
             if (read.TryGetValue(row.Summary.Id, out var isRead) && row.IsRead != isRead) row.IsRead = isRead;
-            if (row.Count == 1 && removed.Contains(row.Summary.Id))
-            {
-                if (Reader.Selected?.Id == row.Summary.Id) Reader.Clear();
-                rows.Remove(row);
-            }
+        // I messaggi usciti escono anche da una conversazione (E-04): prima uscivano solo le righe di un messaggio solo, e la
+        // conversazione eliminata dal telefono restava con il suo "(2)".
+        // Anche per una pagina in viaggio, che li avrebbe ancora (E-07).
+        journal.Removed(provider.Account.Id, changes.Removed.Select(id => new MessageSummary { Id = id, FolderId = inbox }));
+        foreach (var id in changes.Removed.Distinct())
+        {
+            if (!rows.RemoveMessage(account, null, id, ByDateNewest)) continue;
+            if (Reader.Selected?.Id == id) Reader.Clear();
         }
     }
 
+    /// <summary>L'elenco è per data, dal più recente: una conversazione che perde la testa va al posto del messaggio che la sostituisce.</summary>
+    bool ByDateNewest => listOptions.Sort == SortBy.Date && !listOptions.Ascending;
+
     /// <summary>
     /// Dopo un avviso dell'IDLE sui segni o sui messaggi usciti (letti o spostati dal telefono), la Posta in arrivo
-    /// dell'account, se è quella aperta, si rilegge dal server.
+    /// dell'account, se è quella aperta, si rilegge dal server. Dalle correzioni dell'audit di affidabilità del 25 ottobre
+    /// 2026 (elenco) anche dopo un arrivo che il controllo non spiega (E-02), un IDLE ricollegato (E-03) e una query delta con
+    /// messaggi che l'elenco non ha (RefreshIfMissing).
     /// </summary>
-    public void RefreshInboxOf(IMailProvider provider)
+    /// <param name="why">Il motivo, per il registro.</param>
+    public void RefreshInboxOf(IMailProvider provider, string why = "avviso dell'IDLE")
     {
         foreach (var window in FolderWindows) window.RefreshInboxOf(provider);
-        if (folder is { Folder.Kind: FolderKind.Inbox } open && open.Account.Provider == provider && !searching && !loading) _ = RefreshListAsync();
+        if (folder is { Folder.Kind: FolderKind.Inbox } open && open.Account.Provider == provider && !searching) _ = RefreshListAsync(why); // con un caricamento in corso, alla sua fine (E-08)
+        // Anche le viste Posta in arrivo e Non letti di tutti gli account, che prima restavano com'erano (E-05).
+        else if (folder == null && unified is { View: UnifiedView.Inbox or UnifiedView.Unread } && !searching && accounts.Any(a => a.Provider == provider)) _ = RefreshListAsync(why);
+    }
+
+    /// <summary>
+    /// La query delta di Graph (dopo il controllo, che mette in cima i nuovi da leggere) dice di messaggi della Posta in arrivo
+    /// che l'elenco aperto non ha: letti sul telefono appena arrivati, rimessi in Posta in arrivo dal sito. Prima cambiavano
+    /// solo le righe che c'erano, e quei messaggi non entravano mai (E-02); ora la Posta in arrivo aperta si rilegge.
+    /// </summary>
+    internal void RefreshIfMissing(IMailProvider provider, InboxChanges changes)
+    {
+        foreach (var window in FolderWindows) window.RefreshIfMissing(provider, changes);
+        if (accounts.FirstOrDefault(a => a.Provider == provider) is not { } account || searching) return;
+        var known = rows.Rows.Where(r => r.Account == account).SelectMany(MessageRows.MessagesOf).Select(m => m.Id);
+        if (ListRefresh.Missing(changes, known) is { Count: > 0 } missing) RefreshInboxOf(provider, $"query delta, {missing.Count} messaggi che l'elenco non ha");
     }
 
     /// <summary>
@@ -301,6 +329,8 @@ public partial class MainWindow
         foreach (var window in FolderWindows) window.ApplyIdleFlags(provider, id, read, flagged);
         if (accounts.FirstOrDefault(a => a.Provider == provider) is not { } account) return;
         var inbox = Special(account, FolderKind.Inbox)?.Id ?? "INBOX";
+        // Con un segno di qui ancora in viaggio sullo stesso messaggio vale quello (L-05): l'avviso può essere di prima.
+        if (read != null && ReadMarks.Holding(provider.Account.Id, new MessageSummary { Id = id, FolderId = inbox }, ReadMarks.Asked()) != null) read = null;
         foreach (var row in rows.Rows.Where(r => r.Account == account && r.Summary.Id == id && r.Summary.FolderId.Equals(inbox, StringComparison.OrdinalIgnoreCase)))
         {
             if (read is { } r && row.IsRead != r) row.IsRead = r;
@@ -317,13 +347,14 @@ public partial class MainWindow
         foreach (var m in messages) RemoveNotifiedRow(account, m);
     }
 
-    /// <summary>La riga del messaggio esce dall'elenco, se c'è da sola (una conversazione resta: la ricarica il controllo dopo).</summary>
+    /// <summary>
+    /// Il messaggio esce dall'elenco: la sua riga se è da solo, altrimenti dalla sua conversazione, che resta con gli altri
+    /// (MessageRows.RemoveMessage). Prima una conversazione restava intera, con il commento "la ricarica il controllo dopo",
+    /// che non la ricaricava (audit di affidabilità del 25 ottobre 2026, elenco, E-04).
+    /// </summary>
     void RemoveNotifiedRow(AccountItem account, MessageSummary message)
     {
-        foreach (var row in rows.Rows.Where(r => r.Account == account && r.Count == 1 && r.Summary.Id == message.Id && r.Summary.FolderId == message.FolderId).ToList())
-        {
-            if (Reader.Selected?.Id == message.Id) Reader.Clear();
-            rows.Remove(row);
-        }
+        journal.Removed(account.Provider.Account.Id, [message]); // una pagina in viaggio non la rimette (E-07)
+        if (rows.RemoveMessage(account, message.FolderId, message.Id, ByDateNewest) && Reader.Selected?.Id == message.Id && Reader.Selected.FolderId == message.FolderId) Reader.Clear();
     }
 }

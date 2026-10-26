@@ -9,6 +9,8 @@ namespace Missiva.UI;
 public sealed class App : Application
 {
     readonly Dictionary<string, DateTime> lastCheck = new();
+    /// <summary>Per account, il mark dei nuovi messaggi ("UIDVALIDITY:UID" dell'ultimo visto: IMailProvider.GetNewAsync), in memoria.</summary>
+    readonly Dictionary<string, string?> newMarks = new();
     /// <summary>
     /// I messaggi già annunciati (account e id), gli ultimi 2000: servono solo a non annunciare due volte i messaggi del
     /// minuto di margine fra un controllo e l'altro. Prima un insieme senza tetto, una voce per messaggio arrivato finché
@@ -17,7 +19,6 @@ public sealed class App : Application
     readonly RecentKeys notified = new(2000);
     List<IMailProvider> providers = new();
     DispatcherTimer? poll;
-    bool checking;
     /// <summary>L'avviso di un errore non gestito dell'interfaccia è già stato dato in questa sessione.</summary>
     bool uiErrorTold;
 
@@ -134,6 +135,7 @@ public sealed class App : Application
         {
             Exiting = true; // la finestra si chiude davvero, non nell'area di notifica
             SaveDraftsBeforeExit($"fine della sessione di Windows ({(ev.ReasonSessionEnding == ReasonSessionEnding.Logoff ? "uscita" : "spegnimento o riavvio")})");
+            ReadMarks.QueueUnfinished(); // i segni di lettura ancora in viaggio, nella coda su disco (L-08)
             Store.Flush(); // le impostazioni in attesa di SaveSoon: Windows può chiudere il processo senza passare da OnExit
             SenderLogos.Flush(); // e i domini visti negli ultimi secondi
         };
@@ -154,6 +156,8 @@ public sealed class App : Application
         themeCheck.Tick += (_, _) => ApplyTheme();
         Log.Startup("colori");
         SystemEvents.UserPreferenceChanged += OnUserPreference;
+        // La sospensione e la ripresa del PC (WakeAsync): prima nessuno se ne accorgeva (A-04).
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
         Log.Startup("SystemEvents");
 
         // Nascosta nell'area di notifica: avvio con Windows (--nascosta) o Windows che la avvia per un'azione di una
@@ -245,7 +249,8 @@ public sealed class App : Application
         InputProbe.Start(Dispatcher); // MISSIVA_INGRESSO=1: tasti e clic veri durante lo scorrimento (strumenti\ingresso.ps1)
 #endif
 
-        // Nuovi messaggi: un controllo ogni due minuti, finché Missiva è aperta (anche nascosta nell'area di notifica).
+        // Nuovi messaggi: il controllo di riserva a ogni giro (PollEvery, un minuto; Graph ogni due: PollDue), finché Missiva
+        // è aperta (anche nascosta nell'area di notifica).
         poll = new DispatcherTimer { Interval = PollEvery };
 #if DEBUG
         // Prove: --controllo 15 controlla ogni 15 secondi, per vederlo nel registro anche a finestra chiusa senza aspettare.
@@ -262,6 +267,11 @@ public sealed class App : Application
         // La rete che torna (Wi-Fi ritrovato, cavo, VPN): il controllo subito, e con lui la coda delle azioni fatte senza rete e
         // la Posta in uscita (MainWindow.NoteAccountState), invece di aspettare fino a due minuti.
         System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += OnNetworkChanged;
+        _ = Task.Run(() => networkPrint ??= Arrival.NetworkPrint()); // com'è la rete adesso, per riconoscere i cambi veri
+        // La ripresa dalla sospensione anche senza che Windows la dica (Arrival.SleepClock), al più 15 s dopo.
+        sleepTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(15) };
+        sleepTimer.Tick += OnSleepClock;
+        sleepTimer.Start();
         Log.Startup("OnStartup finito");
     }
 
@@ -304,13 +314,116 @@ public sealed class App : Application
     /// <summary>Un controllo già in programma dopo un cambio della rete (Windows ne manda diversi di fila).</summary>
     bool networkCheckPending;
 
+    /// <summary>La rete com'era all'ultimo cambio guardato (Arrival.NetworkPrint): uguale, le connessioni sono vive.</summary>
+    string? networkPrint;
+
+    /// <summary>
+    /// Windows dice che gli indirizzi di rete sono cambiati (ne manda diversi di fila: si guarda 5 s dopo il primo). Se la
+    /// rete è cambiata davvero (un altro Wi-Fi, il cavo, una VPN, la rete caduta o tornata: Arrival.NetworkPrint) le
+    /// connessioni sono morte, e WakeAsync le rifà come dopo la ripresa del PC (audit di affidabilità del 25 ottobre 2026,
+    /// A-04); altrimenti (un indirizzo IPv6 temporaneo nuovo, una scheda virtuale) solo quello di prima, OnNetworkBack.
+    /// </summary>
     void OnNetworkChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(async () =>
     {
         if (networkCheckPending) return;
         networkCheckPending = true;
         await Task.Delay(TimeSpan.FromSeconds(5)); // la rete appena cambiata non ha ancora indirizzo e DNS
         networkCheckPending = false;
+        var now = await Task.Run(() => Arrival.NetworkPrint());
+        if (now != networkPrint)
+        {
+            networkPrint = now;
+            await WakeAsync("rete cambiata");
+            return;
+        }
         OnNetworkBack();
+    });
+
+    // ---------------------------------------------------------------- il risveglio (A-04)
+
+    /// <summary>
+    /// Quanto il PC ha dormito, guardato ogni 15 s (OnSleepClock): la ripresa la dice Windows (OnPowerModeChanged), ma
+    /// non sempre a tutti i programmi; questo la vede comunque, al primo giro dopo la ripresa.
+    /// </summary>
+    readonly Arrival.SleepClock sleepClock = new Arrival.SleepClock();
+    DispatcherTimer? sleepTimer;
+    /// <summary>L'ultimo risveglio (WakeAsync), per non rifarlo quando lo dicono due strade per la stessa ripresa.</summary>
+    DateTime lastWake;
+
+    static string Slept(long ms) => ms <= 0 ? "durata non nota" : ms < 120_000 ? $"{ms / 1000} s sospeso" : ms < 7_200_000 ? $"{ms / 60_000} minuti sospeso" : $"{ms / 3_600_000.0:0.0} ore sospeso";
+
+    /// <summary>
+    /// La sospensione e la ripresa del PC (SystemEvents.PowerModeChanged, sul suo thread): una riga nel registro, anche
+    /// nella versione installata, e alla ripresa WakeAsync. Prima nessuno se ne accorgeva: alla ripresa le connessioni erano
+    /// morte, nessuno controllava, e la posta arrivata col PC sospeso compariva circa due minuti dopo (nel registro
+    /// dell'autore 5 riprese su 11 con posta in attesa), fino a quattro con le connessioni ferme sul tempo scaduto.
+    /// </summary>
+    void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e) => Dispatcher.BeginInvoke(() =>
+    {
+        if (e.Mode == PowerModes.Suspend) Log.Write("sospensione del PC");
+        if (e.Mode != PowerModes.Resume) return;
+        long slept = sleepClock.Check();
+        if (slept == 0 && DateTime.UtcNow - lastWake < TimeSpan.FromSeconds(30))
+        {
+            Log.Write("ripresa dalla sospensione detta da Windows: connessioni già rifatte");
+            return;
+        }
+        _ = WakeAsync($"ripresa dalla sospensione ({Slept(slept)})");
+    });
+
+    void OnSleepClock(object? sender, EventArgs e)
+    {
+        long slept = sleepClock.Check();
+        if (slept > 0) _ = WakeAsync($"ripresa dalla sospensione, vista dall'orologio ({Slept(slept)})");
+    }
+
+    /// <summary>
+    /// Il risveglio: la ripresa dalla sospensione, un cambio di rete vero, e nelle prove "ripresa" e "rete tornata" in
+    /// MISSIVA_KEYS. Le connessioni IMAP e Gmail si buttano tutte, anche le sessioni dell'IDLE in corso (DropConnections:
+    /// chi aspettava una risposta riprova su una connessione nuova), gli IDLE caduti riprovano subito, la query delta di
+    /// Graph ripartita da capo, e tutti gli account si controllano insieme (WakeCheckAsync: se la rete non è ancora pronta,
+    /// di nuovo dopo pochi secondi); a controllo riuscito si rileggono cartelle e prima pagina dell'elenco aperto. Una riga
+    /// nel registro all'inizio e una alla fine, anche nella versione installata (A-04, A-10).
+    /// </summary>
+    internal async Task WakeAsync(string why)
+    {
+        lastWake = DateTime.UtcNow;
+        var list = providers.ToList();
+        Log.Write($"{why}: rifaccio le connessioni, controllo tutti gli account ({list.Count}) e rileggo cartelle ed elenco");
+        foreach (var p in list)
+        {
+            try { p.DropConnections(); }
+            catch (Exception ex) { Log.Error($"connessioni di {p.Account.Email} dopo il risveglio", ex); }
+        }
+        try { deltaStop?.Cancel(); } catch (ObjectDisposedException) { }
+        InboxIdle.RetryNow();
+        var main = MainWindow as MainWindow;
+        main?.RetryCalendarSoon();
+        _ = CheckDeltasAsync(again: true);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        int found = await Arrival.RunAllAsync(list, p => WakeCheckAsync(p, why), StuckCheck,
+            p => Log.Write($"{why}: il controllo di {p.Account.Email} non è finito in {StuckCheck.TotalMinutes:0} minuti, gli altri account non lo aspettano"));
+        main?.AfterWakeAll();
+        Log.Write($"{why}: controllo di tutti gli account finito in {clock.ElapsedMilliseconds} ms, {found} nuovi");
+    }
+
+    /// <summary>
+    /// Il controllo di un account al risveglio: se non riesce per la rete (DNS non ancora pronto, Wi-Fi che si ricollega),
+    /// di nuovo dopo 2, 4, 8, 15 e 30 s (Arrival.WakeRetries), invece di aspettare il giro dopo: nel registro dell'autore
+    /// due volte il controllo partito con il cambio di rete è caduto sul DNS e nessuno l'ha ripetuto, e quei messaggi non
+    /// sono mai stati annunciati. Riuscito, le cartelle e la prima pagina dell'elenco dal server (MainWindow.AfterWake).
+    /// </summary>
+    Task<int> WakeCheckAsync(IMailProvider p, string why) => MicrosoftAuth.InBackgroundAsync(async () =>
+    {
+        int found = 0;
+        bool ok = await Arrival.RetryAsync(async last =>
+        {
+            var failure = new CheckFailure { Quiet = !last };
+            found = Math.Max(found, await CheckAccountAsync(p, why, failure));
+            return failure.Error;
+        }, Arrival.WakeRetries, Arrival.Transient);
+        if (ok) (MainWindow as MainWindow)?.AfterWake(p);
+        return found;
     });
 
     /// <summary>
@@ -326,20 +439,17 @@ public sealed class App : Application
         InboxIdle.RetryNow();
         var main = MainWindow as MainWindow;
         main?.RetryCalendarSoon();
+        // L'elenco aperto rimasto vecchio (la prima pagina non era arrivata) si rilegge subito (audit di affidabilità del 25
+        // ottobre 2026, elenco, E-01).
+        main?.RetryStaleList(null, "rete cambiata");
         if (!providers.Any(p => Network.KnownOffline(p.Account) || ActionQueue.Count(p.Account.Id) + Outbox.Count(p.Account.Id) > 0) && main?.AnyFoldersFailed != true) return;
-        if (checking)
-        {
-            checkAfterThis = true;
-            Log.Write("rete cambiata durante un controllo dei nuovi messaggi: ne parte un altro appena finisce");
-            return;
-        }
+        // Un account che si sta già controllando (fermo su un account che non risponde, fino a due minuti) ne rifà uno appena
+        // finisce: lo fa CheckAccountAsync per ognuno (checkAgain), ora che gli account si controllano insieme (A-02).
         Log.Write("rete cambiata: controllo subito (account non in linea, cartelle non lette, azioni in coda o Posta in uscita)");
-        try { await CheckNewAsync(); }
+        // Con il suo motivo nel registro: prima si scriveva come "controllo di ogni due minuti" (A-10).
+        try { await CheckNewAsync(reason: "rete cambiata"); }
         catch (Exception ex) { Log.Error("controllo dopo il cambio della rete", ex); }
     }
-
-    /// <summary>La rete è cambiata mentre un controllo dei nuovi messaggi era in corso: finito quello, un altro (OnNetworkBack).</summary>
-    bool checkAfterThis;
     /// <summary>Per account, l'ultimo tentativo di rileggere i contatti di Outlook dopo un controllo riuscito (CheckAccountAsync).</summary>
     readonly Dictionary<string, DateTime> contactsTried = new();
 
@@ -348,8 +458,13 @@ public sealed class App : Application
         tray?.Dispose();
         tray = null;
         SystemEvents.UserPreferenceChanged -= OnUserPreference;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        sleepTimer?.Stop();
         System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
         Safety.CleanTemp(TimeSpan.Zero); // allegati aperti in questa sessione
+        // I segni di lettura ancora in viaggio (anche il letto partito chiudendo la finestra con "quando la selezione cambia")
+        // nella coda delle azioni, su disco: ripartono al prossimo avvio (audit di affidabilità del 25 ottobre 2026, L-08).
+        ReadMarks.QueueUnfinished();
         AddressBook.Save();
         SenderLogos.Flush(); // i domini visti negli ultimi secondi, in attesa del loro salvataggio
         Store.Flush(); // le impostazioni in attesa di SaveSoon (un gruppo chiuso, lo zoom, una ricerca fatti un attimo prima di uscire)
@@ -892,6 +1007,20 @@ public sealed class App : Application
         foreach (var p in list) lastCheck.TryAdd(p.Account.Id, DateTime.UtcNow);
         _ = ScanSentLaterAsync(list);
         StartWatchers(list);
+        _ = FirstCheckLaterAsync();
+    }
+
+    /// <summary>
+    /// Il primo controllo dei nuovi messaggi poco dopo l'avvio (e dopo gli account ricaricati), invece che al primo giro
+    /// del timer: è lui che fissa il mark dei nuovi per UID (A-06). Senza, un messaggio arrivato nel primo minuto con una
+    /// data di arrivo più vecchia dell'avvio (prova a finestra F3) entrava nel mark del primo controllo senza essere annunciato.
+    /// Dieci secondi dopo, quando elenco e anteprime dell'avvio hanno lasciato libera la connessione in sottofondo.
+    /// </summary>
+    async Task FirstCheckLaterAsync()
+    {
+        await Task.Delay(TimeSpan.FromSeconds(10));
+        try { await CheckNewAsync(reason: "primo controllo dopo l'avvio"); }
+        catch (Exception ex) { Log.Error("primo controllo dei nuovi messaggi", ex); }
     }
 
     /// <summary>La rubrica dei suggerimenti legge la Posta inviata dopo l'avvio, quando elenchi e anteprime sono arrivati.</summary>
@@ -915,7 +1044,9 @@ public sealed class App : Application
     DispatcherTimer? deltaTimer;
     bool deltaRunning;
     /// <summary>Gli account con un controllo già in programma dopo un avviso dell'IDLE, e quelli da rileggere (segni, usciti).</summary>
-    readonly HashSet<string> pendingChecks = new(), pendingRefresh = new(), pendingArrived = new();
+    readonly HashSet<string> pendingChecks = new(), pendingRefresh = new();
+    /// <summary>Per account, quanti messaggi nuovi hanno annunciato gli avvisi dell'IDLE in attesa del controllo (A-05).</summary>
+    readonly Dictionary<string, int> pendingArrived = new();
     /// <summary>Per account, l'errore della query delta già scritto nel registro (senza rete sarebbe una riga ogni 30 secondi).</summary>
     readonly HashSet<string> deltaErrorLogged = new();
 
@@ -946,6 +1077,22 @@ public sealed class App : Application
         }
     }
 
+    /// <summary>Per account, l'ultimo avviso dell'IDLE (anche il Connected dei rinnovi), per il registro (WhyNotPushed).</summary>
+    readonly Dictionary<string, DateTime> lastIdleNotice = new();
+
+    /// <summary>
+    /// Quando il controllo di riserva trova messaggi nuovi di un account con l'IDLE, il registro dice com'era l'IDLE: in
+    /// sessione (Gmail li ha avvisati tardi, o la connessione è morta in silenzio) o no, e quanto prima aveva detto
+    /// qualcosa. Prima la riga diceva solo il motivo, e un IDLE morto non si distingueva da Gmail lento (audit di
+    /// affidabilità del 25 ottobre 2026, A-10).
+    /// </summary>
+    string WhyNotPushed(IMailProvider p, string reason, int found)
+    {
+        if (found == 0 || reason != PeriodicReason || p.HasInboxDelta) return "";
+        var heard = lastIdleNotice.TryGetValue(p.Account.Id, out var at) ? $", ultimo avviso dell'IDLE {(DateTime.UtcNow - at).TotalSeconds:0} s fa" : ", nessun avviso dell'IDLE";
+        return InboxIdle.Watching(p.Account.Email) ? $" (l'IDLE in sessione non li aveva annunciati{heard})" : $" (IDLE non in sessione{heard})";
+    }
+
     /// <summary>Per account, quando il registro ha detto l'ultima volta di un eco ignorato: una riga per raffica, non una per EXPUNGE.</summary>
     readonly Dictionary<string, DateTime> echoLogged = new();
 
@@ -959,14 +1106,31 @@ public sealed class App : Application
     async void OnInboxEvent(IMailProvider provider, InboxNotice e)
     {
         var id = provider.Account.Id;
+        lastIdleNotice[id] = DateTime.UtcNow;
         if (e.Kind == InboxEvent.Connected)
         {
-            // La sessione dell'IDLE è collegata: il server si raggiunge (MainWindow.AccountReached). Nessun controllo da qui.
+            // La sessione dell'IDLE è collegata: il server si raggiunge (MainWindow.AccountReached).
             (MainWindow as MainWindow)?.AccountReached(provider, "IDLE collegato");
+            // Ricollegata dopo una caduta o un'altra sessione: la sessione nuova conta i messaggi da lì, e quello che è
+            // arrivato mentre l'IDLE era giù non l'annuncia nessuno; lo trova il controllo (audit di affidabilità del 25
+            // ottobre 2026, A-03: prima aspettava il controllo di ogni due minuti). Non subito dopo un risveglio, che li
+            // controlla già tutti (WakeAsync).
+            // E la Posta in arrivo aperta si rilegge dopo il controllo: la sessione nuova non dice nemmeno quello che intanto è
+            // stato eliminato, spostato o letto altrove (audit di affidabilità del 25 ottobre 2026, elenco, E-03: dopo la
+            // sospensione la mail eliminata dal telefono restava).
+            if (e.Reconnected && DateTime.UtcNow - lastWake > TimeSpan.FromSeconds(30))
+            {
+                await MicrosoftAuth.InBackgroundAsync(() => CheckAccountAsync(provider, "IDLE ricollegato"));
+                (MainWindow as MainWindow)?.RefreshInboxOf(provider, "IDLE ricollegato");
+            }
             return;
         }
-        if (e.Kind != InboxEvent.Arrived && InboxIdle.OwnEcho(id))
+        // L'eco per messaggio e per segno (InboxIdle.OwnEcho con l'avviso): un cambio fatto altrove su un altro messaggio, o
+        // diverso da quello atteso, passa sempre; l'altro segno dello stesso avviso cambia la riga (audit di affidabilità del
+        // 25 ottobre 2026, L-04 ed E-14). Prima era eco tutto l'account per 4 s dopo una scrittura qualsiasi.
+        if (e.Kind != InboxEvent.Arrived && InboxIdle.OwnEcho(id, e, out var rest))
         {
+            if (rest is { Id: { } changed }) (MainWindow as MainWindow)?.ApplyIdleFlags(provider, changed, rest.Read, rest.Flagged);
             if (DateTime.UtcNow - echoLogged.GetValueOrDefault(id) > TimeSpan.FromSeconds(10))
                 Log.Write($"IDLE: segni o messaggi usciti nella Posta in arrivo di {provider.Account.Email} dopo un'azione di Missiva: nessuna rilettura");
             echoLogged[id] = DateTime.UtcNow;
@@ -974,63 +1138,112 @@ public sealed class App : Application
         }
         if (e is { Kind: InboxEvent.Changed, Id: { } uid }) (MainWindow as MainWindow)?.ApplyIdleFlags(provider, uid, e.Read, e.Flagged);
         else if (e.Kind != InboxEvent.Arrived) pendingRefresh.Add(id);
-        if (e.Kind == InboxEvent.Arrived) pendingArrived.Add(id);
+        // Quanti messaggi nuovi ha annunciato il server negli avvisi riuniti (InboxNotice.New): il controllo li cerca tutti.
+        if (e.Kind == InboxEvent.Arrived) pendingArrived[id] = pendingArrived.GetValueOrDefault(id) + Math.Max(1, e.New);
         if (!pendingChecks.Add(id)) return;
         await Task.Delay(TimeSpan.FromMilliseconds(700));
         pendingChecks.Remove(id);
         bool refresh = pendingRefresh.Remove(id);
-        bool arrived = pendingArrived.Remove(id);
-        var what = arrived ? "nuovo messaggio" : refresh ? "segni o messaggi cambiati" : e.Kind == InboxEvent.Changed ? "segno cambiato altrove, solo la riga" : "avviso";
+        int expected = pendingArrived.Remove(id, out var count) ? count : 0;
+        bool arrived = expected > 0;
+        var what = arrived ? (expected == 1 ? "nuovo messaggio" : $"{expected} nuovi messaggi") : refresh ? "segni o messaggi cambiati" : e.Kind == InboxEvent.Changed ? "segno cambiato altrove, solo la riga" : "avviso";
         Log.Write($"IDLE: {what} nella Posta in arrivo di {provider.Account.Email}");
-        int found = await MicrosoftAuth.InBackgroundAsync(() => CheckAccountAsync(provider, "avviso dell'IDLE"));
-        // Gmail rende visibile il messaggio alle altre connessioni anche qualche secondo dopo l'avviso dell'IDLE: se il controllo
-        // non lo trova ancora, si riprova (un messaggio già letto, per esempio sul telefono, non si troverà mai: due controlli in più).
-        foreach (var seconds in arrived ? new[] { 3, 10 } : [])
-        {
-            if (found != 0) break; // trovato, o un controllo già in corso che ripartirà da sé (CheckAccountAsync)
-            await Task.Delay(TimeSpan.FromSeconds(seconds));
-            found = await MicrosoftAuth.InBackgroundAsync(() => CheckAccountAsync(provider, $"avviso dell'IDLE, di nuovo dopo {seconds} s"));
-        }
+        int found = Math.Max(0, await MicrosoftAuth.InBackgroundAsync(() => CheckAccountAsync(provider, "avviso dell'IDLE")));
+        // Un arrivo che il controllo non spiega (già letto sul telefono, rimesso in Posta in arrivo, oltre i venti): la Posta in
+        // arrivo aperta si rilegge subito, e di nuovo dopo i tentativi se non l'hanno spiegato (Gmail può renderlo visibile
+        // dopo). Prima entravano nell'elenco solo i "nuovi da leggere" (audit di affidabilità del 25 ottobre 2026, elenco, E-02).
+        bool unexplained = arrived && Arrival.Unexplained(found, expected);
+        if (unexplained) (MainWindow as MainWindow)?.RefreshInboxOf(provider, "arrivo che il controllo non spiega");
+        // Gmail rende visibile il messaggio alle altre connessioni anche qualche secondo dopo l'avviso dell'IDLE: finché il
+        // controllo non ha trovato tutti quelli annunciati, si riprova (un messaggio già letto, per esempio sul telefono, non si
+        // troverà mai: tre controlli in più, di pochi millisecondi). Prima si riprovava solo se ne trovava zero: con due vicini,
+        // il primo visibile e il secondo no, il secondo restava al controllo di riserva (audit di affidabilità del 25 ottobre
+        // 2026, A-05; prova a finestra F7d: 78 s).
+        if (arrived)
+            foreach (var wait in Arrival.ArrivalRetries)
+            {
+                if (!Arrival.KeepLooking(found, expected)) break;
+                await Task.Delay(wait);
+                found += Math.Max(0, await MicrosoftAuth.InBackgroundAsync(() => CheckAccountAsync(provider, $"avviso dell'IDLE, di nuovo dopo {wait.TotalSeconds:0} s")));
+            }
         if (refresh) (MainWindow as MainWindow)?.RefreshInboxOf(provider);
+        else if (unexplained && Arrival.Unexplained(found, expected)) (MainWindow as MainWindow)?.RefreshInboxOf(provider, "arrivo che il controllo non spiega, dopo i tentativi");
     }
 
     /// <summary>
     /// La query delta degli account di Graph: letti ed eliminati altrove nell'elenco, e il controllo se c'è un nuovo da leggere.
     /// In sottofondo (MicrosoftAuth.InBackgroundAsync): un accesso da rifare non apre la finestra di Microsoft ogni 30 secondi.
     /// </summary>
-    Task CheckDeltasAsync() => MicrosoftAuth.InBackgroundAsync(async () =>
+    /// <param name="again">
+    /// Il risveglio (WakeAsync): se una query delta è già in corso (partita prima della sospensione, ferma su una
+    /// connessione morta fino ai 60 s di HttpClient contati da sveglio), quella si ferma (deltaStop) e ne parte un'altra
+    /// appena finisce, invece di saltare il giro.
+    /// </param>
+    Task CheckDeltasAsync(bool again = false) => MicrosoftAuth.InBackgroundAsync(async () =>
     {
-        if (deltaRunning) return;
+        if (deltaRunning)
+        {
+            if (again) deltaAgain = true;
+            return;
+        }
         deltaRunning = true;
         try
         {
-            foreach (var p in providers.Where(p => p.HasInboxDelta).ToList())
+            do
             {
-                try
-                {
-                    var changes = await p.GetInboxChangesAsync();
-                    deltaErrorLogged.Remove(p.Account.Id);
-                    deltaOk[p.Account.Id] = DateTime.UtcNow;
-                    // Graph ha risposto: un account rimasto "Non in linea" o con le cartelle non lette si rimette a posto ora.
-                    (MainWindow as MainWindow)?.AccountReached(p, "query delta riuscita");
-                    if (changes is not { Any: true }) continue;
-                    Log.Write($"delta della Posta in arrivo di {p.Account.Email}: {changes.Seen.Count} nuovi o cambiati, {changes.Removed.Count} usciti");
-                    (MainWindow as MainWindow)?.ApplyInboxChanges(p, changes);
-                    // Anche per i soli letti o usciti altrove: il controllo riconta i non letti dal server (numero sull'icona e
-                    // sulla cartella) subito, senza aspettare il controllo di ogni due minuti.
-                    await CheckAccountAsync(p, changes.Seen.Any(s => !s.Read) ? "query delta" : "query delta, letti o usciti altrove");
-                }
-                catch (Exception ex)
-                {
-                    if (deltaErrorLogged.Add(p.Account.Id)) Log.Write($"delta della Posta in arrivo di {p.Account.Email} non letta: {ex.Message} (non lo riscrivo finché non torna)");
-                }
+                deltaAgain = false;
+                using var stop = new CancellationTokenSource();
+                deltaStop = stop;
+                await DeltasOnceAsync(stop.Token);
             }
+            while (deltaAgain);
         }
         finally
         {
             deltaRunning = false;
+            deltaStop = null;
         }
     });
+
+    /// <summary>La query delta in corso, che il risveglio ferma (CheckDeltasAsync), e se rifarla appena finisce.</summary>
+    CancellationTokenSource? deltaStop;
+    bool deltaAgain;
+
+    async Task DeltasOnceAsync(CancellationToken stop)
+    {
+        foreach (var p in providers.Where(p => p.HasInboxDelta).ToList())
+        {
+            if (stop.IsCancellationRequested) return;
+            try
+            {
+                var changes = await p.GetInboxChangesAsync(stop);
+                deltaErrorLogged.Remove(p.Account.Id);
+                deltaOk[p.Account.Id] = DateTime.UtcNow;
+                // Graph ha risposto: un account rimasto "Non in linea" o con le cartelle non lette si rimette a posto ora.
+                (MainWindow as MainWindow)?.AccountReached(p, "query delta riuscita");
+                // Ripartita da capo (un deltaLink non più valido): per due giri non dice quello che arriva, lo trova il controllo
+                // (audit di affidabilità del 25 ottobre 2026, A-08: prima aspettava il controllo di ogni due minuti).
+                if (changes is { Restarted: true }) await CheckAccountAsync(p, "query delta rifatta");
+                if (changes is not { Any: true }) continue;
+                Log.Write($"delta della Posta in arrivo di {p.Account.Email}: {changes.Seen.Count} nuovi o cambiati, {changes.Removed.Count} usciti");
+                (MainWindow as MainWindow)?.ApplyInboxChanges(p, changes);
+                // Anche per i soli letti o usciti altrove: il controllo riconta i non letti dal server (numero sull'icona e
+                // sulla cartella) subito, senza aspettare il controllo di ogni due minuti.
+                await CheckAccountAsync(p, changes.Seen.Any(s => !s.Read) ? "query delta" : "query delta, letti o usciti altrove");
+                // Messaggi della Posta in arrivo che l'elenco aperto non ha nemmeno dopo il controllo (letti sul telefono appena
+                // arrivati, rimessi in Posta in arrivo): si rilegge (audit di affidabilità del 25 ottobre 2026, elenco, E-02).
+                (MainWindow as MainWindow)?.RefreshIfMissing(p, changes);
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
+            {
+                return; // il risveglio l'ha fermata: ne riparte una da capo (CheckDeltasAsync)
+            }
+            catch (Exception ex)
+            {
+                if (deltaErrorLogged.Add(p.Account.Id)) Log.Write($"delta della Posta in arrivo di {p.Account.Email} non letta: {ex.Message} (non lo riscrivo finché non torna)");
+            }
+        }
+    }
 
     /// <summary>Per account, lo stato da sistemare (AccountFix) già scritto nel registro dal controllo dei nuovi messaggi.</summary>
     readonly Dictionary<string, AccountFix> accountFixLogged = new();
@@ -1057,55 +1270,56 @@ public sealed class App : Application
     /// Dove l'IDLE è in sessione (Gmail, IMAP) o la query delta riesce (Graph, ogni 30 s) i nuovi messaggi e i segni cambiati
     /// arrivano da soli, e il controllo periodico è una rete di sicurezza, ogni SafetyNet. Il giro D1 l'aveva portata a 10
     /// minuti (0,3 ms di CPU al secondo in meno), ma un IDLE caduto senza accorgersene faceva arrivare la notifica fino a
-    /// 10 minuti dopo, e i ritardi erano proprio il problema dell'autore: di nuovo a ogni giro del timer di due minuti (100 s:
-    /// con 2 minuti esatti un timer in anticipo di poco saltava un giro su due). I tempi si tengono fra loro (audit
-    /// dell'11 ottobre, C-39): SafetyNet è il giro del timer (PollEvery) meno venti secondi, e DeltaFresh, per quanto una
-    /// query delta riuscita vale come "da poco", deve restare più lungo del giro delle query delta (DeltaEvery). Prima
-    /// erano numeri scritti a mano in tre punti; i valori sono quelli di prima.
+    /// 10 minuti dopo, e i ritardi erano proprio il problema dell'autore: di nuovo a ogni giro del timer (un po' meno del
+    /// giro: con il giro esatto un timer in anticipo di poco ne saltava uno su due). Dall'audit di affidabilità del 25 ottobre
+    /// 2026 (scelta dell'autore) il giro è di un minuto invece che di due: nel suo registro 12 messaggi in 10 giorni erano
+    /// già nella ricerca fino a 52 s prima che Gmail li avvisasse all'IDLE (vivo), e li trovava questo controllo. Costo
+    /// misurato sul server finto (gruppo affidabilita-arrivo): un controllo senza novità sono 3 comandi IMAP (NOOP e due
+    /// SEARCH) e meno di un millisecondo di processore, 30 controlli in più all'ora per account. Graph resta ogni due minuti
+    /// (GraphPollEvery): ha la query
+    /// delta ogni 30 s. I tempi si tengono fra loro (audit dell'11 ottobre, C-39): SafetyNet è il giro del timer (PollEvery)
+    /// meno venti secondi, e DeltaFresh, per quanto una query delta riuscita vale come "da poco", deve restare più lungo
+    /// del giro delle query delta (DeltaEvery).
     /// </summary>
-    internal static readonly TimeSpan PollEvery = TimeSpan.FromMinutes(2), SafetyNet = PollEvery - TimeSpan.FromSeconds(20),
+    internal static readonly TimeSpan PollEvery = TimeSpan.FromMinutes(1), SafetyNet = PollEvery - TimeSpan.FromSeconds(20),
+                                      GraphPollEvery = TimeSpan.FromMinutes(2), GraphSafetyNet = GraphPollEvery - TimeSpan.FromSeconds(20),
                                       DeltaEvery = TimeSpan.FromSeconds(30), DeltaFresh = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Se il controllo di riserva tocca a questo account adesso: Gmail e IMAP a ogni giro del timer (con l'IDLE in sessione
+    /// dopo SafetyNet, cioè a ogni giro), Graph ogni GraphPollEvery, con o senza la query delta, come prima del giro di un
+    /// minuto.
+    /// </summary>
+    internal static bool PollDue(bool graph, bool pushed, TimeSpan sincePolled) =>
+        graph ? sincePolled >= GraphSafetyNet : !pushed || sincePolled >= SafetyNet;
 
     bool Pushed(IMailProvider p) => p.HasInboxDelta
         ? DateTime.UtcNow - deltaOk.GetValueOrDefault(p.Account.Id) < DeltaFresh
         : InboxIdle.Watching(p.Account.Email);
 
     /// <param name="periodic">
-    /// Il controllo di ogni due minuti: salta gli account con l'IDLE in sessione o con la query delta riuscita da poco,
-    /// controllati da lui solo ogni SafetyNet. Gli altri (all'avvio, al ritorno della rete) controllano tutti.
+    /// Il controllo di riserva, dal timer: solo gli account a cui tocca (PollDue). Gli altri (al ritorno della rete)
+    /// controllano tutti.
     /// </param>
-    async Task CheckNewAsync(bool periodic = false)
+    /// <param name="reason">Il motivo nel registro.</param>
+    async Task CheckNewAsync(bool periodic = false, string reason = PeriodicReason)
     {
-        if (checking) return;
-        var due = providers.Where(p => !periodic || !Pushed(p) || DateTime.UtcNow - polled.GetValueOrDefault(p.Account.Id) >= SafetyNet).ToList();
+        var due = providers.Where(p => !periodic || PollDue(p.HasInboxDelta, Pushed(p), DateTime.UtcNow - polled.GetValueOrDefault(p.Account.Id))).ToList();
         if (due.Count == 0) return;
-        checking = true;
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        int arrived = 0;
-        try
+        // In sottofondo, anche con la finestra aperta: un nuovo accesso chiesto da Microsoft non apre la finestra account di
+        // Windows sopra quello che si sta facendo; la barra sotto l'account propone "Accedi di nuovo". Tutti gli account
+        // insieme (Arrival.RunAllAsync): uno che non risponde non fa aspettare gli altri. Prima si controllavano in fila, e il
+        // giro del timer usciva senza far nulla se quello di prima non era finito: dopo la ripresa del PC un controllo fermo su
+        // una connessione morta teneva indietro tutti gli account fino a due minuti (audit di affidabilità del 25 ottobre
+        // 2026, A-02). Un account che si sta già controllando lo dice CheckAccountAsync, che ne rifà uno alla fine.
+        int arrived = await Arrival.RunAllAsync(due, p =>
         {
-            // In sottofondo, anche con la finestra aperta: un nuovo accesso chiesto da Microsoft non apre la finestra account di
-            // Windows sopra quello che si sta facendo; la barra sotto l'account propone "Accedi di nuovo". Un account che non
-            // risponde non ferma gli altri: dopo StuckCheck si passa al successivo.
-            foreach (var p in due)
-            {
-                polled[p.Account.Id] = DateTime.UtcNow;
-                var check = MicrosoftAuth.InBackgroundAsync(() => CheckAccountAsync(p));
-                if (await Task.WhenAny(check, Task.Delay(StuckCheck)) == check) arrived += Math.Max(0, await check);
-                else Log.Write($"controllo dei nuovi messaggi di {p.Account.Email} fermo da più di {StuckCheck.TotalMinutes:0} minuti: passo agli altri account");
-            }
-        }
-        finally
-        {
-            checking = false;
-            Log.Time($"controllo dei nuovi messaggi ({due.Count}{(due.Count < providers.Count ? $" di {providers.Count}" : "")} account, {arrived} nuovi" +
-                     $"{(WindowHidden ? ", finestra nell'area di notifica" : "")})", clock);
-            if (checkAfterThis)
-            {
-                checkAfterThis = false;
-                _ = Dispatcher.BeginInvoke(() => OnNetworkBack());
-            }
-        }
+            polled[p.Account.Id] = DateTime.UtcNow;
+            return MicrosoftAuth.InBackgroundAsync(() => CheckAccountAsync(p, reason));
+        }, StuckCheck, p => Log.Write($"controllo dei nuovi messaggi di {p.Account.Email} fermo da più di {StuckCheck.TotalMinutes:0} minuti: gli altri account non lo aspettano"));
+        Log.Time($"controllo dei nuovi messaggi ({due.Count}{(due.Count < providers.Count ? $" di {providers.Count}" : "")} account, {arrived} nuovi" +
+                 $"{(WindowHidden ? ", finestra nell'area di notifica" : "")})", clock);
     }
 
     /// <summary>
@@ -1114,8 +1328,18 @@ public sealed class App : Application
     /// dell'avviso poteva arrivare dopo la sua lettura). Nel registro l'esito dei controlli non periodici e di quelli che
     /// trovano qualcosa, così una notifica mancata si ricostruisce.
     /// </summary>
-    /// <param name="reason">Chi l'ha chiesto: il controllo di ogni due minuti, l'avviso dell'IDLE, la query delta.</param>
-    async Task<int> CheckAccountAsync(IMailProvider p, string reason = "controllo di ogni due minuti")
+    /// <summary>
+    /// Il motivo del controllo di riserva nel registro. Fino all'audit di affidabilità del 25 ottobre 2026 era "controllo di
+    /// ogni due minuti"; ora il giro è di un minuto per Gmail e IMAP e di due per Graph.
+    /// </summary>
+    const string PeriodicReason = "controllo di riserva";
+
+    /// <param name="reason">Chi l'ha chiesto: il controllo di riserva, l'avviso dell'IDLE, la query delta, il risveglio.</param>
+    /// <param name="failure">
+    /// Il risveglio (WakeCheckAsync): qui l'errore, se il controllo non riesce; con Quiet un errore della rete dice solo una
+    /// riga e non segna l'account "non in linea", perché fra pochi secondi si riprova.
+    /// </param>
+    async Task<int> CheckAccountAsync(IMailProvider p, string reason = PeriodicReason, CheckFailure? failure = null)
     {
         var id = p.Account.Id;
         if (checkingAccounts.TryGetValue(id, out var running))
@@ -1136,8 +1360,13 @@ public sealed class App : Application
         {
             var since = lastCheck.GetValueOrDefault(p.Account.Id, DateTime.UtcNow);
             var started = DateTime.UtcNow;
-            // Segnati come notificati solo dopo l'annuncio (sotto): un controllo interrotto a metà non li perde.
-            var incoming = (await p.GetNewAsync(since)).Where(m => !notified.Contains(p.Account.Id + "|" + m.Id)).ToList();
+            // I nuovi per UID dopo il mark del controllo di prima (Gmail e IMAP; Graph per data, senza mark): prima si sceglievano
+            // per data di arrivo e orologio del PC, e uno con la data di arrivo più vecchia si perdeva (audit di affidabilità del
+            // 25 ottobre 2026, A-06). Quelli che Missiva stessa ha appena messo nella Posta in arrivo (Sposta, Annulla, Posponi)
+            // non sono posta nuova. Segnati come notificati, e il mark nuovo tenuto, solo dopo l'annuncio (sotto): un controllo
+            // interrotto a metà non li perde.
+            var arrivals = await p.GetNewAsync(newMarks.GetValueOrDefault(id), since);
+            var incoming = arrivals.Messages.Where(m => !notified.Contains(p.Account.Id + "|" + m.Id) && !InboxIdle.IsOwnArrival(id, m.StableId)).ToList();
             lastCheck[p.Account.Id] = started.AddMinutes(-1); // un minuto di margine; i doppioni li toglie "notified"
             CheckStage(id, run, "regole");
             // Le regole di Missiva (Gmail, IMAP) prima delle notifiche, su tutti i messaggi arrivati dall'ultima volta (letti o
@@ -1188,6 +1417,7 @@ public sealed class App : Application
                     if (announce.Count > 0) (MainWindow as MainWindow)?.CountArrived(p, announce);
                     if (announce.Count > 0) Notify(p, announce);
                     announced = clock.ElapsedMilliseconds;
+                    newMarks[id] = Arrival.LaterMark(newMarks.GetValueOrDefault(id), arrivals.Mark);
                 },
                 () =>
                 {
@@ -1201,6 +1431,9 @@ public sealed class App : Application
                     else Log.Error($"non letti di {p.Account.Email}", ex);
                 });
             (MainWindow as MainWindow)?.NoteAccountState(p, null);
+            // Al controllo di riserva anche i numeri delle altre cartelle e la cartella aperta che nessuno guarda (audit di
+            // affidabilità del 25 ottobre 2026, elenco, E-06).
+            (MainWindow as MainWindow)?.AfterCheck(p, reason == PeriodicReason);
             accountFixLogged.Remove(p.Account.Id);
             // Al massimo una volta all'ora, senza aspettarla e dopo il conteggio: in Gmail e IMAP usa la stessa connessione in
             // sottofondo (2 s), e partendo prima faceva aspettare il conteggio, e con lui la notifica.
@@ -1213,13 +1446,22 @@ public sealed class App : Application
                 contactsTried[id] = DateTime.UtcNow;
                 _ = ContactBook.RefreshRemoteAsync(p);
             }
-            if (incoming.Count > 0 || reason != "controllo di ogni due minuti")
+            if (incoming.Count > 0 || reason != PeriodicReason)
                 Log.Write($"controllo di {p.Account.Email} ({reason}): {incoming.Count} nuovi da leggere, {announce.Count} annunciati, {clock.ElapsedMilliseconds} ms" +
-                          (announce.Count > 0 ? $" (notifica a {announced} ms)" : ""));
+                          (announce.Count > 0 ? $" (notifica a {announced} ms)" : "") + WhyNotPushed(p, reason, incoming.Count));
             return incoming.Count;
         }
         catch (Exception ex)
         {
+            if (failure != null)
+            {
+                failure.Error = ex;
+                if (failure.Quiet && Arrival.Transient(ex))
+                {
+                    Log.Write($"controllo di {p.Account.Email} ({reason}): la rete non risponde ancora ({ex.GetType().Name}: {Log.WithoutAddresses(ex.Message.Split('\n')[0].Trim())}), riprovo fra poco");
+                    return 0;
+                }
+            }
             // Consenso mancante, password rifiutata, nuovo accesso: la barra sotto l'account lo dice, e nel registro
             // basta una riga quando comincia (una casella condivisa senza consenso scriveva lo stack ogni due minuti).
             var fix = MailException.FixOf(ex);
@@ -1239,6 +1481,13 @@ public sealed class App : Application
                 if (checkAgain.Remove(id)) _ = MicrosoftAuth.InBackgroundAsync(() => CheckAccountAsync(p, "arrivato un avviso durante il controllo"));
             }
         }
+    }
+
+    /// <summary>Com'è andato un controllo chiesto dal risveglio (WakeCheckAsync): l'errore, e se tacerlo quando è della rete.</summary>
+    sealed class CheckFailure
+    {
+        public Exception? Error;
+        public bool Quiet;
     }
 
     /// <summary>Gli account con un riconteggio dei non letti già in programma (RecountSoon).</summary>

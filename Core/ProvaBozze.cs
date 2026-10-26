@@ -4360,8 +4360,39 @@ static partial class ProvaBozze
         {
             lock (idlers)
                 foreach (var stream in idlers)
+                {
+                    // A una connessione muta (MuteOpen, MuteIdlers) non arriva nulla, come a una morta.
+                    if (idleConnection.TryGetValue(stream, out var c) && IsMuted(c)) continue;
                     try { stream.Write(Encoding.UTF8.GetBytes(untagged + "\r\n")); } catch (IOException) { }
+                }
         }
+
+        // ---------------------------------------------------------------- connessioni mute (audit di affidabilità, arrivo, 25 ottobre 2026)
+
+        /// <summary>
+        /// Le connessioni rese mute (per numero): il server legge quello che arriva e non risponde più, senza chiudere, come
+        /// una connessione morta senza che nessuno se ne accorga (PC sospeso e ripreso, rete cambiata, NAT del router scaduto).
+        /// Nate con le sonde dell'audit (ramo affidabilita-arrivo), qui per le prove delle correzioni (ProvaBozze.AffidabilitaArrivo.cs)
+        /// e per le prove a finestra (strumenti\arrivo).
+        /// </summary>
+        readonly HashSet<int> muted = new();
+        /// <summary>Anche le connessioni nuove sono mute, senza il saluto: un server che non risponde più a nessuno.</summary>
+        public volatile bool MuteNew;
+        /// <summary>
+        /// Le connessioni nuove si chiudono subito, senza il saluto: un server che non si raggiunge (correzioni dell'audit di
+        /// affidabilità del 25 ottobre 2026, elenco: la prima pagina che non arriva con la copia locale già visibile, E-01).
+        /// </summary>
+        public volatile bool RefuseNew;
+        readonly HashSet<int> open = new();
+        readonly Dictionary<NetworkStream, int> idleConnection = new();
+        public int ConnectionCount => Volatile.Read(ref connections);
+        /// <summary>Tutte le connessioni aperte adesso diventano mute; quelle nuove no (come dopo la ripresa del PC).</summary>
+        public void MuteOpen() { lock (open) lock (muted) muted.UnionWith(open); }
+        /// <summary>Solo le connessioni in IDLE adesso diventano mute (un NAT che lascia cadere la connessione ferma da più tempo).</summary>
+        public void MuteIdlers() { lock (idlers) lock (muted) muted.UnionWith(idleConnection.Values); }
+        bool IsMuted(int connection) { lock (muted) return muted.Contains(connection); }
+        /// <summary>Le connessioni in IDLE adesso, per numero.</summary>
+        public List<int> IdleConnections() { lock (idlers) return idleConnection.Values.ToList(); }
 
         /// <summary>Le connessioni in IDLE tagliate, come una rete che cade.</summary>
         public void DropIdlers()
@@ -4413,9 +4444,12 @@ static partial class ProvaBozze
             using var _ = client;
             var stream = client.GetStream();
             async Task Send(string text) => await stream.WriteAsync(Encoding.UTF8.GetBytes(text.Replace("\n", "\r\n")));
-            await Send($"* OK [CAPABILITY {capabilities}] server finto\n");
-            var selected = DraftsFolder;
             int connection = Interlocked.Increment(ref connections);
+            if (RefuseNew) return; // chiusa subito, come un server che non si raggiunge
+            lock (open) open.Add(connection);
+            if (MuteNew) lock (muted) muted.Add(connection); // un server che non risponde a nessuno: nemmeno il saluto
+            if (!IsMuted(connection)) await Send($"* OK [CAPABILITY {capabilities}] server finto\n");
+            var selected = DraftsFolder;
             int announced = 0; // i messaggi della cartella aperta che questa connessione conosce (AnnounceOnNoop)
             List<Message> Current()
             {
@@ -4432,7 +4466,8 @@ static partial class ProvaBozze
                     var command = words[0].ToUpperInvariant() == "UID" ? "UID " + words[1].ToUpperInvariant() : words[0].ToUpperInvariant();
                     Commands.Add(command is "AUTHENTICATE" or "LOGIN" ? command : rest);
                     lock (Traffic) Traffic.Add((connection, Commands[^1]));
-                    if (LogCommands) Log.Write("server IMAP finto: " + Commands[^1]);
+                    if (LogCommands) Log.Write("server IMAP finto: " + Commands[^1] + (IsMuted(connection) ? $" (connessione {connection} muta, nessuna risposta)" : ""));
+                    if (IsMuted(connection)) continue; // muta: legge e non risponde
                     if (Hold is { } hold) await hold(command);
                     if (FailOn == command) throw new InvalidOperationException("errore di prova del server IMAP finto");
                     if (RefuseOnce == command)
@@ -4711,14 +4746,15 @@ static partial class ProvaBozze
                             // Fino al DONE: intanto il server può mandare EXISTS, FETCH ed EXPUNGE (Push); un comando qualsiasi
                             // durante l'IDLE è un errore del client, e si ricorda.
                             await Send("+ in attesa\n");
-                            lock (idlers) { idlers.Add(stream); IdleLog.Add("IDLE"); }
+                            lock (idlers) { idlers.Add(stream); idleConnection[stream] = connection; IdleLog.Add("IDLE"); }
                             string? next;
                             while ((next = await ReadLineAsync(stream)) != null && !next.Equals("DONE", StringComparison.OrdinalIgnoreCase))
                                 lock (idlers) IdleLog.Add("durante l'IDLE: " + next);
-                            lock (idlers) idlers.Remove(stream);
+                            lock (idlers) { idlers.Remove(stream); idleConnection.Remove(stream); }
                             if (next == null) return;
-                            lock (idlers) IdleLog.Add("DONE");
-                            await Send($"{tag} OK IDLE finito\n");
+                            lock (idlers) IdleLog.Add(IsMuted(connection) ? "DONE (connessione muta, nessuna risposta)" : "DONE");
+                            if (LogCommands) Log.Write($"server IMAP finto: DONE{(IsMuted(connection) ? $" (connessione {connection} muta, nessuna risposta)" : "")}");
+                            if (!IsMuted(connection)) await Send($"{tag} OK IDLE finito\n");
                             break;
                         case "NOOP" when AnnounceOnNoop && Current().Count > announced:
                             // Come un server vero: i messaggi arrivati dopo l'apertura della cartella si annunciano con NOOP.
@@ -4745,6 +4781,16 @@ static partial class ProvaBozze
                 // Un difetto di questo server, non del client: detto e scritto, invece di una connessione che cade e basta.
                 lock (ServerErrors) ServerErrors.Add($"IMAP, dopo \"{(Commands.Count > 0 ? Commands[^1].Split(' ')[0] : "")}\": {ex.GetType().Name}: {ex.Message}");
                 try { await Send("* BYE errore del server finto\n"); } catch (Exception) { }
+            }
+            finally
+            {
+                lock (open) open.Remove(connection);
+                // Una connessione chiusa dal client in mezzo all'IDLE (IOException, non la fine del flusso) non è più in IDLE.
+                lock (idlers)
+                {
+                    idlers.Remove(stream);
+                    idleConnection.Remove(stream);
+                }
             }
         }
 
@@ -5078,12 +5124,25 @@ static partial class ProvaBozze
     /// pagina GitHub (ProvaBozze.Foto.cs).
     /// </param>
     /// <param name="photoEnglish">--imap-finto porta foto studio en: la casella delle foto inglesi.</param>
-    public static void ServeImap(int port, bool noTrash = false, string? password = null, bool old = false, string? photo = null, bool photoEnglish = false)
+    /// <param name="fill">
+    /// --imap-finto porta riempi=120: prima dei messaggi di prova tanti messaggi letti dei giorni prima (uno ogni due ore, i più
+    /// vecchi con l'UID più basso, come in una casella vera), per un elenco di più pagine (correzioni dell'audit di
+    /// affidabilità del 25 ottobre 2026, elenco: E-12).
+    /// </param>
+    public static void ServeImap(int port, bool noTrash = false, string? password = null, bool old = false, string? photo = null, bool photoEnglish = false, int fill = 0)
     {
         var fake = new FakeImap(new Flavor(Gmail: false), port) { LogCommands = true, ExpectedPassword = password, EchoToIdlers = true, AnnounceOnNoop = true };
         var smtp = new FakeSmtp(port + 1) { ExpectedPassword = password };
         GC.KeepAlive(smtp);
         if (noTrash) fake.Folders.Remove(fake.TrashFolder);
+        var oldest = DateTimeOffset.Now.AddHours(-2 * fill - 48);
+        for (int k = 0; k < fill; k++)
+        {
+            var mime = new MimeMessage { Subject = $"Pratica {k + 1} di prova", Date = oldest.AddHours(2 * k), Body = new TextPart("html") { Text = $"<p>Pratica {k + 1} di prova.</p>" } };
+            mime.From.Add(new MailboxAddress("Luca Bianchi", "luca.bianchi@cliente-prova.example"));
+            mime.To.Add(new MailboxAddress("Mario Rossi", "mario@studio-prova.example"));
+            fake.Add("INBOX", mime, "\\Seen");
+        }
         if (photo != null) FillFoto(fake, photo, photoEnglish);
         else foreach (var (from, name, subject, html, flags) in new[]
         {
@@ -5092,7 +5151,7 @@ static partial class ProvaBozze
             ("mario.bianchi@cliente-prova.it", "Mario Bianchi", "Documenti per la pratica", "<p>Ciao,</p><p>ti mando i documenti che mancavano.</p><p>Mario</p>", "\\Seen \\Flagged"),
         })
         {
-            var mime = new MimeMessage { Subject = subject, Date = DateTimeOffset.Now.AddHours(-fake.Folders["INBOX"].Count * 5 - 1).AddDays(old ? -3 : 0), Body = new TextPart("html") { Text = html } };
+            var mime = new MimeMessage { Subject = subject, Date = DateTimeOffset.Now.AddHours(-(fake.Folders["INBOX"].Count - fill) * 5 - 1).AddDays(old ? -3 : 0), Body = new TextPart("html") { Text = html } };
             mime.From.Add(new MailboxAddress(name, from));
             mime.To.Add(new MailboxAddress("Mario Rossi", "mario@studio-prova.it"));
             fake.Add("INBOX", mime, flags);
@@ -5114,6 +5173,11 @@ static partial class ProvaBozze
         // messaggio da leggere nella Posta in arrivo e lo annuncia a chi è in IDLE (EXISTS), come un arrivo vero; "letto 7"
         // segna letto l'UID 7 e lo dice a chi è in IDLE (FETCH con i segni), come una lettura dal telefono; "rifiuta UID MOVE"
         // fa rispondere NO al prossimo comando con quel nome (RefuseOnce), per vedere Elimina o Sposta rifiutati dal server.
+        // Dall'audit di affidabilità dell'arrivo (25 ottobre 2026): "muto" rende mute le connessioni aperte (leggono e non
+        // rispondono, senza chiudersi: come dopo la ripresa del PC), "muto idle" solo quelle in IDLE, "muto tutto" anche le
+        // nuove, "parla" fa rispondere di nuovo le nuove, "taglia" chiude quelle in IDLE; "arrivo-lento 5 Oggetto" annuncia
+        // il messaggio all'IDLE subito e lo rende visibile 5 s dopo (come Gmail), "arrivo-datato 300 Oggetto" ne mette uno con
+        // la data di arrivo di 300 s fa (strumenti\arrivo\finestra.ps1).
         var commands = Path.Combine(Store.Dir, "comandi.txt");
         while (true)
         {
@@ -5130,7 +5194,7 @@ static partial class ProvaBozze
             foreach (var line in lines.Select(l => l.Trim()).Where(l => l.Length > 0))
             {
                 var inbox = fake.Folders["INBOX"];
-                if (line.StartsWith("arrivo", StringComparison.OrdinalIgnoreCase))
+                if (line.StartsWith("arrivo", StringComparison.OrdinalIgnoreCase) && !line.StartsWith("arrivo-", StringComparison.OrdinalIgnoreCase))
                 {
                     var subject = line.Length > 7 ? line[7..] : "Messaggio di prova appena arrivato";
                     var mime = new MimeMessage { Subject = subject, Date = DateTimeOffset.Now, Body = new TextPart("html") { Text = $"<p>Buongiorno,</p><p>{subject}.</p><p>Maria</p>" } };
@@ -5150,6 +5214,95 @@ static partial class ProvaBozze
                 {
                     fake.RefuseOnce = refused.ToUpperInvariant();
                     Log.Write($"server IMAP finto: il prossimo {fake.RefuseOnce} riceve NO");
+                }
+                // Audit di affidabilità, arrivo (25 ottobre 2026): connessioni che muoiono senza chiudersi ("muto", "muto idle",
+                // "muto tutto", "parla", "taglia") e arrivi visibili tardi o con una data di arrivo (INTERNALDATE, qui la data del
+                // messaggio) nel passato ("arrivo-lento N", "arrivo-datato N").
+                else if (line.Equals("muto idle", StringComparison.OrdinalIgnoreCase))
+                {
+                    var idling = fake.IdleConnections();
+                    fake.MuteIdlers();
+                    Log.Write($"server IMAP finto: connessioni in IDLE mute ({string.Join(", ", idling)}), le altre e le nuove rispondono");
+                }
+                else if (line.Equals("muto tutto", StringComparison.OrdinalIgnoreCase))
+                {
+                    fake.MuteOpen();
+                    fake.MuteNew = true;
+                    Log.Write($"server IMAP finto: tutte le connessioni mute, anche le nuove (fino a {fake.ConnectionCount})");
+                }
+                else if (line.Equals("muto", StringComparison.OrdinalIgnoreCase))
+                {
+                    fake.MuteOpen();
+                    Log.Write($"server IMAP finto: connessioni aperte mute (fino alla {fake.ConnectionCount}), le nuove rispondono");
+                }
+                else if (line.Equals("parla", StringComparison.OrdinalIgnoreCase))
+                {
+                    fake.MuteNew = false;
+                    Log.Write("server IMAP finto: le connessioni nuove rispondono di nuovo");
+                }
+                else if (line.Equals("taglia", StringComparison.OrdinalIgnoreCase))
+                {
+                    fake.DropIdlers();
+                    Log.Write("server IMAP finto: connessioni in IDLE chiuse");
+                }
+                else if (line.StartsWith("arrivo-lento ", StringComparison.OrdinalIgnoreCase) && line.Split(' ', 3) is [_, var lag, ..var lagRest] && double.TryParse(lag, System.Globalization.CultureInfo.InvariantCulture, out var lagSeconds))
+                {
+                    // Come Gmail, che lo annuncia all'IDLE e lo rende visibile alle altre connessioni anche qualche secondo dopo
+                    // (App.OnInboxEvent riprova dopo 3 e 10 s): EXISTS subito a chi è in IDLE, il messaggio nella cartella dopo.
+                    var subject = lagRest.Length > 0 ? lagRest[0] : "Messaggio di prova visibile in ritardo";
+                    var mime = new MimeMessage { Subject = subject, Date = DateTimeOffset.Now, Body = new TextPart("html") { Text = $"<p>Buongiorno,</p><p>{subject}.</p><p>Maria</p>" } };
+                    mime.From.Add(new MailboxAddress("Maria Rossi", "maria.rossi@cliente-prova.example"));
+                    mime.To.Add(new MailboxAddress("Mario Rossi", "mario@studio-prova.example"));
+                    int announcedCount = inbox.Count + 1;
+                    fake.Push($"* {announcedCount} EXISTS");
+                    Log.Write($"server IMAP finto: annunciato all'IDLE un messaggio nuovo ({announcedCount}), visibile alle altre connessioni fra {lagSeconds} s");
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(lagSeconds));
+                        var added = fake.Add("INBOX", mime);
+                        Log.Write($"server IMAP finto: l'UID {added.Uid} ora è visibile, {inbox.Count} messaggi nella Posta in arrivo");
+                    });
+                }
+                else if (line.StartsWith("arrivo-datato ", StringComparison.OrdinalIgnoreCase) && line.Split(' ', 3) is [_, var ago, ..var rest] && int.TryParse(ago, out var seconds))
+                {
+                    var subject = rest.Length > 0 ? rest[0] : "Messaggio di prova con la data di prima";
+                    var mime = new MimeMessage { Subject = subject, Date = DateTimeOffset.Now.AddSeconds(-seconds), Body = new TextPart("html") { Text = $"<p>Buongiorno,</p><p>{subject}.</p><p>Maria</p>" } };
+                    mime.From.Add(new MailboxAddress("Maria Rossi", "maria.rossi@cliente-prova.example"));
+                    mime.To.Add(new MailboxAddress("Mario Rossi", "mario@studio-prova.example"));
+                    var added = fake.Add("INBOX", mime);
+                    fake.Push($"* {inbox.Count} EXISTS");
+                    Log.Write($"server IMAP finto: arrivato l'UID {added.Uid} con la data di {seconds} s fa, {inbox.Count} messaggi nella Posta in arrivo");
+                }
+                // Correzioni dell'audit di affidabilità, elenco (25 ottobre 2026; strumenti\arrivo\elenco.ps1): un arrivo già letto
+                // ("arrivo-letto Oggetto", come aperto sul telefono prima del controllo di Missiva), un arrivo in una cartella
+                // dell'utente ("arrivo-cartella Oggetto", come un filtro del server), un messaggio tolto senza dirlo a nessuno
+                // ("togli 7" o "togli ultimo", come eliminato dal telefono mentre la connessione dell'IDLE era morta) e un server
+                // che non si raggiunge ("irraggiungibile": le connessioni nuove si chiudono subito; "raggiungibile"; non "rifiuta ...", che è RefuseOnce).
+                else if (line.StartsWith("arrivo-letto", StringComparison.OrdinalIgnoreCase) || line.StartsWith("arrivo-cartella", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool seen = line.StartsWith("arrivo-letto", StringComparison.OrdinalIgnoreCase);
+                    var cut = line.IndexOf(' ');
+                    var subject = cut > 0 ? line[(cut + 1)..] : seen ? "Messaggio già letto altrove" : "Messaggio arrivato in una cartella";
+                    var mime = new MimeMessage { Subject = subject, Date = DateTimeOffset.Now, Body = new TextPart("html") { Text = $"<p>Buongiorno,</p><p>{subject}.</p><p>Maria</p>" } };
+                    mime.From.Add(new MailboxAddress("Maria Rossi", "maria.rossi@cliente-prova.example"));
+                    mime.To.Add(new MailboxAddress("Mario Rossi", "mario@studio-prova.example"));
+                    var where = seen ? "INBOX" : fake.UserFolder;
+                    var added = fake.Add(where, mime, seen ? "\\Seen" : "");
+                    if (seen) fake.Push($"* {inbox.Count} EXISTS");
+                    Log.Write($"server IMAP finto: arrivato l'UID {added.Uid} {(seen ? "già letto, nella Posta in arrivo" : "in " + where)}, {fake.Folders[where].Count} messaggi lì");
+                }
+                else if (line.StartsWith("togli ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var which = line[6..].Trim();
+                    var gone = which.Equals("ultimo", StringComparison.OrdinalIgnoreCase) ? inbox.LastOrDefault()
+                             : uint.TryParse(which, out var removedUid) ? inbox.FirstOrDefault(m => m.Uid == removedUid) : null;
+                    if (gone != null) lock (fake.Folders) inbox.Remove(gone);
+                    Log.Write(gone != null ? $"server IMAP finto: l'UID {gone.Uid} tolto dalla Posta in arrivo senza avvisi, {inbox.Count} messaggi" : $"server IMAP finto: niente da togliere ({which})");
+                }
+                else if (line.Equals("irraggiungibile", StringComparison.OrdinalIgnoreCase) || line.Equals("raggiungibile", StringComparison.OrdinalIgnoreCase))
+                {
+                    fake.RefuseNew = line.Equals("irraggiungibile", StringComparison.OrdinalIgnoreCase);
+                    Log.Write(fake.RefuseNew ? "server IMAP finto: le connessioni nuove si chiudono subito (server che non si raggiunge)" : "server IMAP finto: le connessioni nuove sono di nuovo accettate");
                 }
             }
         }

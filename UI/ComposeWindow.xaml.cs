@@ -1834,8 +1834,12 @@ public partial class ComposeWindow : Window
         sent = true;
         AddressBook.Sent(message.To.Concat(message.Cc).Concat(message.Bcc), DateTime.Now);
         if (savedDraft != null) DraftsChanged?.Invoke(provider); // la bozza è uscita dalle Bozze
+        Sent?.Invoke(provider); // la Posta inviata aperta si rilegge (audit di affidabilità del 25 ottobre 2026, elenco, E-13)
         Close();
     }
+
+    /// <summary>Il messaggio è partito, dall'account del provider (MainWindow.OnSent rilegge la Posta inviata aperta).</summary>
+    public event Action<IMailProvider>? Sent;
 
     // ---------------------------------------------------------------- Posta in uscita
 

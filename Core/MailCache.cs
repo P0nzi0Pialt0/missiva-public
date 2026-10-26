@@ -65,6 +65,25 @@ public static class MailCache
         Write(FolderFile(account, folderId, focused), messages.ToList());
 
     /// <summary>
+    /// Quando è stata scritta la copia della prima pagina della cartella (ora di Windows), null se non c'è: la riga sopra
+    /// l'elenco lo dice quando il server non risponde e a schermo resta la copia (audit di affidabilità del 25 ottobre 2026,
+    /// elenco, E-01).
+    /// </summary>
+    public static DateTime? SavedAt(MailAccount account, string folderId, bool? focused)
+    {
+        try
+        {
+            var path = FolderFile(account, folderId, focused);
+            return File.Exists(path) ? File.GetLastWriteTime(path) : null;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("data della copia locale", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// I messaggi appena arrivati in cima alla prima pagina salvata di una cartella, senza doppioni, dal più recente. Solo se
     /// la copia c'è: una cartella mai aperta non ne ha, e la prima apertura la chiede al server. Così la Posta in arrivo
     /// aperta dopo l'arrivo (un altro account, la vista di tutti gli account, un riavvio) mostra subito i nuovi: prima la
@@ -75,7 +94,7 @@ public static class MailCache
     {
         if (incoming.Count == 0 || LoadMessages(account, folderId, focused) is not { } page) return 0;
         var known = page.Select(m => m.Id).ToHashSet();
-        var added = incoming.Where(m => known.Add(m.Id)).OrderByDescending(m => m.Date).ToList();
+        var added = incoming.Where(m => known.Add(m.Id)).OrderByDescending(m => m.Instant).ToList();
         if (added.Count > 0) SaveMessages(account, folderId, focused, added.Concat(page));
         return added.Count;
     }

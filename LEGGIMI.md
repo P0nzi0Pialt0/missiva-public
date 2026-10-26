@@ -305,7 +305,7 @@ pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel 
   arrivo solo mentre Missiva è aperta (anche nell'area di notifica), su tutti quelli arrivati dall'ultima volta (anche già
   letti sul telefono, anche dopo una notte con il portatile chiuso), una volta sola per messaggio; quello che spostano o
   eliminano non arriva come notifica. Se il server rifiuta un'azione le altre vanno avanti lo stesso, e Missiva riprova
-  quel messaggio ai controlli dopo (ogni due minuti), fino a tre volte in tutto, poi lo lascia nella Posta in arrivo;
+  quel messaggio ai controlli dopo (ogni minuto), fino a tre volte in tutto, poi lo lascia nella Posta in arrivo;
   una copia già fatta non si rifà. Esegui ora dice che cosa è riuscito e che cosa no.
 - Suggerimenti dei destinatari in A, Cc e Ccn (e fra i partecipanti di una riunione) mentre scrivi, dalle persone a cui
   scrivi (Posta inviata di ogni account), da cui ricevi posta e dai tuoi contatti di Persone (anche quelli a cui non hai
@@ -443,7 +443,9 @@ pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel 
 - Nuovi messaggi subito, come Thunderbird: con Gmail e con gli altri account IMAP il server avvisa Missiva appena arriva
   un messaggio (IDLE), e così per i messaggi letti o spostati dal telefono; con gli account Microsoft Missiva chiede i
   cambiamenti della Posta in arrivo ogni 30 secondi (letti ed eliminati altrove si aggiornano nell'elenco). Anche con
-  Missiva nell'area di notifica. Il controllo di ogni due minuti resta per tutti.
+  Missiva nell'area di notifica. Il controllo di riserva resta per tutti: ogni minuto con Gmail e gli altri account IMAP,
+  ogni due minuti con gli account Microsoft. Alla ripresa del PC dalla sospensione e quando la rete cambia Missiva rifà
+  subito le connessioni e controlla tutti gli account.
 - Notifiche di Windows per i nuovi messaggi, anche mentre Missiva è nell'area di
   notifica: il clic sulla notifica di un messaggio lo apre in una finestra sua (da lì un pulsante lo porta nel riquadro di
   lettura della finestra principale); quello su "N nuovi messaggi" apre la Posta in arrivo di quell'account. La notifica
@@ -523,7 +525,7 @@ pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel 
 - Tutti gli account: filtro, "Vai a" e ordinamento valgono per le cartelle dei singoli account; Sposta in, Copia,
   Categorizza e Posponi lavorano sui messaggi di un account alla volta.
 - Account IMAP: le conversazioni non si raggruppano (il server non le conosce); sui server senza IDLE i nuovi messaggi
-  arrivano con il controllo ogni due minuti.
+  arrivano con il controllo di ogni minuto.
 - Bozze riprese con Modifica: il testo torna nell'editor di Missiva con il formato che Missiva sa scrivere (carattere,
   colori, allineamento, rientro, elenchi, tabelle, link, immagini messe in Missiva); gli stili più rari, le immagini da
   Internet e quelle del messaggio citato restano fuori o diventano testo semplice. Una risposta ripresa dalle Bozze

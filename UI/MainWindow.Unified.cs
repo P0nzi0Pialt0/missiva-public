@@ -35,7 +35,20 @@ public partial class MainWindow
         public readonly List<MessageSummary> Pending = new();
         /// <summary>La data del messaggio più vecchio arrivato: più in basso l'account può averne altri ancora da chiedere.</summary>
         public DateTime Oldest = DateTime.MaxValue;
+        /// <summary>
+        /// La prima pagina non è arrivata entro SlowSource: l'elenco si mostra senza aspettarla (non conta per Cutoff), e quando
+        /// arriva le righe si rifanno con lei (LateSourceAsync). Prima l'account più lento faceva aspettare tutti, fino a due
+        /// minuti con una connessione morta (audit di affidabilità del 25 ottobre 2026, elenco, E-05).
+        /// </summary>
+        public bool Late;
     }
+
+    /// <summary>
+    /// Quanto la prima pagina della vista di tutti gli account aspetta l'account più lento prima di mostrarsi con gli altri
+    /// (MergedSource.Late). Di solito la prima pagina di Gmail arriva in meno di un secondo e mezzo; dopo la sospensione, con una
+    /// connessione morta, fino al tempo scaduto di MailKit (60 s IMAP, 120 Gmail) e un secondo tentativo.
+    /// </summary>
+    static readonly TimeSpan SlowSource = TimeSpan.FromSeconds(3);
 
     /// <summary>Le fonti dell'elenco di più account aperto (vista di tutti gli account o ricerca in tutti gli account).</summary>
     List<MergedSource> merged = new();
@@ -121,23 +134,30 @@ public partial class MainWindow
     /// La vista di tutti gli account: la prima pagina di ogni account in parallelo (subito le copie locali delle Posta in
     /// arrivo, se ci sono), poi le pagine dopo scorrendo.
     /// </summary>
-    async Task LoadUnifiedAsync(bool first)
+    /// <param name="again">
+    /// La vista già aperta si rilegge (RefreshListAsync, con il motivo per il registro): le righe che ci sono restano finché
+    /// non arrivano le prime pagine, che prendono il loro posto con la selezione e senza toccare il riquadro, come per la copia
+    /// locale. Prima si rileggeva da capo (ReloadAsync), con l'elenco e il riquadro svuotati (audit di affidabilità del 25
+    /// ottobre 2026, elenco, E-01 ed E-05).
+    /// </param>
+    async Task LoadUnifiedAsync(bool first, string? again = null)
     {
-        if (unified is not { } view || searching || !first && (loading || merged.All(s => s.Done))) return;
+        if (unified is not { } view || searching || !first && (loading || merged.All(s => s.Done)) || again != null && loading) return;
         loading = true;
         var version = listVersion;
         Dictionary<(AccountItem, string), MessageSummary> cached = new();
         try
         {
-            if (first)
+            if (first && again != null)
+            {
+                merged = UnifiedFolders(view).Select(x => UnifiedSource(view, x.Account, x.Folder)).ToList();
+                foreach (var row in rows.Rows)
+                    foreach (var m in MessageRows.MessagesOf(row)) cached[(row.Account, m.Id)] = m;
+            }
+            else if (first)
             {
                 var folders = UnifiedFolders(view);
-                merged = folders.Select(x => new MergedSource(x.Account, x.Folder, async next =>
-                {
-                    var page = await x.Account.Provider.GetMessagesAsync(x.Folder.Folder, null, next, view.Options);
-                    ActionQueue.Apply(x.Account.Provider.Account.Id, page.Messages); // la coda delle azioni senza rete non è ancora ripartita
-                    return page;
-                })).ToList();
+                merged = folders.Select(x => UnifiedSource(view, x.Account, x.Folder)).ToList();
                 if (view.View == UnifiedView.Inbox)
                 {
                     // Le copie locali delle Posta in arrivo (di tutta la Posta in arrivo, o di Evidenziata se c'è solo quella).
@@ -148,8 +168,9 @@ public partial class MainWindow
                                    ?? MailCache.LoadMessages(x.Account.Provider.Account, x.Folder.Folder.Id, true) ?? new();
                         ApplyWoken(page, x.Account);
                         ActionQueue.Apply(x.Account.Provider.Account.Id, page); // senza rete: spostati e segni in coda come fatti
+                        ReadMarks.Apply(x.Account.Provider.Account.Id, page, DateTime.MinValue); // la copia è più vecchia dei segni di questi minuti
                         return page.Select(m => (Message: m, x.Account));
-                    }).OrderByDescending(x => x.Message.Date).Take(50).ToList();
+                    }).OrderByDescending(x => x.Message.Instant).Take(50).ToList();
                     foreach (var (m, a) in saved) cached[(a, m.Id)] = m;
                     rows.Append(saved);
                 }
@@ -160,6 +181,11 @@ public partial class MainWindow
             if (shown == null) return; // nel frattempo è cambiata cartella
             Log.Time($"elenco di tutti gli account: {view.Name} ({merged.Count} account, {shown.Count} messaggi, " +
                      $"{(first ? "prima pagina" : "pagina successiva")}{(cached.Count > 0 ? ", copia locale già visibile" : "")})", clock);
+            // Un account che non ha risposto lascia la vista vecchia per lui: si rilegge quando torna a rispondere (E-01).
+            if (first && merged.Any(s => s.Error != null)) listStale = true;
+            else if (first && !merged.Any(s => s.Late)) MarkListRead(); // con un account in ritardo, quando arriva (LateSourceAsync)
+            if (again != null) Log.Write($"elenco riletto ({again}): tutti gli account, {view.Name}, {shown.Count} messaggi dal server" +
+                                         (merged.Count(s => s.Error != null) is > 0 and var failed ? $", {failed} account non hanno risposto" : ""));
             if (view.View == UnifiedView.Inbox) AddressBook.Received(shown.Select(x => x.Message).ToList());
             if (first && cached.Count > 0)
             {
@@ -167,9 +193,12 @@ public partial class MainWindow
                 foreach (var (m, a) in shown)
                     if (m.Preview.Length == 0 && cached.TryGetValue((a, m.Id), out var old)) m.Preview = old.Preview;
                 var selected = Selected.Select(i => (i.Account, i.Summary.Id)).ToHashSet();
+                // Gli account in ritardo tengono le righe che avevano (la copia locale) finché non arrivano (E-05).
+                var late = merged.Where(s => s.Late).Select(s => s.Account).ToHashSet();
+                var keep = rows.Rows.Where(r => late.Contains(r.Account)).SelectMany(r => MessageRows.MessagesOf(r).Select(m => (Message: m, r.Account))).ToList();
                 regrouping = true;
                 rows.Clear();
-                rows.Append(shown);
+                rows.Append(keep.Count == 0 ? shown : shown.Concat(keep).OrderByDescending(x => x.Message.Instant).ToList());
                 foreach (var item in rows.Rows.Where(r => selected.Contains((r.Account, r.Summary.Id)))) MessageList.SelectedItems.Add(item);
                 regrouping = false;
                 UpdateCommands();
@@ -183,13 +212,32 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Log.Error("elenco di tutti gli account", ex);
+            if (version == listVersion && first) listStale = true;
             if (version == listVersion && cached.Count == 0) SetListStatus(Network.Explain(ex) ?? T("Non riesco a caricare i messaggi: {0}", ex.Message), () => _ = LoadUnifiedAsync(first));
         }
         finally
         {
             if (version == listVersion) loading = false;
+            RefreshIfAsked(version); // una rilettura chiesta intanto (E-08)
         }
     }
+
+    /// <summary>
+    /// Una fonte della vista di tutti gli account: la cartella della vista in un account, con la coda, i segni fatti qui e le righe
+    /// tolte e arrivate mentre la pagina era in viaggio applicati alle sue pagine (con la copia locale a schermo le righe si
+    /// rifanno con le pagine, e un messaggio messo in cima intanto spariva: audit di affidabilità del 25 ottobre 2026, elenco,
+    /// E-05 ed E-07).
+    /// </summary>
+    MergedSource UnifiedSource(UnifiedItem view, AccountItem account, FolderItem folder) => new(account, folder, async next =>
+    {
+        var asked = ReadMarks.Asked();
+        var since = journal.Asked();
+        var page = await account.Provider.GetMessagesAsync(folder.Folder, null, next, view.Options);
+        ActionQueue.Apply(account.Provider.Account.Id, page.Messages); // la coda delle azioni senza rete non è ancora ripartita
+        ReadMarks.Apply(account.Provider.Account.Id, page.Messages, asked); // e i segni fatti qui mentre la pagina era in viaggio (L-05)
+        journal.Apply(since, account.Provider.Account.Id, folder.Folder.Id, page.Messages, arrivals: next == null, byDate: view.View != UnifiedView.Flagged);
+        return page;
+    });
 
     /// <summary>
     /// I messaggi da aggiungere in fondo all'elenco di più account: le fonti non ancora partite e quelle che fermano
@@ -203,14 +251,58 @@ public partial class MainWindow
         for (int round = 0; round < 4; round++)
         {
             var cutoff = Cutoff();
-            var need = merged.Where(s => !s.Started || !s.Done && s.Oldest >= cutoff).ToList();
+            var need = merged.Where(s => !s.Late && (!s.Started || !s.Done && s.Oldest >= cutoff)).ToList();
             if (need.Count == 0) break;
-            await Task.WhenAll(need.Select(FetchAsync));
+            var fetches = need.Select(s => (Source: s, Work: FetchAsync(s))).ToList();
+            var all = Task.WhenAll(fetches.Select(f => f.Work));
+            // Alla prima pagina l'account più lento non fa aspettare gli altri: dopo SlowSource quelli che non hanno risposto
+            // arrivano dopo (E-05). Prima Task.WhenAll aspettava tutti, e la vista restava su "Caricamento…" o sulla copia locale.
+            if (first && round == 0 && fetches.Count > 1 && await Task.WhenAny(all, Task.Delay(SlowSource)) != all)
+                foreach (var (s, work) in fetches.Where(f => !f.Work.IsCompleted))
+                {
+                    s.Late = true;
+                    _ = LateSourceAsync(s, work, version);
+                }
+            else await all;
             if (version != listVersion) return null;
             shown.AddRange(Release());
-            if (!first || shown.Count >= 30 || merged.All(s => s.Done)) break;
+            if (!first || shown.Count >= 30 || merged.All(s => s.Done || s.Late)) break;
         }
         return shown;
+    }
+
+    /// <summary>
+    /// La prima pagina di un account arrivata dopo che la vista si è mostrata senza di lui (MergedSource.Late): le righe si
+    /// rifanno con lei fin dove ora sono arrivati tutti (Cutoff); le righe degli altri più vecchie di lì tornano da mostrare dopo,
+    /// scorrendo, così un messaggio più vecchio non sta mai sopra uno che deve ancora arrivare. Le righe di prima di quell'account
+    /// (la copia locale) lasciano il posto. Con un errore l'account resta fuori, e l'elenco lo dice, come prima.
+    /// </summary>
+    async Task LateSourceAsync(MergedSource late, Task fetch, int version)
+    {
+        await fetch; // FetchAsync non solleva: un errore resta in late.Error
+        if (version != listVersion || !merged.Contains(late) || unified == null || searching) return;
+        late.Late = false;
+        var cutoff = Cutoff();
+        var current = rows.Rows.SelectMany(r => MessageRows.MessagesOf(r).Select(m => (Message: m, r.Account)))
+                               .DistinctBy(x => (x.Account, x.Message.FolderId, x.Message.Id)).Where(x => x.Account != late.Account).ToList();
+        // Quelle degli altri sotto il limite nuovo tornano fra le loro da mostrare (in ordine, scorrendo).
+        foreach (var (m, a) in current.Where(x => x.Message.Instant < cutoff))
+            if (merged.FirstOrDefault(s => s.Account == a) is { } source && !source.Pending.Any(p => p.Id == m.Id && p.FolderId == m.FolderId)) source.Pending.Add(m);
+        var released = Release();
+        var all = current.Where(x => x.Message.Instant >= cutoff).Concat(released).OrderByDescending(x => x.Message.Instant).ToList();
+        var selected = Selected.Select(i => (i.Account, i.Summary.Id)).ToHashSet();
+        regrouping = true;
+        rows.Clear();
+        rows.Append(all);
+        foreach (var item in rows.Rows.Where(r => selected.Contains((r.Account, r.Summary.Id)))) MessageList.SelectedItems.Add(item);
+        regrouping = false;
+        UpdateCommands();
+        ShowMergedStatus(T("Non ci sono messaggi qui."));
+        if (merged.Any(s => s.Error != null || s.Late)) listStale = merged.Any(s => s.Error != null);
+        else MarkListRead();
+        Log.Write($"elenco di tutti gli account: {late.Account.LogName} ha risposto dopo gli altri ({(late.Error != null ? "con un errore" : $"{released.Count(x => x.Account == late.Account)} righe")})");
+        if (late.Folder is { } where && released.Where(x => x.Account == late.Account).Select(x => x.Message).ToList() is { Count: > 0 } mine)
+            _ = FillPreviewsAsync(where, version, mine, prefetch: true);
     }
 
     /// <summary>La pagina dopo di una fonte. Un account che non risponde non ferma gli altri: resta fuori, e l'elenco lo dice.</summary>
@@ -223,7 +315,7 @@ public partial class MainWindow
             s.Next = page.Next;
             ApplyWoken(page.Messages, s.Account);
             s.Pending.AddRange(page.Messages);
-            if (page.Messages.Count > 0) s.Oldest = new[] { s.Oldest, page.Messages.Min(m => m.Date) }.Min();
+            if (page.Messages.Count > 0) s.Oldest = new[] { s.Oldest, page.Messages.Min(m => m.Instant) }.Min();
         }
         catch (Exception ex)
         {
@@ -234,16 +326,19 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Fin dove tutte le fonti che hanno ancora messaggi sono arrivate: più in basso ne possono mancare.</summary>
-    DateTime Cutoff() => merged.Where(s => !s.Done).Select(s => s.Oldest).DefaultIfEmpty(DateTime.MinValue).Max();
+    /// <summary>
+    /// Fin dove tutte le fonti che hanno ancora messaggi sono arrivate: più in basso ne possono mancare. Quelle in ritardo
+    /// (Late) non contano finché non arrivano (LateSourceAsync rifà le righe).
+    /// </summary>
+    DateTime Cutoff() => merged.Where(s => !s.Done && !s.Late).Select(s => s.Oldest).DefaultIfEmpty(DateTime.MinValue).Max();
 
     /// <summary>I messaggi arrivati fino al limite (Cutoff), di tutti gli account, dal più recente.</summary>
     List<(MessageSummary Message, AccountItem Account)> Release()
     {
         var cutoff = Cutoff();
-        var released = merged.SelectMany(s => s.Pending.Where(m => m.Date >= cutoff).Select(m => (Message: m, s.Account)))
-                             .OrderByDescending(x => x.Message.Date).ToList();
-        foreach (var s in merged) s.Pending.RemoveAll(m => m.Date >= cutoff);
+        var released = merged.SelectMany(s => s.Pending.Where(m => m.Instant >= cutoff).Select(m => (Message: m, s.Account)))
+                             .OrderByDescending(x => x.Message.Instant).ToList();
+        foreach (var s in merged) s.Pending.RemoveAll(m => m.Instant >= cutoff);
         return released;
     }
 
@@ -251,9 +346,14 @@ public partial class MainWindow
     void ShowMergedStatus(string empty)
     {
         var failed = merged.Where(s => s.Error != null).ToList();
+        var late = merged.Where(s => s.Late).ToList();
         if (failed.Count > 0)
             SetListStatus(failed.Count == 1 ? T("{0} non risponde: {1}", failed[0].Account.Header, failed[0].Error)
                                             : T("{0} non rispondono: i loro messaggi mancano.", string.Join(", ", failed.Select(s => s.Account.Header))));
+        // In ritardo (E-05): l'elenco si mostra senza di loro, che arrivano appena rispondono.
+        else if (late.Count > 0)
+            SetListStatus(late.Count == 1 ? T("{0} non ha ancora risposto: i suoi messaggi arrivano appena risponde.", late[0].Account.Header)
+                                          : T("{0} non hanno ancora risposto: i loro messaggi arrivano appena rispondono.", string.Join(", ", late.Select(s => s.Account.Header))));
         else SetListStatus(rows.Rows.Count == 0 ? empty : null);
     }
 
@@ -262,6 +362,7 @@ public partial class MainWindow
     {
         if (unified is not { View: UnifiedView.Inbox or UnifiedView.Unread } || searching || incoming.Count == 0) return false;
         MarkArrived(PrependRows(incoming, account));
+        journal.Arrived(account.Provider.Account.Id, incoming); // le prime pagine in viaggio non li tolgono (E-05, E-07)
         return true;
     }
 

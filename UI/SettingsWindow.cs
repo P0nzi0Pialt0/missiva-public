@@ -513,7 +513,7 @@ public sealed class SettingsWindow : Window
         var p = new StackPanel();
         p.Children.Add(Heading(T("Notifiche")));
         p.Children.Add(Section(T("Nuovi messaggi")));
-        p.Children.Add(Question(T("Quando nella Posta in arrivo arriva un messaggio nuovo Missiva lo dice con una notifica di Windows: subito con Gmail e gli altri account IMAP (il server avvisa), entro 30 secondi con gli account Microsoft, e comunque con il controllo di ogni due minuti. Spegnile per gli account che non vuoi seguire: i messaggi arrivano lo stesso nell'elenco.")));
+        p.Children.Add(Question(T("Quando nella Posta in arrivo arriva un messaggio nuovo Missiva lo dice con una notifica di Windows: subito con Gmail e gli altri account IMAP (il server avvisa), entro 30 secondi con gli account Microsoft, e comunque con il controllo di ogni minuto (di ogni due minuti con gli account Microsoft). Spegnile per gli account che non vuoi seguire: i messaggi arrivano lo stesso nell'elenco.")));
         if (S.Accounts.Count == 0) p.Children.Add(Question(T("Nessun account.")));
         foreach (var account in S.Accounts.ToList())
             p.Children.Add(Check(T("Notifiche per {0}", account.Email), !S.NotificationsOff.Contains(account.Id), on =>
@@ -577,7 +577,7 @@ public sealed class SettingsWindow : Window
         var p = new StackPanel();
         p.Children.Add(Heading(T("Avvio e chiusura")));
         p.Children.Add(Section(T("Chiudendo la finestra")));
-        p.Children.Add(Question(T("Nell'area di notifica, vicino all'orologio, Missiva continua a controllare la posta ogni due minuti, a mostrarti le notifiche, a mandare i messaggi pianificati e a riportare i messaggi posposti, usando poca memoria. Riaprila con un clic sull'icona; per chiuderla del tutto, tasto destro sull'icona, Esci.")));
+        p.Children.Add(Question(T("Nell'area di notifica, vicino all'orologio, Missiva continua a controllare la posta ogni minuto, a mostrarti le notifiche, a mandare i messaggi pianificati e a riportare i messaggi posposti, usando poca memoria. Riaprila con un clic sull'icona; per chiuderla del tutto, tasto destro sull'icona, Esci.")));
         p.Children.Add(Radios("tray", S.KeepInTray, v =>
             {
                 S.KeepInTray = v;
