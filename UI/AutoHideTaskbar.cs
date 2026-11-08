@@ -9,14 +9,19 @@ namespace Missiva.UI;
 /// novembre 2026: "quando l'app è a tutto schermo, la barra di windows, che io ho a scomparsa, non compare più"). Con la
 /// barra del titolo disegnata da Missiva (WindowChrome) l'area client è tutta la finestra, e ingrandita copre tutto lo
 /// schermo: Windows la prende per una finestra a schermo intero e non fa più uscire la barra quando il mouse va sul bordo.
-/// Qui, ingrandita, l'area client lascia libero un pixel su ogni bordo dello schermo dove c'è una barra nascosta
-/// automaticamente (WM_NCCALCSIZE, prima di quello della WindowChrome, che fa lo stesso conto senza quel pixel), come
+/// Qui, ingrandita, l'area client lascia liberi due pixel su ogni bordo dello schermo dove c'è una barra nascosta
+/// automaticamente (WM_NCCALCSIZE, prima di quello della WindowChrome, che fa lo stesso conto senza quei pixel), come
 /// fanno le altre app con la barra del titolo propria. Senza barre nascoste nulla cambia.
 /// </summary>
 public static class AutoHideTaskbar
 {
     const int WM_NCCALCSIZE = 0x0083;
-    const uint ABM_GETSTATE = 0x4, ABM_GETAUTOHIDEBAREX = 0xB, ABS_AUTOHIDE = 0x1;
+    const uint ABM_GETSTATE = 0x4, ABM_GETTASKBARPOS = 0x5, ABM_GETAUTOHIDEBAREX = 0xB, ABS_AUTOHIDE = 0x1;
+    /// <summary>
+    /// Quanto resta libero sul bordo della barra: 2 pixel, come Chromium (kAutoHideTaskbarThicknessPx), che con la barra del
+    /// titolo propria ha lo stesso problema.
+    /// </summary>
+    const int Gap = 2;
     /// <summary>Come risponde la WindowChrome di WPF (in .NET 10) a WM_NCCALCSIZE: WVR_REDRAW, misurato con la prova.</summary>
     const int Redraw = 0x0300;
 
@@ -63,11 +68,20 @@ public static class AutoHideTaskbar
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfo(MonitorFromRect(ref proposed, 2 /* MONITOR_DEFAULTTONEAREST */), ref info)) return IntPtr.Zero;
         var edges = HiddenBars(info.Monitor);
+        // Una riga nel registro, anche nella versione installata, quando cambia: per sapere se la correzione è scattata.
+        var line = edges == Edges.None ? "nessuna barra nascosta" : $"barra nascosta ({edges}): area client ridotta di {Gap} pixel su quel bordo";
+        if (line != lastLine)
+        {
+            lastLine = line;
+            Log.Write($"finestra ingrandita: {line}");
+        }
         if (edges == Edges.None) return IntPtr.Zero;
         Marshal.StructureToPtr(Client(proposed, info.Monitor, edges), lParam, false);
         handled = true;
         return new IntPtr(Redraw);
     }
+
+    static string? lastLine;
 
     static bool Zoomed(IntPtr hwnd)
     {
@@ -77,19 +91,25 @@ public static class AutoHideTaskbar
         return IsZoomed(hwnd);
     }
 
-    /// <summary>L'area client della finestra ingrandita: un pixel dentro lo schermo sui bordi con una barra nascosta.</summary>
+    /// <summary>L'area client della finestra ingrandita: Gap pixel dentro lo schermo sui bordi con una barra nascosta.</summary>
     public static Rect32 Client(Rect32 proposed, Rect32 monitor, Edges edges)
     {
         var client = proposed;
-        if (edges.HasFlag(Edges.Left)) client.Left = Math.Max(client.Left, monitor.Left + 1);
-        if (edges.HasFlag(Edges.Top)) client.Top = Math.Max(client.Top, monitor.Top + 1);
-        if (edges.HasFlag(Edges.Right)) client.Right = Math.Min(client.Right, monitor.Right - 1);
-        if (edges.HasFlag(Edges.Bottom)) client.Bottom = Math.Min(client.Bottom, monitor.Bottom - 1);
+        if (edges.HasFlag(Edges.Left)) client.Left = Math.Max(client.Left, monitor.Left + Gap);
+        if (edges.HasFlag(Edges.Top)) client.Top = Math.Max(client.Top, monitor.Top + Gap);
+        if (edges.HasFlag(Edges.Right)) client.Right = Math.Min(client.Right, monitor.Right - Gap);
+        if (edges.HasFlag(Edges.Bottom)) client.Bottom = Math.Min(client.Bottom, monitor.Bottom - Gap);
         return client;
     }
 
-    /// <summary>I bordi dello schermo con una barra nascosta automaticamente (anche le barre degli altri schermi).</summary>
-    static Edges HiddenBars(Rect32 monitor)
+    /// <summary>
+    /// I bordi dello schermo con una barra nascosta automaticamente: per bordo e schermo (ABM_GETAUTOHIDEBAREX, anche le
+    /// barre degli altri schermi), e se nessuno risponde il bordo della barra principale (ABM_GETTASKBARPOS). Sul PC
+    /// dell'autore (Windows 11, 10.0.26300, 8 novembre 2026) ABM_GETSTATE dice "nascosta" e ABM_GETTASKBARPOS "in basso",
+    /// ma ABM_GETAUTOHIDEBAREX e ABM_GETAUTOHIDEBAR rispondono vuoto su tutti i bordi: con la sola domanda per bordo la
+    /// correzione non scattava mai. Windows 11 mette la barra sullo stesso bordo in tutti gli schermi.
+    /// </summary>
+    internal static Edges HiddenBars(Rect32 monitor)
     {
 #if DEBUG
         if (TestEdges is { } test) return test(monitor);
@@ -102,6 +122,8 @@ public static class AutoHideTaskbar
             var bar = new AppBarData { Size = Marshal.SizeOf<AppBarData>(), Edge = edge, Rect = monitor };
             if (SHAppBarMessage(ABM_GETAUTOHIDEBAREX, ref bar) != IntPtr.Zero) edges |= (Edges)(1 << (int)edge);
         }
-        return edges;
+        if (edges != Edges.None) return edges;
+        var main = new AppBarData { Size = Marshal.SizeOf<AppBarData>() };
+        return SHAppBarMessage(ABM_GETTASKBARPOS, ref main) != IntPtr.Zero && main.Edge < 4 ? (Edges)(1 << (int)main.Edge) : Edges.None;
     }
 }

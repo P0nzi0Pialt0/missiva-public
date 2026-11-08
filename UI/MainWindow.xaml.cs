@@ -3690,40 +3690,53 @@ public partial class MainWindow : Window
         bool dry = simulate || Testing, ok = true;
         var parts = new List<MovePart>();
         var failed = new Dictionary<MessageSummary, AccountItem>();
-        foreach (var (account, group, target) in groups)
+        // La barra di Annulla subito, con le righe che escono (BeginUndo), non quando il server ha finito.
+        var finished = new TaskCompletionSource<LastMove?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int leaving = groups.Sum(g => Targets(g.Items).Count(m => m.FolderId != g.Target!.Id));
+        int op = leaving > 0 ? BeginUndo(groups[0].Target!, leaving, finished.Task) : -1;
+        LastMove? done = null;
+        try
         {
-            var messages = Targets(group);
-            var leaving = messages.Where(m => m.FolderId != target!.Id).ToList();
-            List<MovedMessage>? moved = null;
-            bool queued = false;
-            // Nella versione di prova solo il registro; senza rete (anche nella prova, --senza-rete) in coda, e al ritorno
-            // della rete la coda passa dal provider, che nella prova è TestingProvider.
-            if (simulate || dry && !Network.KnownOffline(account.Provider.Account))
+            foreach (var (account, group, target) in groups)
             {
-                Log.Write($"prova: sposterei {messages.Count} messaggi di {account.Header} in {target!.Name}");
-                moved = leaving.Select(m => new MovedMessage(m, m.Id)).ToList();
+                var messages = Targets(group);
+                var outgoing = messages.Where(m => m.FolderId != target!.Id).ToList();
+                List<MovedMessage>? moved = null;
+                bool queued = false;
+                // Nella versione di prova solo il registro; senza rete (anche nella prova, --senza-rete) in coda, e al ritorno
+                // della rete la coda passa dal provider, che nella prova è TestingProvider.
+                if (simulate || dry && !Network.KnownOffline(account.Provider.Account))
+                {
+                    Log.Write($"prova: sposterei {messages.Count} messaggi di {account.Header} in {target!.Name}");
+                    moved = outgoing.Select(m => new MovedMessage(m, m.Id)).ToList();
+                }
+                else switch (await RunOrQueueAsync(account, what, async () => moved = await account.Provider.MoveAsync(messages, target!),
+                                                   () => Enqueue(account, outgoing, QueuedKind.Move, target!.Id)))
+                {
+                    case null:
+                        // In coda: le righe sono già uscite, Annulla le toglie dalla coda.
+                        moved = outgoing.Select(m => new MovedMessage(m, m.Id)).ToList();
+                        queued = true;
+                        break;
+                    case false:
+                        ok = false;
+                        foreach (var m in messages) failed[m] = account; // rifiutato dal server: le righe tornano (PutBackFailed)
+                        break;
+                    default:
+                        BodyCache.Forget(account.Provider.Account, messages); // la copia su disco non resta alla cartella di prima
+                        FollowFlags(account, moved, target!.Id);
+                        break;
+                }
+                if (moved is { Count: > 0 }) parts.Add(new MovePart(account, target!, moved, queued));
+                if (moved is { Count: > 0 }) ShareRemoved(account, moved.Select(x => x.Original).ToList()); // anche dalle altre finestre (E-13)
             }
-            else switch (await RunOrQueueAsync(account, what, async () => moved = await account.Provider.MoveAsync(messages, target!),
-                                               () => Enqueue(account, leaving, QueuedKind.Move, target!.Id)))
-            {
-                case null:
-                    // In coda: le righe sono già uscite, Annulla le toglie dalla coda.
-                    moved = leaving.Select(m => new MovedMessage(m, m.Id)).ToList();
-                    queued = true;
-                    break;
-                case false:
-                    ok = false;
-                    foreach (var m in messages) failed[m] = account; // rifiutato dal server: le righe tornano (PutBackFailed)
-                    break;
-                default:
-                    BodyCache.Forget(account.Provider.Account, messages); // la copia su disco non resta alla cartella di prima
-                    FollowFlags(account, moved, target!.Id);
-                    break;
-            }
-            if (moved is { Count: > 0 }) parts.Add(new MovePart(account, target!, moved, queued));
-            if (moved is { Count: > 0 }) ShareRemoved(account, moved.Select(x => x.Original).ToList()); // anche dalle altre finestre (E-13)
+            if (parts.Count > 0) done = new LastMove(parts, removed, version, dry);
         }
-        if (parts.Count > 0) OfferUndo(new LastMove(parts, removed, version, dry));
+        finally
+        {
+            finished.TrySetResult(done);
+            EndUndo(done, op);
+        }
         PutBackFailed(removed, failed, version);
         return ok;
     }
@@ -3794,56 +3807,68 @@ public partial class MainWindow : Window
         bool dry = simulate || Testing, ok = true;
         var parts = new List<MovePart>();
         var failed = new Dictionary<MessageSummary, AccountItem>();
-        foreach (var (account, trash, inTrash, forever) in groups)
+        // Come in MoveAsync, la barra di Annulla subito: vale per quelli che vanno nel Cestino, non per quelli eliminati per sempre.
+        var finished = new TaskCompletionSource<LastMove?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int op = toTrash > 0 ? BeginUndo(groups.First(g => g.ToTrash.Count > 0).Trash, toTrash, finished.Task) : -1;
+        LastMove? done = null;
+        try
         {
-            List<MovedMessage>? moved = null;
-            bool queued = false;
-            if (simulate || dry && !Network.KnownOffline(account.Provider.Account))
+            foreach (var (account, trash, inTrash, forever) in groups)
             {
-                if (inTrash.Count > 0) Log.Write($"prova: sposterei {inTrash.Count} messaggi di {account.Header} in {trash.Name}");
-                if (forever.Count > 0) Log.Write($"prova: eliminerei per sempre {forever.Count} messaggi di {account.Header}");
-                moved = inTrash.Select(m => new MovedMessage(m, m.Id)).ToList();
-            }
-            else
-            {
-                // Nel Cestino anche senza rete (in coda, come Sposta); per sempre solo con la rete.
-                var trashed = inTrash.Count == 0 ? true
-                    : await RunOrQueueAsync(account, "eliminazione", async () => moved = await account.Provider.MoveAsync(inTrash, trash),
-                                            () => Enqueue(account, inTrash, QueuedKind.Move, trash.Id));
-                if (trashed == null)
+                List<MovedMessage>? moved = null;
+                bool queued = false;
+                if (simulate || dry && !Network.KnownOffline(account.Provider.Account))
                 {
+                    if (inTrash.Count > 0) Log.Write($"prova: sposterei {inTrash.Count} messaggi di {account.Header} in {trash.Name}");
+                    if (forever.Count > 0) Log.Write($"prova: eliminerei per sempre {forever.Count} messaggi di {account.Header}");
                     moved = inTrash.Select(m => new MovedMessage(m, m.Id)).ToList();
-                    queued = true;
-                }
-                else if (trashed == false)
-                {
-                    ok = false;
-                    // Rifiutato: nel Cestino non è andato nulla, e quelli da eliminare per sempre non partono (sotto): tornano tutti.
-                    foreach (var m in inTrash.Concat(forever)) failed[m] = account;
                 }
                 else
                 {
-                    BodyCache.Forget(account.Provider.Account, inTrash); // eliminati: nemmeno la copia su disco resta
-                    FollowFlags(account, moved, trash.Id); // nel Cestino il contrassegno resta, come in Outlook
+                    // Nel Cestino anche senza rete (in coda, come Sposta); per sempre solo con la rete.
+                    var trashed = inTrash.Count == 0 ? true
+                        : await RunOrQueueAsync(account, "eliminazione", async () => moved = await account.Provider.MoveAsync(inTrash, trash),
+                                                () => Enqueue(account, inTrash, QueuedKind.Move, trash.Id));
+                    if (trashed == null)
+                    {
+                        moved = inTrash.Select(m => new MovedMessage(m, m.Id)).ToList();
+                        queued = true;
+                    }
+                    else if (trashed == false)
+                    {
+                        ok = false;
+                        // Rifiutato: nel Cestino non è andato nulla, e quelli da eliminare per sempre non partono (sotto): tornano tutti.
+                        foreach (var m in inTrash.Concat(forever)) failed[m] = account;
+                    }
+                    else
+                    {
+                        BodyCache.Forget(account.Provider.Account, inTrash); // eliminati: nemmeno la copia su disco resta
+                        FollowFlags(account, moved, trash.Id); // nel Cestino il contrassegno resta, come in Outlook
+                    }
+                    if (forever.Count > 0 && trashed != false && await RunAsync("eliminazione", () => account.Provider.DeletePermanentlyAsync(forever)))
+                    {
+                        ShareRemoved(account, forever); // anche dalle altre finestre (E-13)
+                        BodyCache.Forget(account.Provider.Account, forever);
+                        foreach (var m in forever) Flags.Forget(account.Provider.Account, m); // eliminati per sempre: nemmeno le date
+                        Store.Save();
+                    }
+                    else if (forever.Count > 0)
+                    {
+                        ok = false;
+                        foreach (var m in forever) failed[m] = account;
+                    }
                 }
-                if (forever.Count > 0 && trashed != false && await RunAsync("eliminazione", () => account.Provider.DeletePermanentlyAsync(forever)))
-                {
-                    ShareRemoved(account, forever); // anche dalle altre finestre (E-13)
-                    BodyCache.Forget(account.Provider.Account, forever);
-                    foreach (var m in forever) Flags.Forget(account.Provider.Account, m); // eliminati per sempre: nemmeno le date
-                    Store.Save();
-                }
-                else if (forever.Count > 0)
-                {
-                    ok = false;
-                    foreach (var m in forever) failed[m] = account;
-                }
+                // Quelli eliminati per sempre non tornano: Annulla vale per quelli andati nel Cestino.
+                if (moved is { Count: > 0 }) parts.Add(new MovePart(account, trash, moved, queued));
+                if (moved is { Count: > 0 }) ShareRemoved(account, moved.Select(x => x.Original).ToList()); // anche dalle altre finestre (E-13)
             }
-            // Quelli eliminati per sempre non tornano: Annulla vale per quelli andati nel Cestino.
-            if (moved is { Count: > 0 }) parts.Add(new MovePart(account, trash, moved, queued));
-            if (moved is { Count: > 0 }) ShareRemoved(account, moved.Select(x => x.Original).ToList()); // anche dalle altre finestre (E-13)
+            if (parts.Count > 0) done = new LastMove(parts, removed, version, dry);
         }
-        if (parts.Count > 0) OfferUndo(new LastMove(parts, removed, version, dry));
+        finally
+        {
+            finished.TrySetResult(done);
+            EndUndo(done, op);
+        }
         PutBackFailed(removed, failed, version);
         return ok;
     }
@@ -3866,17 +3891,25 @@ public partial class MainWindow : Window
     }
 
     LastMove? lastMove;
+    /// <summary>Lo spostamento della barra ancora in corso sul server (BeginUndo), finché non diventa lastMove (EndUndo).</summary>
+    Task<LastMove?>? pendingMove;
+    /// <summary>Cresce a ogni barra nuova e quando la barra sparisce: lo spostamento che finisce dopo non la rimette.</summary>
+    int undoOp;
     DispatcherTimer? undoTimer;
 
     /// <summary>
     /// Come nel nuovo Outlook: dopo Elimina, Archivia o Sposta, in fondo all'elenco "Elemento eliminato" (archiviato,
-    /// spostato in...) con Annulla, per 8 secondi; Ctrl+Z fa lo stesso finché la barra si vede.
+    /// spostato in...) con Annulla, per 8 secondi; Ctrl+Z fa lo stesso finché la barra si vede. Compare subito, quando le
+    /// righe escono dall'elenco, con lo spostamento ancora in corso sul server (pending): fino all'8 novembre 2026
+    /// compariva quando il server aveva finito, perché Annulla ha bisogno degli identificativi nuovi, e con Gmail e
+    /// Outlook.com passava un secondo o più (l'autore: "il tasto annulla eliminazione compare in ritardo"). Annulla
+    /// premuto prima della fine aspetta lo spostamento (UndoAsync), poi lo annulla. Restituisce il numero della barra.
     /// </summary>
-    void OfferUndo(LastMove move)
+    int BeginUndo(MailFolder destination, int count, Task<LastMove?> pending)
     {
-        lastMove = move;
-        int n = move.Count;
-        UndoText.Text = UndoBarText(move.Destination.Kind, n, move.Destination.Name);
+        lastMove = null;
+        pendingMove = pending;
+        UndoText.Text = UndoBarText(destination.Kind, count, destination.Name);
         UndoBar.Visibility = Visibility.Visible;
         if (undoTimer == null)
         {
@@ -3885,6 +3918,24 @@ public partial class MainWindow : Window
         }
         undoTimer.Stop();
         undoTimer.Start();
+        return ++undoOp;
+    }
+
+    /// <summary>
+    /// Lo spostamento della barra op è finito: se la barra c'è ancora (e Annulla non l'ha già presa) Annulla vale per lui,
+    /// con il numero di quelli spostati davvero; se non si è spostato nulla (rifiutato dal server) la barra sparisce.
+    /// </summary>
+    void EndUndo(LastMove? move, int op)
+    {
+        if (op != undoOp) return;
+        if (move == null)
+        {
+            HideUndo();
+            return;
+        }
+        pendingMove = null;
+        lastMove = move;
+        UndoText.Text = UndoBarText(move.Destination.Kind, move.Count, move.Destination.Name);
     }
 
     /// <summary>Il testo della barra di Annulla, una frase intera per caso come in Outlook: "Elemento eliminato", "3 elementi spostati in Clienti".</summary>
@@ -3900,6 +3951,8 @@ public partial class MainWindow : Window
         undoTimer?.Stop();
         UndoBar.Visibility = Visibility.Collapsed;
         lastMove = null;
+        pendingMove = null;
+        undoOp++;
     }
 
     async void OnUndo(object sender, RoutedEventArgs e) => await UndoAsync();
@@ -3978,8 +4031,17 @@ public partial class MainWindow : Window
     /// </summary>
     async Task UndoAsync()
     {
-        if (lastMove is not { } last) return;
+        var last = lastMove;
+        var pending = pendingMove;
+        if (last == null && pending == null) return;
         HideUndo();
+        if (last == null)
+        {
+            // Lo spostamento è ancora in corso sul server: Annulla aspetta che finisca, poi lo annulla (BeginUndo).
+            Log.Write("annullamento chiesto con lo spostamento ancora in corso: si aspetta la sua fine");
+            last = await pending!;
+            if (last == null) return; // non si è spostato nulla: le righe le ha già rimesse PutBackFailed
+        }
         // Per account: i messaggi tornati, con l'account a cui rimettere le loro righe.
         var back = new List<(MovedMessage Moved, AccountItem Account)>();
         bool stale = false;
@@ -5496,7 +5558,7 @@ public partial class MainWindow : Window
         }
         else if (e.Key == Key.Insert && mods == ModifierKeys.None) { e.Handled = true; OnToggleFlag(this, e); }
         else if (e.Key == Key.P && mods == ctrl) { e.Handled = true; Print(); }
-        else if (e.Key == Key.Z && mods == ctrl && lastMove != null) { e.Handled = true; await UndoAsync(); }
+        else if (e.Key == Key.Z && mods == ctrl && (lastMove != null || pendingMove != null)) { e.Handled = true; await UndoAsync(); }
     }
 
     /// <summary>Ctrl+. e Ctrl+, come nel nuovo Outlook: il messaggio dopo o prima nell'elenco, che si apre nel riquadro.</summary>

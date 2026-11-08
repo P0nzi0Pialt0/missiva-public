@@ -24,6 +24,32 @@ static partial class ProvaBozze
         OnUiThread(RnRowAsync);
         RnTaskbarClient();
         RnTaskbarHook();
+        RnUndoSources();
+    }
+
+    /// <summary>
+    /// La barra di Annulla subito (l'autore: "il tasto annulla eliminazione compare in ritardo"): Elimina, Archivia e Sposta
+    /// la mostrano appena le righe escono dall'elenco (BeginUndo, prima di chiedere al server), e quando il server ha finito
+    /// Annulla vale per lo spostamento fatto (EndUndo, anche se qualcosa va storto: in un finally); Annulla premuto prima
+    /// aspetta lo spostamento in corso, e Ctrl+Z anche. Prima la barra compariva solo a spostamento finito. Nei sorgenti.
+    /// </summary>
+    static void RnUndoSources()
+    {
+        if (Ch1Code("UI", "MainWindow.xaml.cs") is not { } main)
+        {
+            Report.Add("      (sorgenti non trovati accanto all'eseguibile: la barra di Annulla nei sorgenti non è stata letta)");
+            return;
+        }
+        string move = Ch3Part(main, "async Task<bool> MoveAsync(", "void PutBackFailed("), delete = Ch3Part(main, "async Task<bool> DeleteAsync(", "sealed record MovePart(");
+        bool moveFirst = Ch3InOrder(move, "var removed = RemoveRows(items);", "BeginUndo(groups[0].Target!, leaving, finished.Task)", "await RunOrQueueAsync(", "finally", "finished.TrySetResult(done);", "EndUndo(done, op);");
+        bool deleteFirst = Ch3InOrder(delete, "var removed = RemoveRows(items);", "BeginUndo(groups.First(g => g.ToTrash.Count > 0).Trash, toTrash, finished.Task)", "await RunOrQueueAsync(", "finally",
+                                      "finished.TrySetResult(done);", "EndUndo(done, op);");
+        string undo = Ch3Part(main, "async Task UndoAsync()", "internal static string UndoStartedText(");
+        bool waits = Ch3InOrder(undo, "var pending = pendingMove;", "if (last == null && pending == null) return;", "HideUndo();", "last = await pending!;") && !main.Contains("OfferUndo(new LastMove(")
+                     && main.Contains("else if (e.Key == Key.Z && mods == ctrl && (lastMove != null || pendingMove != null))");
+        Check(moveFirst && deleteFirst && waits,
+              $"barra di Annulla subito: Sposta e Archivia ({moveFirst}) ed Elimina ({deleteFirst}) la mostrano appena tolte le righe, prima del server, e a spostamento finito vale per lui; " +
+              $"Annulla e Ctrl+Z premuti prima aspettano lo spostamento in corso ({waits})");
     }
 
     /// <summary>I dieci disegni delle Fluent UI System Icons: dentro il quadrato di 20, e la versione piena copre più della vuota.</summary>
@@ -129,10 +155,47 @@ static partial class ProvaBozze
         var left = AutoHideTaskbar.Client(proposed, monitor, AutoHideTaskbar.Edges.Left);
         var none = AutoHideTaskbar.Client(proposed, monitor, AutoHideTaskbar.Edges.None);
         var two = AutoHideTaskbar.Client(proposed, monitor, AutoHideTaskbar.Edges.Top | AutoHideTaskbar.Edges.Right);
-        bool ok = bottom is { Left: -8, Top: -8, Right: 1448, Bottom: 899 } && left is { Left: 1, Top: -8, Right: 1448, Bottom: 908 }
-                  && none.Equals(proposed) && two is { Left: -8, Top: 1, Right: 1439, Bottom: 908 };
-        Check(ok, $"barra nascosta: l'area client di Missiva ingrandita lascia un pixel libero solo sul bordo della barra (in basso {bottom.Bottom}, a sinistra {left.Left}, " +
+        bool ok = bottom is { Left: -8, Top: -8, Right: 1448, Bottom: 898 } && left is { Left: 2, Top: -8, Right: 1448, Bottom: 908 }
+                  && none.Equals(proposed) && two is { Left: -8, Top: 2, Right: 1438, Bottom: 908 };
+        Check(ok, $"barra nascosta: l'area client di Missiva ingrandita lascia due pixel liberi solo sul bordo della barra (in basso {bottom.Bottom}, a sinistra {left.Left}, " +
                   $"in alto e a destra {two.Top} e {two.Right}); senza barre nascoste è quella di prima");
+        RnTaskbarReal();
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct RnAppBar { public int Size; public IntPtr Window; public uint Callback; public uint Edge; public AutoHideTaskbar.Rect32 Rect; public IntPtr Param; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct RnMonitorInfo { public int Size; public AutoHideTaskbar.Rect32 Monitor, Work; public uint Flags; }
+
+    [DllImport("shell32.dll")]
+    static extern IntPtr SHAppBarMessage(uint message, ref RnAppBar data);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr MonitorFromRect(ref AutoHideTaskbar.Rect32 rect, uint flags);
+
+    [DllImport("user32.dll")]
+    static extern bool GetMonitorInfo(IntPtr monitor, ref RnMonitorInfo info);
+
+    /// <summary>
+    /// Con le domande vere a Windows, su questo PC: se la barra principale è nascosta automaticamente, AutoHideTaskbar
+    /// trova il suo bordo sul suo schermo. L'8 novembre 2026 sul PC dell'autore ABM_GETAUTOHIDEBAREX rispondeva vuoto su
+    /// tutti i bordi, e la correzione non scattava mai: ora c'è il ripiego su ABM_GETTASKBARPOS. Senza barra nascosta
+    /// il controllo dice solo che non ce n'è.
+    /// </summary>
+    static void RnTaskbarReal()
+    {
+        var state = new RnAppBar { Size = Marshal.SizeOf<RnAppBar>() };
+        bool hidden = ((long)SHAppBarMessage(0x4 /* ABM_GETSTATE */, ref state) & 0x1) != 0;
+        var bar = new RnAppBar { Size = Marshal.SizeOf<RnAppBar>() };
+        bool known = SHAppBarMessage(0x5 /* ABM_GETTASKBARPOS */, ref bar) != IntPtr.Zero && bar.Edge < 4;
+        var info = new RnMonitorInfo { Size = Marshal.SizeOf<RnMonitorInfo>() };
+        bool screen = GetMonitorInfo(MonitorFromRect(ref bar.Rect, 2), ref info);
+        var found = screen ? AutoHideTaskbar.HiddenBars(info.Monitor) : AutoHideTaskbar.Edges.None;
+        bool ok = !hidden || !known || !screen || found.HasFlag((AutoHideTaskbar.Edges)(1 << (int)bar.Edge));
+        Check(ok, hidden && known
+            ? $"barra nascosta, con Windows vero: la barra principale è nascosta sul bordo {bar.Edge}, e Missiva la trova sul suo schermo ({found})"
+            : "barra nascosta, con Windows vero: su questo PC la barra non è nascosta automaticamente, e Missiva non ne trova " + $"({found})");
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -176,7 +239,7 @@ static partial class ProvaBozze
             var maximized = new AutoHideTaskbar.Rect32 { Left = screen.Left - 8, Top = screen.Top - 8, Right = screen.Right + 8, Bottom = screen.Bottom + 8 };
             var hidden = Ask(AutoHideTaskbar.Edges.Bottom, maximized, out long hiddenAnswer);
             var plain = Ask(AutoHideTaskbar.Edges.None, maximized, out long plainAnswer);
-            bool ok = hidden.Bottom == screen.Bottom - 1 && hidden.Top == maximized.Top && hidden.Right == maximized.Right && plain.Equals(maximized) && hiddenAnswer == plainAnswer;
+            bool ok = hidden.Bottom == screen.Bottom - 2 && hidden.Top == maximized.Top && hidden.Right == maximized.Right && plain.Equals(maximized) && hiddenAnswer == plainAnswer;
             Check(ok, $"barra nascosta, sulla finestra vera: il gancio di Missiva arriva prima della WindowChrome e lascia libero il pixel in basso ({hidden.Bottom} con lo schermo che finisce a " +
                       $"{screen.Bottom}, risposta 0x{hiddenAnswer:X}); senza barre nascoste risponde la WindowChrome e la finestra resta intera ({plain.Bottom}, 0x{plainAnswer:X})");
         }
