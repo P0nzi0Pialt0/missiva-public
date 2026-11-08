@@ -35,6 +35,8 @@ static partial class ProvaBozze
         Keep("GmailProvider.TestSmtpCertificate", () => GmailProvider.TestSmtpCertificate, v => GmailProvider.TestSmtpCertificate = v),
         Keep("GmailProvider.TestContactsWritable", () => GmailProvider.TestContactsWritable, v => GmailProvider.TestContactsWritable = v),
         Keep("GoogleAuth.TestToken", () => GoogleAuth.TestToken, v => GoogleAuth.TestToken = v),
+        Keep("AutoHideTaskbar.TestEdges", () => UI.AutoHideTaskbar.TestEdges, v => UI.AutoHideTaskbar.TestEdges = v),
+        Keep("AutoHideTaskbar.TestZoomed", () => UI.AutoHideTaskbar.TestZoomed, v => UI.AutoHideTaskbar.TestZoomed = v),
         Keep("GoogleAuth.TestHttp", () => GoogleAuth.TestHttp, v => GoogleAuth.TestHttp = v),
         Keep("GoogleAuth.FailureMemory", () => GoogleAuth.FailureMemory, v => GoogleAuth.FailureMemory = v),
         Keep("GraphProvider.TestSharedConsent", () => GraphProvider.TestSharedConsent, v => GraphProvider.TestSharedConsent = v),

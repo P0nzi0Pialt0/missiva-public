@@ -22,6 +22,11 @@ NuGet.
 | Microsoft.Web.WebView2 | Riquadro di lettura dei messaggi | Licenza di WebView2 SDK (tipo BSD) | Copyright (C) Microsoft Corporation |
 | SharpVectors.Wpf | Disegno dei loghi SVG dei mittenti | BSD-3-Clause | Copyright (c) 2010 - 2026, Elinam LLC |
 | .NET 10 e Windows Desktop (WPF), dentro l'eseguibile | Il motore su cui Missiva gira | MIT | (c) .NET Foundation and Contributors |
+| Fluent UI System Icons, dieci disegni copiati in `UI/FluentIcons.cs` | Le icone delle azioni rapide sulle righe dell'elenco | MIT | Copyright (c) 2020 Microsoft Corporation |
+
+Le Fluent UI System Icons (https://github.com/microsoft/fluentui-system-icons) sono l'unica eccezione alla frase in
+cima: i loro disegni (cestino, bandierina, puntina e due buste, vuoti e pieni) stanno nei sorgenti di Missiva, copiati
+dai file SVG a 20 pixel, dall'8 novembre 2026.
 
 Microsoft.Identity.Client.NativeInterop non è software libero: è un componente binario di Microsoft, che si può
 distribuire alle condizioni del file `LICENSE` contenuto nel suo pacchetto NuGet. Missiva lo usa così com'è, senza

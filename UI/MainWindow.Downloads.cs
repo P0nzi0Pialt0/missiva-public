@@ -16,8 +16,8 @@ namespace Missiva.UI;
 /// per qualche secondo un segno di fatto; uno non riuscito resta segnato finché non si apre il pannello. Il pannello
 /// (TitleFlyout) ha gli scaricamenti, i più recenti in cima, con l'icona del tipo (FileKinds), nome, stato e le azioni:
 /// Annulla per quelli in corso, Apri e Mostra nella cartella per quelli finiti (Apri passa dalle stesse domande del
-/// riquadro; per un file aperto con un programma, che sta fra i temporanei di Missiva e se ne va un'ora dopo, Mostra nella
-/// cartella non c'è), e in fondo "Cancella l'elenco".
+/// riquadro; dall'8 novembre 2026 Mostra nella cartella c'è anche per un file aperto con un programma, che sta fra i
+/// temporanei di Missiva e se ne va un'ora dopo l'ultima modifica: il suggerimento lo dice), e in fondo "Cancella l'elenco".
 /// </summary>
 public partial class MainWindow
 {
@@ -227,7 +227,11 @@ public partial class MainWindow
         else if (item.State == DownloadState.Done && !item.Gone)
         {
             Action(T("Apri"), T("Apre il file, con le stesse domande del riquadro per i tipi che possono avviare programmi e per le pagine web"), () => OpenDownloaded(item));
-            if (!item.Temporary) Action(T("Mostra nella cartella"), T("Apre Esplora file sulla cartella del file, con il file scelto"), () => ShowDownloaded(item));
+            // Anche per un file aperto con un programma (richiesta dell'autore dell'8 novembre 2026: aprire la destinazione in
+            // Esplora file), con l'avviso nel suggerimento: sta fra i temporanei di Missiva, che lo cancella (Safety.CleanTemp).
+            Action(T("Mostra nella cartella"), item.Temporary
+                ? T("Apre Esplora file sulla cartella del file, con il file scelto. È una copia temporanea: Missiva la cancella un'ora dopo l'ultima modifica, quindi per tenerla copiala in un'altra cartella")
+                : T("Apre Esplora file sulla cartella del file, con il file scelto"), () => ShowDownloaded(item));
         }
         if (actions.Children.Count > 0) text.Children.Add(actions);
         AutomationProperties.SetName(grid, $"{item.Name}, {item.Status}");

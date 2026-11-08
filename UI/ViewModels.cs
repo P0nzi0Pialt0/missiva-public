@@ -556,7 +556,7 @@ public sealed class FolderItem : Observable
         get
         {
             if (!Store.Settings.FolderColors.TryGetValue(Key, out var preset))
-                return (Brush)(Application.Current.TryFindResource("TextFillColorPrimaryBrush") ?? Brushes.Black);
+                return (Brush)(Application.Current?.TryFindResource("TextFillColorPrimaryBrush") ?? Brushes.Black);
             var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(CategoryPalette.Hex(preset)));
             brush.Freeze();
             return brush;
@@ -926,7 +926,7 @@ public sealed class MessageItem : Observable
     public Brush Line1Brush => Brush(!S.SenderFirst);
     public Brush Line2Brush => Brush(S.SenderFirst);
     Brush Brush(bool isSubjectLine) =>
-        (Brush)(Application.Current.TryFindResource(isSubjectLine && !IsRead ? "AccentTextFillColorPrimaryBrush" : "TextFillColorPrimaryBrush")
+        (Brush)(Application.Current?.TryFindResource(isSubjectLine && !IsRead ? "AccentTextFillColorPrimaryBrush" : "TextFillColorPrimaryBrush")
                 ?? Brushes.Black);
 
     /// <summary>Il tema di Windows è cambiato: i colori presi dalle risorse sono ancora quelli del tema di prima.</summary>
@@ -978,7 +978,7 @@ public sealed class MessageItem : Observable
     /// <summary>"Scadenza: domani" sulla riga, come Outlook; in rosso se è passata.</summary>
     public string DueText => Due is { } d ? Flags.DueText(d, Today) : "";
     public Visibility DueVisibility => Due != null ? Visibility.Visible : Visibility.Collapsed;
-    public Brush DueBrush => (Brush)(Application.Current.TryFindResource(Due is { } d && Flags.Overdue(d, Today) ? "CriticalBrush" : "SecondaryTextBrush")
+    public Brush DueBrush => (Brush)(Application.Current?.TryFindResource(Due is { } d && Flags.Overdue(d, Today) ? "CriticalBrush" : "SecondaryTextBrush")
                                      ?? Brushes.Gray);
 
     /// <summary>Scadenza cambiata (Contrassegna, Segna come completato).</summary>

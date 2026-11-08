@@ -16,8 +16,9 @@ namespace Missiva.UI;
 /// animato e il riciclo restano del ListBoxItem (stile in MainWindow.xaml). Il disegno è quello del modello di prima, voce
 /// per voce (le misure sono le sue: Margin, Padding, MaxWidth, dimensioni dei caratteri).
 /// Quello che ha bisogno di elementi veri lo ha solo quando serve: la freccia della conversazione (righe di conversazione),
-/// le quattro azioni rapide e la casella di selezione (solo con il mouse sopra, con la riga scelta con le frecce o in
-/// modalità Seleziona), tolte dall'albero quando non servono. Le pastiglie degli allegati e delle categorie sono disegnate
+/// le quattro azioni rapide (RowAction, come nel nuovo Outlook: tre in alto a destra, il cestino dopo la data) e la casella
+/// di selezione (solo con il mouse sopra, con la riga scelta con le frecce o in modalità Seleziona), tolte dall'albero
+/// quando non servono. Le pastiglie degli allegati e delle categorie sono disegnate
 /// e ricevono il clic e il suggerimento con il test del punto.
 /// </summary>
 public sealed class MessageRowElement : FrameworkElement
@@ -54,12 +55,13 @@ public sealed class MessageRowElement : FrameworkElement
     // ---------------------------------------------------------------- stato
 
     MessageItem? item;
-    bool attached, hover, showChevron, showActions, showCheck;
+    bool attached, hover, showChevron, showActions, showDelete, showCheck;
     Layout? layout;
     double layoutWidth = -1;
     List<CategoryChip>? categories;
     readonly List<UIElement> children = new();
-    Button? chevron, readButton, flagButton, pinButton, deleteButton;
+    Button? chevron;
+    RowAction? readButton, flagButton, pinButton, deleteButton;
     StackPanel? actions;
     CheckBox? check;
     double dpi = 1;
@@ -157,6 +159,7 @@ public sealed class MessageRowElement : FrameworkElement
             CursorProbe.Hit(CursorProbe.C.SyncChanges);
             Change(ref showChevron, wantChevron, () => chevron ??= MakeChevron());
             Change(ref showActions, wantActions, () => actions ??= MakeActions());
+            Change(ref showDelete, wantActions, () => deleteButton!); // creato con le altre (MakeActions), ma sulla seconda riga
             Change(ref showCheck, wantCheck, () => check ??= MakeCheck());
             CursorProbe.Hit(CursorProbe.C.InvalidateMeasure);
             InvalidateMeasure();
@@ -170,10 +173,15 @@ public sealed class MessageRowElement : FrameworkElement
         }
         if (showActions)
         {
-            Tune(readButton!, item, item.ReadTip, item.ReadGlyph);
-            Tune(flagButton!, item, item.FlagTip, null);
-            Tune(pinButton!, item, item.PinTip, null);
-            Tune(deleteButton!, item, T("Elimina"), null);
+            // Come Outlook: l'icona vuota e grigia, piena e colorata sotto il mouse; contrassegnato e fissato pieni anche fermi.
+            Tune(readButton!, item, item.ReadTip);
+            readButton!.Show(item.IsRead ? FluentIcons.Mail : FluentIcons.MailRead, item.IsRead ? FluentIcons.MailFilled : FluentIcons.MailReadFilled, null, Accent);
+            Tune(flagButton!, item, item.FlagTip);
+            flagButton!.Show(item.IsFlagged ? FluentIcons.FlagFilled : FluentIcons.Flag, FluentIcons.FlagFilled, item.IsFlagged ? Critical : null, Critical);
+            Tune(pinButton!, item, item.PinTip);
+            pinButton!.Show(item.IsPinned ? FluentIcons.PinFilled : FluentIcons.Pin, FluentIcons.PinFilled, item.IsPinned ? Accent : null, Accent);
+            Tune(deleteButton!, item, T("Elimina"));
+            deleteButton!.Show(FluentIcons.Delete, FluentIcons.DeleteFilled, null, Critical);
         }
         if (showCheck && check != null)
         {
@@ -187,12 +195,13 @@ public sealed class MessageRowElement : FrameworkElement
         }
     }
 
-    static void Tune(Button button, MessageItem item, string tip, string? glyph)
+    const string Accent = "AccentTextFillColorPrimaryBrush", Critical = "CriticalBrush";
+
+    static void Tune(Button button, MessageItem item, string tip)
     {
         button.Tag = item;
         button.ToolTip = tip;
         System.Windows.Automation.AutomationProperties.SetName(button, tip);
-        if (glyph != null) ((TextBlock)button.Content).Text = glyph;
     }
 
     ListBoxItem? FindContainer()
@@ -235,29 +244,96 @@ public sealed class MessageRowElement : FrameworkElement
         return button;
     }
 
-    Button MakeButton(string glyph, Action<object, RoutedEventArgs> click)
-    {
-        var button = new Button
-        {
-            Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(5, 3, 5, 3), MinWidth = 0,
-            Content = new TextBlock { Text = glyph, FontFamily = IconFont, FontSize = 13 },
-        };
-        button.Click += (s, e) => click(s, e);
-        return button;
-    }
-
+    /// <summary>
+    /// Le azioni rapide come nel nuovo Outlook: Già letto/Da leggere, Contrassegna e Fissa in alto a destra, al posto delle
+    /// icone di stato; Elimina sulla seconda riga, dopo la data, in una colonna sua (Compute).
+    /// </summary>
     StackPanel MakeActions()
     {
-        readButton = MakeButton("", (s, e) => Owner?.OnRowRead(s, e));
-        flagButton = MakeButton("", (s, e) => Owner?.OnRowFlag(s, e));
-        pinButton = MakeButton("", (s, e) => Owner?.OnRowPin(s, e));
-        deleteButton = MakeButton("", (s, e) => Owner?.OnRowDelete(s, e));
+        readButton = new RowAction((s, e) => Owner?.OnRowRead(s, e));
+        flagButton = new RowAction((s, e) => Owner?.OnRowFlag(s, e)) { Margin = new Thickness(4, 0, 0, 0) };
+        pinButton = new RowAction((s, e) => Owner?.OnRowPin(s, e)) { Margin = new Thickness(4, 0, 0, 0) };
+        deleteButton = new RowAction((s, e) => Owner?.OnRowDelete(s, e));
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(readButton);
         panel.Children.Add(flagButton);
         panel.Children.Add(pinButton);
-        panel.Children.Add(deleteButton);
         return panel;
+    }
+
+    /// <summary>
+    /// Un'azione rapida della riga, come in Outlook: solo l'icona (FluentIcons, 20 DIP con il testo a 14), senza riquadro,
+    /// grigia; sotto il mouse piena e colorata (rossa per Contrassegna ed Elimina). Un Button vero: Invoke per UI
+    /// Automation, la tastiera e il suo nome restano quelli di prima.
+    /// </summary>
+    sealed class RowAction : Button
+    {
+        static readonly ControlTemplate Plain = MakeTemplate();
+        readonly Icon icon;
+
+        public RowAction(Action<object, RoutedEventArgs> click)
+        {
+            Template = Plain;
+            Background = Brushes.Transparent;
+            MinWidth = 0;
+            MinHeight = 0;
+            Cursor = Cursors.Hand;
+            Content = icon = new Icon(this);
+            Click += (s, e) => click(s, e);
+            MouseEnter += (_, _) => icon.InvalidateVisual();
+            MouseLeave += (_, _) => icon.InvalidateVisual();
+        }
+
+        /// <summary>Le due icone e i loro colori (chiavi delle risorse: seguono il tema); null è il grigio del testo secondario.</summary>
+        public void Show(Geometry idle, Geometry over, string? idleBrush, string overBrush)
+        {
+            (icon.Idle, icon.Over, icon.IdleBrush, icon.OverBrush) = (idle, over, idleBrush ?? "SecondaryTextBrush", overBrush);
+            icon.InvalidateVisual();
+        }
+
+        /// <summary>Grande quanto l'icona: 20 DIP con il testo a 14, in proporzione con le altre misure.</summary>
+        public double Size
+        {
+            set
+            {
+                if (icon.Width == value) return;
+                icon.Width = icon.Height = value;
+            }
+        }
+
+#if DEBUG
+        internal Geometry? TestIdle => icon.Idle;
+        internal Geometry? TestOver => icon.Over;
+        internal string TestOverBrush => icon.OverBrush;
+#endif
+
+        static ControlTemplate MakeTemplate()
+        {
+            var border = new FrameworkElementFactory(typeof(Border));
+            border.SetValue(Border.BackgroundProperty, Brushes.Transparent); // tutto il quadrato prende il clic
+            border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+            var template = new ControlTemplate(typeof(Button)) { VisualTree = border };
+            template.Seal();
+            return template;
+        }
+
+        sealed class Icon(RowAction owner) : FrameworkElement
+        {
+            public Geometry? Idle, Over;
+            public string IdleBrush = "SecondaryTextBrush", OverBrush = "SecondaryTextBrush";
+
+            protected override void OnRender(DrawingContext dc)
+            {
+                bool over = owner.IsMouseOver;
+                var shape = over ? Over : Idle;
+                if (shape == null) return;
+                var brush = TryFindResource(over ? OverBrush : IdleBrush) as Brush ?? Brushes.Gray;
+                double scale = ActualWidth / FluentIcons.Grid;
+                dc.PushTransform(new ScaleTransform(scale, scale));
+                dc.DrawGeometry(brush, null, shape);
+                dc.Pop();
+            }
+        }
     }
 
     CheckBox MakeCheck() => new() { MinWidth = 0, VerticalAlignment = VerticalAlignment.Top };
@@ -326,6 +402,8 @@ public sealed class MessageRowElement : FrameworkElement
         public Point? DotAt;
         public Brush? DotBrush;
         public List<Piece> Texts = new();
+        /// <summary>Le icone di stato disegnate dalle FluentIcons (contrassegno e fissato pieni), nel loro quadrato.</summary>
+        public List<(Geometry Shape, Rect Box, Brush Brush)> Shapes = new();
         public List<ChipBox> Chips = new();
         public Rect WhereRect, ImportantRect;
         public string WhereTip = "";
@@ -371,7 +449,12 @@ public sealed class MessageRowElement : FrameworkElement
         double colW = Math.Max(0, width - pad.Right - left);
         double top = pad.Top;
 
-        // Riga 1: freccia, mittente (o oggetto), data o azioni rapide
+        // Come nel nuovo Outlook (richiesta dell'autore dell'8 novembre 2026, con un video). Riga 1: freccia, mittente (o
+        // oggetto), dove, e a destra le icone di stato (allegato, fissato, scadenza e contrassegno, importanza) o, con il
+        // mouse sopra, le azioni rapide al loro posto. Riga 2: oggetto (o mittente) e data; con il mouse sopra il cestino
+        // dopo la data, in una colonna sua, e le icone della riga 1 finiscono dove finisce la data. Prima la data stava
+        // sulla riga 1 e le azioni rapide la coprivano. Le icone non contano per l'altezza delle righe, che con il mouse
+        // sopra non cambia.
         string tag1 = it.Line1Tag, line1 = it.Line1, suffix = it.Line1Suffix;
         var ft1 = Make(tag1 + line1 + " " + suffix, size, it.Line1Brush, it.Line1Weight);
         if (tag1.Length > 0 && it.DraftBrush is { } draft) ft1.SetForegroundBrush(draft, 0, tag1.Length);
@@ -381,107 +464,108 @@ public sealed class MessageRowElement : FrameworkElement
             ft1.SetFontWeight(FontWeights.Normal, at, suffix.Length);
             ft1.SetForegroundBrush(secondary, at, suffix.Length);
         }
-        var date = Make(it.DateText, small, secondary, it.Weight);
-        double dateW = date.WidthIncludingTrailingWhitespace;
-        double chevronW = 0, chevronH = 0, actionsW = 0, actionsH = 0;
+        double icon = 20 * size / 14; // le icone di Outlook: 20 DIP con il testo a 14
+        double chevronW = 0, chevronH = 0, deleteW = 0;
         if (showChevron && chevron != null)
         {
             chevron.Measure(Infinite);
             chevronW = chevron.DesiredSize.Width;
             chevronH = chevron.DesiredSize.Height;
         }
+        if (showActions && deleteButton != null)
+        {
+            deleteButton.Size = icon;
+            deleteButton.Measure(Infinite);
+            deleteW = deleteButton.DesiredSize.Width + 4;
+        }
+        double right = left + colW - deleteW; // fin dove arrivano la data e le icone della riga 1
+        double h1 = Math.Max(ft1.Height, chevronH);
+        double x1 = right;
+        bool first = true;
+        double Place(double w, double gap)
+        {
+            x1 -= (first ? 0 : gap) + w;
+            first = false;
+            return x1;
+        }
+        result.ImportantRect = Rect.Empty;
         if (showActions && actions != null)
         {
+            readButton!.Size = flagButton!.Size = pinButton!.Size = icon;
             actions.Measure(Infinite);
-            actionsW = actions.DesiredSize.Width;
-            actionsH = actions.DesiredSize.Height - 8; // margini -4 sopra e sotto
+            var want = actions.DesiredSize;
+            actionsRect = new Rect(Place(want.Width, 0), top + (h1 - want.Height) / 2, want.Width, want.Height);
         }
-        double col2 = Math.Max(dateW + 8, showActions ? actionsW + 4 : 0);
-        double h1 = Math.Max(Math.Max(ft1.Height, date.Height), Math.Max(chevronH, actionsH));
-        double text1W = Math.Max(0, colW - chevronW - col2);
+        else
+        {
+            actionsRect = Rect.Empty;
+            // Da destra a sinistra, perché da sinistra si leggano come prima: allegato, fissato, scadenza e contrassegno, importanza.
+            double glyph = 15 * size / 14;
+            if (it.Summary.IsImportant)
+            {
+                var important = Make("", glyph, critical, FontWeights.Normal, true);
+                double w = important.WidthIncludingTrailingWhitespace;
+                result.ImportantRect = new Rect(Place(w, 2), top + (h1 - important.Height) / 2, w, important.Height);
+                result.Texts.Add(new Piece { Text = important, At = result.ImportantRect.TopLeft });
+            }
+            if (it.IsFlagged)
+            {
+                result.Shapes.Add((FluentIcons.FlagFilled, new Rect(Place(icon, 2), top + (h1 - icon) / 2, icon, icon), critical));
+                if (it.DueVisibility == Visibility.Visible)
+                {
+                    var due = Make(it.DueText, small, it.DueBrush, FontWeights.Normal);
+                    result.Texts.Add(new Piece { Text = due, At = new Point(Place(due.WidthIncludingTrailingWhitespace, 4), top + (h1 - due.Height) / 2) });
+                }
+            }
+            if (it.IsPinned)
+                result.Shapes.Add((FluentIcons.PinFilled, new Rect(Place(icon, 2), top + (h1 - icon) / 2, icon, icon), Res("AccentTextFillColorPrimaryBrush", Brushes.DodgerBlue)));
+            if (it.Summary.HasAttachments)
+            {
+                var attach = Make("", glyph, Res("TextFillColorSecondaryBrush", Brushes.Gray), FontWeights.Normal, true);
+                result.Texts.Add(new Piece { Text = attach, At = new Point(Place(attach.WidthIncludingTrailingWhitespace, 2), top + (h1 - attach.Height) / 2) });
+            }
+        }
+        // Dove (l'account e la cartella, in Tutti gli account e nei risultati della ricerca): sulla riga 1, prima delle icone,
+        // perché l'oggetto della riga 2, che ha già la data, resti leggibile.
+        result.WhereRect = Rect.Empty;
+        if (it.WhereText is { Length: > 0 } whereText)
+        {
+            bool dot = it.AccountDotVisibility == Visibility.Visible;
+            var where = Make(whereText, small, secondary, FontWeights.Normal);
+            // Si accorcia prima lui del mittente: al mittente fino a 130 DIP, a lui quello che resta (almeno 30).
+            double room = (first ? right : x1 - 8) - left - chevronW - 8 - (dot ? 7 + 5 : 0);
+            double whereW = Math.Min(Math.Min(where.WidthIncludingTrailingWhitespace, 150), Math.Max(30, room - Math.Min(ft1.WidthIncludingTrailingWhitespace, 130)));
+            Fit(where, whereW);
+            double stackW = (dot ? 7 + 5 : 0) + whereW, stackH = Math.Max(where.Height, dot ? 8 : 0);
+            double wx = Place(stackW, 8), stackY = top + (h1 - stackH) / 2;
+            result.WhereRect = new Rect(wx, stackY, stackW, stackH);
+            if (dot)
+            {
+                var dotRect = new Rect(wx, stackY + (stackH - 8) / 2 + 1, 7, 7);
+                result.DotAt = new Point(dotRect.X + dotRect.Width / 2, dotRect.Y + dotRect.Height / 2);
+                result.DotBrush = it.AccountBrush;
+                wx += 7 + 5;
+            }
+            result.Texts.Add(new Piece { Text = where, At = new Point(wx, stackY + (stackH - where.Height) / 2) });
+            result.WhereTip = it.WhereTip;
+        }
+        double text1W = Math.Max(0, (first ? right : x1 - 8) - left - chevronW);
         result.Texts.Add(new Piece { Text = Fit(ft1, text1W), At = new Point(left + chevronW, top) });
-        double col2X = left + chevronW + text1W;
-        if (!showActions) result.Texts.Add(new Piece { Text = date, At = new Point(col2X + 8, top + (h1 - date.Height) / 2) });
         chevronRect = showChevron ? new Rect(left, top + (h1 - chevronH) / 2, chevronW, chevronH) : Rect.Empty;
-        actionsRect = showActions ? new Rect(col2X + 4, top - 4, Math.Max(0, col2 - 4), h1 + 8) : Rect.Empty;
 
-        // Riga 2: oggetto (o mittente), allegato, fissato, contrassegno, dove, importanza
+        // Riga 2: oggetto (o mittente), data, e con il mouse sopra il cestino
         double y2 = top + h1;
         string tag2 = it.Line2Tag;
         var ft2 = Make(tag2 + it.Line2, size, it.Line2Brush, it.Line2Weight);
         if (tag2.Length > 0 && it.DraftBrush is { } draft2) ft2.SetForegroundBrush(draft2, 0, tag2.Length);
-        FormattedText? attach = null, pin = null, flag = null, due = null, important = null, where = null;
-        double whereW = 0;
-        bool dot = it.AccountDotVisibility == Visibility.Visible;
-        if (it.Summary.HasAttachments) attach = Make("", 12, Res("TextFillColorSecondaryBrush", Brushes.Gray), FontWeights.Normal, true);
-        if (it.IsPinned) pin = Make("", 12, Res("AccentTextFillColorPrimaryBrush", Brushes.DodgerBlue), FontWeights.Normal, true);
-        if (it.IsFlagged)
-        {
-            flag = Make("", 12, critical, FontWeights.Normal, true);
-            if (it.DueVisibility == Visibility.Visible) due = Make(it.DueText, small, it.DueBrush, FontWeights.Normal);
-        }
-        if (it.Summary.IsImportant) important = Make("", 12, critical, FontWeights.Normal, true);
-        string whereText = it.WhereText;
-        if (whereText.Length > 0)
-        {
-            where = Make(whereText, small, secondary, FontWeights.Normal);
-            whereW = Math.Min(where.WidthIncludingTrailingWhitespace, 170);
-            Fit(where, whereW);
-        }
-        double flagW = flag == null ? 0 : (due == null ? 0 : 8 + due.WidthIncludingTrailingWhitespace) + 6 + flag.WidthIncludingTrailingWhitespace;
-        double whereStackW = where == null ? 0 : 8 + (dot ? 7 + 5 : 0) + whereW;
-        double auto = (attach == null ? 0 : 6 + attach.WidthIncludingTrailingWhitespace) + (pin == null ? 0 : 6 + pin.WidthIncludingTrailingWhitespace)
-                      + flagW + whereStackW + (important == null ? 0 : 6 + important.WidthIncludingTrailingWhitespace);
-        double h2 = ft2.Height;
-        foreach (var f in new[] { attach, pin, flag, due, important, where }) if (f != null) h2 = Math.Max(h2, f.Height);
-        if (where != null && dot) h2 = Math.Max(h2, 8);
-        double text2W = Math.Max(0, colW - auto);
-        result.Texts.Add(new Piece { Text = Fit(ft2, text2W), At = new Point(left, y2) });
-        double x = left + text2W;
-        void Icon(FormattedText? f)
-        {
-            if (f == null) return;
-            x += 6;
-            result.Texts.Add(new Piece { Text = f, At = new Point(x, y2 + (h2 - f.Height) / 2) });
-            x += f.WidthIncludingTrailingWhitespace;
-        }
-        Icon(attach);
-        Icon(pin);
-        if (flag != null)
-        {
-            if (due != null)
-            {
-                x += 8;
-                result.Texts.Add(new Piece { Text = due, At = new Point(x, y2 + (h2 - due.Height) / 2) });
-                x += due.WidthIncludingTrailingWhitespace;
-            }
-            Icon(flag);
-        }
-        result.WhereRect = Rect.Empty;
-        if (where != null)
-        {
-            double stackH = Math.Max(where.Height, dot ? 8 : 0);
-            double stackY = y2 + (h2 - stackH) / 2;
-            x += 8;
-            result.WhereRect = new Rect(x, stackY, whereStackW - 8, stackH);
-            if (dot)
-            {
-                var dotRect = new Rect(x, stackY + (stackH - 8) / 2 + 1, 7, 7);
-                result.DotAt = new Point(dotRect.X + dotRect.Width / 2, dotRect.Y + dotRect.Height / 2);
-                result.DotBrush = it.AccountBrush;
-                x += 7 + 5;
-            }
-            result.Texts.Add(new Piece { Text = where, At = new Point(x, stackY + (stackH - where.Height) / 2) });
-            x += whereW;
-            result.WhereTip = it.WhereTip;
-        }
-        result.ImportantRect = Rect.Empty;
-        if (important != null)
-        {
-            x += 6;
-            result.ImportantRect = new Rect(x, y2 + (h2 - important.Height) / 2, important.WidthIncludingTrailingWhitespace, important.Height);
-            result.Texts.Add(new Piece { Text = important, At = result.ImportantRect.TopLeft });
-        }
+        var date = Make(it.DateText, small, secondary, it.Weight);
+        double h2 = Math.Max(ft2.Height, date.Height);
+        double x2 = right - date.WidthIncludingTrailingWhitespace;
+        result.Texts.Add(new Piece { Text = date, At = new Point(x2, y2 + (h2 - date.Height) / 2) });
+        deleteRect = showActions && deleteButton != null
+            ? new Rect(right + 4, y2 + (h2 - deleteButton.DesiredSize.Height) / 2, deleteButton.DesiredSize.Width, deleteButton.DesiredSize.Height)
+            : Rect.Empty;
+        result.Texts.Add(new Piece { Text = Fit(ft2, Math.Max(0, x2 - 8 - left)), At = new Point(left, y2) });
         double y = y2 + h2;
 
         // Anteprima
@@ -538,7 +622,7 @@ public sealed class MessageRowElement : FrameworkElement
         return result;
     }
 
-    Rect chevronRect = Rect.Empty, actionsRect = Rect.Empty, checkRect = Rect.Empty;
+    Rect chevronRect = Rect.Empty, actionsRect = Rect.Empty, deleteRect = Rect.Empty, checkRect = Rect.Empty;
 
     /// <summary>Una fila di pastiglie che vanno a capo come un WrapPanel; restituisce la y dopo.</summary>
     double Chips(Layout result, double y, double left, double colW, List<CategoryChip>? cats, List<AttachmentChip>? files)
@@ -621,9 +705,10 @@ public sealed class MessageRowElement : FrameworkElement
     protected override Size ArrangeOverride(Size finalSize)
     {
         if (item == null) return finalSize;
-        Ensure(finalSize.Width); // la disposizione, se manca: mette chevronRect, actionsRect e checkRect
+        Ensure(finalSize.Width); // la disposizione, se manca: mette chevronRect, actionsRect, deleteRect e checkRect
         if (showChevron && chevron != null) chevron.Arrange(chevronRect);
         if (showActions && actions != null) actions.Arrange(actionsRect);
+        if (showDelete && deleteButton != null) deleteButton.Arrange(deleteRect);
         if (showCheck && check != null) check.Arrange(checkRect);
         return finalSize;
     }
@@ -671,6 +756,12 @@ public sealed class MessageRowElement : FrameworkElement
             if (chip.HasClip) dc.PushClip(new RectangleGeometry(new Rect(chip.Rect.X + chip.Clip.X, chip.Rect.Y + chip.Clip.Y, chip.Clip.Width, chip.Clip.Height)));
             foreach (var p in chip.Pieces) dc.DrawText(p.Text, new Point(chip.Rect.X + p.At.X, chip.Rect.Y + p.At.Y));
             if (chip.HasClip) dc.Pop();
+        }
+        foreach (var (shape, box, brush) in l.Shapes)
+        {
+            dc.PushTransform(new MatrixTransform(box.Width / FluentIcons.Grid, 0, 0, box.Height / FluentIcons.Grid, box.X, box.Y));
+            dc.DrawGeometry(brush, null, shape);
+            dc.Pop();
         }
         foreach (var piece in l.Texts) dc.DrawText(piece.Text, piece.At);
     }
@@ -731,6 +822,28 @@ public sealed class MessageRowElement : FrameworkElement
             Owner?.RowChipClicked(item, file);
         }
     }
+
+#if DEBUG
+    /// <summary>Prove (ProvaBozze.Ritocchi2): il mouse sopra senza mouse, e la disposizione calcolata.</summary>
+    internal void TestHover(bool over)
+    {
+        hover = over;
+        Sync();
+        Invalidate(true);
+    }
+
+    internal (double Height, List<(string Text, Point At, double Width)> Texts, List<(Geometry Shape, Rect Box)> Shapes, Rect Actions, Rect Delete,
+              List<(string Name, Geometry? Idle, Geometry? Over, string OverBrush)> Buttons) TestLayout()
+    {
+        var l = Ensure(ActualWidth > 0 ? ActualWidth : DesiredSize.Width);
+        var buttons = new List<(string, Geometry?, Geometry?, string)>();
+        if (showActions)
+            foreach (var b in new[] { readButton!, flagButton!, pinButton!, deleteButton! })
+                buttons.Add((System.Windows.Automation.AutomationProperties.GetName(b), b.TestIdle, b.TestOver, b.TestOverBrush));
+        return (l.Height, l.Texts.Select(p => (p.Text.Text, p.At, p.Text.WidthIncludingTrailingWhitespace)).ToList(), l.Shapes.Select(s => (s.Shape, s.Box)).ToList(),
+                showActions ? actionsRect : Rect.Empty, showDelete ? deleteRect : Rect.Empty, buttons);
+    }
+#endif
 
     protected override AutomationPeer OnCreateAutomationPeer() => new RowPeer(this);
 

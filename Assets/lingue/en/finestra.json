@@ -306,6 +306,7 @@
   "Apre il file, con le stesse domande del riquadro per i tipi che possono avviare programmi e per le pagine web": "Opens the file, with the same questions as the reading pane for file types that can run programs and for web pages",
   "Mostra nella cartella": "Show in folder",
   "Apre Esplora file sulla cartella del file, con il file scelto": "Opens File Explorer on the file's folder, with the file selected",
+  "Apre Esplora file sulla cartella del file, con il file scelto. È una copia temporanea: Missiva la cancella un'ora dopo l'ultima modifica, quindi per tenerla copiala in un'altra cartella": "Opens File Explorer on the file's folder, with the file selected. It's a temporary copy: Missiva deletes it an hour after the last change, so to keep it, copy it to another folder",
   "File non aperto": "File not opened",
   "Nessuna data": "No date",
   "Data personalizzata…": "Custom date…",

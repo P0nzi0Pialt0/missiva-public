@@ -813,18 +813,29 @@ public partial class MainWindow : Window
         return 138;
     }
 
+    /// <summary>Ingrandita, la barra delle applicazioni nascosta automaticamente deve poter uscire (AutoHideTaskbar).</summary>
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        AutoHideTaskbar.Attach(this);
+    }
+
     /// <summary>
     /// Ingrandita, la finestra sborda dallo schermo di qualche pixel per lato (il bordo invisibile di Windows): con la barra
-    /// del titolo disegnata da Missiva il contenuto rientra di altrettanto, e la parte trascinabile segue.
+    /// del titolo disegnata da Missiva il contenuto rientra di altrettanto, e la parte trascinabile segue. Conta l'area
+    /// client, non la finestra: con una barra delle applicazioni nascosta automaticamente su un bordo, lì finisce un pixel
+    /// prima dello schermo (AutoHideTaskbar), e il contenuto non deve rientrare anche del bordo invisibile.
     /// </summary>
     void FitMaximized()
     {
         var margin = new Thickness(0);
         var handle = new WindowInteropHelper(this).Handle;
         var info = new MonitorInfo { Size = System.Runtime.InteropServices.Marshal.SizeOf<MonitorInfo>() };
-        if (WindowState == WindowState.Maximized && handle != IntPtr.Zero && GetWindowRect(handle, out var r) &&
+        var origin = new Point32();
+        if (WindowState == WindowState.Maximized && handle != IntPtr.Zero && GetClientRect(handle, out var c) && ClientToScreen(handle, ref origin) &&
             GetMonitorInfo(MonitorFromWindow(handle, 2 /* MONITOR_DEFAULTTONEAREST */), ref info))
         {
+            var r = new Rect32 { Left = origin.X, Top = origin.Y, Right = origin.X + c.Right - c.Left, Bottom = origin.Y + c.Bottom - c.Top };
             double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
             margin = new Thickness(Math.Max(0, info.Work.Left - r.Left) / scale, Math.Max(0, info.Work.Top - r.Top) / scale,
                                    Math.Max(0, r.Right - info.Work.Right) / scale, Math.Max(0, r.Bottom - info.Work.Bottom) / scale);
@@ -845,6 +856,12 @@ public partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     static extern bool GetWindowRect(IntPtr hwnd, out Rect32 rect);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool GetClientRect(IntPtr hwnd, out Rect32 rect);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool ClientToScreen(IntPtr hwnd, ref Point32 point);
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     struct Point32 { public int X, Y; }

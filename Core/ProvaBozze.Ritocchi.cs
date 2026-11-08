@@ -472,7 +472,8 @@ static partial class ProvaBozze
     /// nome .eml e il "Salva il documento" dei file firmati passano da DownloadList, con le domande di prima prima di scaricare
     /// e Safety per scrivere; l'anteprima no (si vede già caricare), né un .p7m o un .eml allegati che si aprono in Missiva;
     /// i byte del provider arrivano con l'avanzamento e l'annullamento; l'indicatore sta nella barra del titolo; Apri dal pannello
-    /// fa le stesse domande e Mostra nella cartella usa Safety.ShowInFolder, solo per i file salvati.
+    /// fa le stesse domande e Mostra nella cartella usa Safety.ShowInFolder, dall'8 novembre 2026 anche per i file aperti con un
+    /// programma (fra i temporanei, con l'avviso nel suggerimento).
     /// </summary>
     static void RitDownloadsSources()
     {
@@ -504,14 +505,15 @@ static partial class ProvaBozze
                                "if (Safety.IsDangerous(name) && !Dialog.ConfirmOpenDangerous(this, name)) return;", "if (!Dialog.ConfirmOpenWebPage(this, name)) return;",
                                "if (item.Temporary && !item.Marked && !Dialog.ConfirmOpenUnmarked(this, name)) return;", "Process.Start(new ProcessStartInfo(downloaded) { UseShellExecute = true });")
                     && Ch3Part(panel, "void ShowDownloaded(DownloadItem item)", "\n    }").Contains("Safety.ShowInFolder(path);")
-                    && panel.Contains("if (!item.Temporary) Action(T(\"Mostra nella cartella\")") && panel.Contains("if (item.Active) Action(T(\"Annulla\")")
+                    && panel.Contains("Action(T(\"Mostra nella cartella\"), item.Temporary") && !panel.Contains("if (!item.Temporary) Action(T(\"Mostra nella cartella\")")
+                    && panel.Contains("if (item.Active) Action(T(\"Annulla\")")
                     && panel.Contains("clear.Click += (_, _) => DownloadList.Session.Clear();");
         bool bar = Ch3InOrder(Ch3Part(xaml.Replace("\r\n", "\n"), "<StackPanel x:Name=\"TitleTools\"", "</StackPanel>\n        </Grid>"),
                               "<Button x:Name=\"UpdateButton\"", "<Button x:Name=\"DownloadsButton\" Visibility=\"Collapsed\" Click=\"OnDownloadsButton\"");
         Check(pane && saveAll && provider && others && apri && bar,
               "scaricamenti nei sorgenti: Apri con un programma, Salva con nome e Salva tutti del riquadro passano dal gestore dopo le domande di prima (l'anteprima, un .p7m e un .eml allegati no); i byte " +
               "arrivano dal provider con l'avanzamento e l'annullamento; Salva con nome .eml e \"Salva il documento\" dei file firmati anche; Apri dal pannello fa le stesse domande e Mostra nella " +
-              $"cartella usa Safety.ShowInFolder, solo per i file salvati; l'indicatore accanto all'aggiornamento [{pane} {saveAll} {provider} {others} {apri} {bar}]");
+              $"cartella usa Safety.ShowInFolder, anche per i file aperti con un programma; l'indicatore accanto all'aggiornamento [{pane} {saveAll} {provider} {others} {apri} {bar}]");
     }
 
     // ---------------------------------------------------------------- l'avanzamento vero, dai provider
