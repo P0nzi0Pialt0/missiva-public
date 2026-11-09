@@ -756,9 +756,11 @@ public sealed class PdfWorker : IDisposable
 
 #if DEBUG
     /// <summary>
-    /// Prove, dentro il processo: il file dell'utente si legge? Il PC stesso (127.0.0.1) risponde? Gli appunti si aprono? Lo
-    /// schermo si ottiene (GetDC(NULL))? Una variabile d'ambiente di Missiva si vede? Nell'AppContainer, no, no, e (audit,
-    /// blocco 10, S-13) la variabile no.
+    /// Prove, dentro il processo: il file dell'utente si legge? Il PC stesso (127.0.0.1) risponde? Su quale window station
+    /// sta, e riapre WinSta0, quella dell'utente con i suoi appunti e il suo schermo? Gli appunti che vede si aprono, e il
+    /// testo si legge? Lo schermo si copia (BitBlt da GetDC(NULL))? Una variabile d'ambiente di Missiva si vede? Solo
+    /// letture: negli appunti non si scrive nulla, e dello schermo non si guarda nemmeno un pixel (audit, blocco 10, S-13;
+    /// la window station dall'8 novembre 2026, vedi Sandbox.Desktop).
     /// </summary>
     static string Reach(string path, int port, string variable)
     {
@@ -771,19 +773,66 @@ public sealed class PdfWorker : IDisposable
             network = tcp.ConnectAsync(System.Net.IPAddress.Loopback, port).Wait(3000) ? "collegato" : "non collegato (tempo scaduto)";
         }
         catch (Exception ex) { network = "non collegato (" + (ex.InnerException ?? ex).GetType().Name + ")"; }
-        string clipboard, screen;
-        if (OpenClipboard(IntPtr.Zero)) { CloseClipboard(); clipboard = "appunti aperti"; }
+        static string NameOf(IntPtr handle)
+        {
+            var name = new char[256];
+            return GetUserObjectInformationW(handle, 2 /* UOI_NAME */, name, name.Length * 2, out int bytes)
+                ? new string(name, 0, Math.Max(0, bytes / 2 - 1)) : "? (" + Marshal.GetLastWin32Error() + ")";
+        }
+        string station = NameOf(GetProcessWindowStation()) + ", desktop " + NameOf(GetThreadDesktop(GetCurrentThreadId()));
+        string reopened;
+        var user = OpenWindowStationW("WinSta0", false, 0x2 | 0x4 | 0x100 /* READATTRIBUTES, ACCESSCLIPBOARD, ENUMERATE */);
+        if (user != IntPtr.Zero) { CloseWindowStation(user); reopened = "WinSta0 riaperta"; }
+        else reopened = "WinSta0 non riaperta (" + Marshal.GetLastWin32Error() + ")";
+        string clipboard;
+        if (OpenClipboard(IntPtr.Zero))
+        {
+            int formats = CountClipboardFormats();
+            bool text = GetClipboardData(13 /* CF_UNICODETEXT */) != IntPtr.Zero; // la maniglia sola: il testo non si guarda
+            int error = Marshal.GetLastWin32Error();
+            CloseClipboard();
+            clipboard = $"appunti aperti ({formats} formati), testo {(text ? "letto" : "non letto (" + error + ")")}";
+        }
         else clipboard = "appunti non aperti (" + Marshal.GetLastWin32Error() + ")";
-        var dc = GetDC(IntPtr.Zero);
-        if (dc != IntPtr.Zero) { ReleaseDC(IntPtr.Zero, dc); screen = "GetDC(NULL) ottenuto"; }
-        else screen = "GetDC(NULL) no (" + Marshal.GetLastWin32Error() + ")";
         var value = variable.Length > 0 ? Environment.GetEnvironmentVariable(variable) : null;
-        return $"{file}; {network}; {clipboard}; {screen}" + (variable.Length > 0 ? $"; variabile {variable}: {(value == null ? "assente" : "presente")}" : "");
+        return $"{file}; {network}; window station {station}; {reopened}; {clipboard}; {Screen()}"
+               + (variable.Length > 0 ? $"; variabile {variable}: {(value == null ? "assente" : "presente")}" : "");
+
+        static string Screen()
+        {
+            var dc = GetDC(IntPtr.Zero);
+            if (dc == IntPtr.Zero) return "schermo non copiato (GetDC: " + Marshal.GetLastWin32Error() + ")";
+            var memory = CreateCompatibleDC(dc);
+            var bitmap = CreateCompatibleBitmap(dc, 8, 8);
+            var old = SelectObject(memory, bitmap);
+            bool copied = BitBlt(memory, 0, 0, 8, 8, dc, 0, 0, 0x00CC0020 /* SRCCOPY */);
+            int error = Marshal.GetLastWin32Error();
+            SelectObject(memory, old);
+            DeleteObject(bitmap);
+            DeleteDC(memory);
+            ReleaseDC(IntPtr.Zero, dc);
+            return copied ? "schermo copiato (BitBlt)" : "schermo non copiato (BitBlt: " + error + ")";
+        }
     }
 
     [DllImport("user32.dll", SetLastError = true)] static extern bool OpenClipboard(IntPtr window);
     [DllImport("user32.dll")] static extern bool CloseClipboard();
+    [DllImport("user32.dll")] static extern int CountClipboardFormats();
+    [DllImport("user32.dll", SetLastError = true)] static extern IntPtr GetClipboardData(uint format);
+    [DllImport("user32.dll", SetLastError = true)] static extern IntPtr GetProcessWindowStation();
+    [DllImport("user32.dll", SetLastError = true)] static extern IntPtr GetThreadDesktop(uint thread);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool GetUserObjectInformationW(IntPtr handle, int index, [Out] char[] info, int length, out int needed);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr OpenWindowStationW(string name, bool inherit, uint access);
+    [DllImport("user32.dll")] static extern bool CloseWindowStation(IntPtr station);
     [DllImport("user32.dll", SetLastError = true)] static extern IntPtr GetDC(IntPtr window);
     [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr window, IntPtr dc);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr dc);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleBitmap(IntPtr dc, int width, int height);
+    [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr dc, IntPtr item);
+    [DllImport("gdi32.dll", SetLastError = true)] static extern bool BitBlt(IntPtr target, int x, int y, int width, int height, IntPtr source, int sourceX, int sourceY, uint operation);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr item);
+    [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr dc);
 #endif
 }

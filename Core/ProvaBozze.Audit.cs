@@ -5030,10 +5030,13 @@ static partial class ProvaBozze
             var reach = await worker.TestReachAsync(secret, ((IPEndPoint)listener.LocalEndpoint).Port, "MISSIVA_PROVA_TOKEN");
             listener.Stop();
             Report.Add("      dal processo dei PDF: " + reach);
-            Check(reach.Contains("variabile MISSIVA_PROVA_TOKEN: assente") && reach.StartsWith("file non letto") && reach.Contains("non collegato") && reach.Contains("appunti non aperti"),
-                  $"S-13: il processo dei PDF, nel suo AppContainer, non vede la variabile d'ambiente di Missiva, non legge file, non si collega, non apre gli appunti ({reach})");
-            // Lo schermo (GetDC(NULL)) il processo lo ottiene lo stesso, anche con i limiti dell'interfaccia: non è un divieto che questo job dà.
-            // Non ha dove mandarlo (niente rete, file, appunti: solo il tubo verso Missiva), quindi non si controlla.
+            Check(reach.Contains("variabile MISSIVA_PROVA_TOKEN: assente") && reach.StartsWith("file non letto") && reach.Contains("non collegato"),
+                  $"S-13: il processo dei PDF, nel suo AppContainer, non vede la variabile d'ambiente di Missiva, non legge file, non si collega ({reach})");
+            // Gli appunti e lo schermo sono della window station: il processo sta fuori da WinSta0, sul desktop di Missiva
+            // (Sandbox.Desktop), da cui non la riapre, e lì gli appunti e lo schermo dell'utente non ci sono.
+            Check(Sandbox.TestDesktop is { } desktop && reach.Contains($"; window station {desktop.Replace("\\", ", desktop ")};") && !reach.Contains("window station WinSta0,")
+                  && reach.Contains("WinSta0 non riaperta") && reach.Contains("schermo non copiato"),
+                  $"S-13: il processo dei PDF sta fuori dalla window station dell'utente, sul desktop di Missiva ({Sandbox.TestDesktop ?? "nessuno"}), non riapre WinSta0 e non copia lo schermo: gli appunti e lo schermo dell'utente non li raggiunge ({reach})");
         }
         finally
         {

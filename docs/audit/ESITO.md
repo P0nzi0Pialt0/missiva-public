@@ -1743,7 +1743,8 @@ e lo dico punto per punto.
   scelti larghi (il picco misurato è 92 MB, una pagina A4 a 4000 pixel pesa 90 MB di bitmap): un PDF vero non li tocca, ma sono
   numeri miei.
 - **Lo schermo (`GetDC(NULL)`) resta raggiungibile** dal processo dei PDF (S-13): un alternate desktop lo impedirebbe, ma cambia
-  come il processo parte e non si può provare altrove che su questo PC.
+  come il processo parte e non si può provare altrove che su questo PC. Dall'8 novembre 2026 il processo sta su un desktop
+  suo fuori da WinSta0 e lo schermo non lo copia più: vedi in fondo, "S-13: il processo dei PDF su un desktop suo".
 - **Le mappe di cartelle e categorie restano in chiaro** (S-26), e i nomi dei file dei loghi (S-27).
 - **`HiddenCalendars` cifrato** oltre a quanto chiesto: è una lista semplice e i suoi valori sono indirizzi.
 
@@ -8173,3 +8174,27 @@ di Google restavano quelle di prima, e per un minuto ogni richiesta all'account 
 `GoogleApi.ResetConnections`), le letture ferme ripartono sulla connessione nuova, una lettura caduta con la connessione
 si ripete una volta, e il gestore manda i ping di HTTP/2. Dettagli e prove in fondo a `docs/audit/affidabilita-arrivo.md`,
 "Dopo l'installazione"; 8 controlli in più nel gruppo `affidabilita-arrivo`, la suite a 1431.
+
+## S-13: il processo dei PDF su un desktop suo (8 novembre 2026)
+
+Il processo dei PDF parte su un desktop di Missiva (`Sandbox.Desktop`, `Missiva.Anteprima.pid`) fuori dalla window
+station dell'utente, come i processi delle pagine di Chromium: appunti, atomi globali e schermo sono della window
+station, e da lì il processo non raggiunge quelli dell'utente. Chiude il residuo scritto sopra ("Lo schermo
+(`GetDC(NULL)`) resta raggiungibile"): dalla window station dell'utente `BitBlt` da `GetDC(NULL)` copiava lo schermo.
+
+`CreateWindowStation` senza nome apre (o crea) la window station non interattiva della sessione di accesso
+(`Service-0x0-...$`): con un nome scelto dà l'errore 5 a chi non è amministratore. È la stessa in cui WebView2 ha già
+i suoi `sbox_alternate_desktop_...`; se la crea Missiva, le dà la sicurezza di WinSta0, come Chromium. Il desktop dà
+all'AppContainer solo leggere, creare finestre e menu, elencare e scrivere i suoi oggetti. Da lì l'AppContainer non
+riapre WinSta0 (errore 5, con e senza job); un processo a integrità media invece sì, quindi la protezione si regge
+sull'AppContainer.
+
+**Prove**, gruppo `sicurezza`, stesso controllo nuovo prima e dopo il rimedio:
+
+- prima: "window station WinSta0, ...; schermo copiato (BitBlt)": NO;
+- dopo: "window station Service-0x0-...$, desktop Missiva.Anteprima.N; WinSta0 non riaperta (5); ...; schermo non
+  copiato (BitBlt: 6)": passa.
+
+`--prova-anteprima` con lo stesso PDF, tre volte per parte, alternate: prima 294-481 ms (avvio del processo compreso),
+dopo 298-338, sempre 800 pixel; un PNG 269 ms. Non provato: Missiva che crea lei la window station (con WebView2 aperto
+c'è sempre già) e le pagine di WebView2 che ci entrano dopo.
