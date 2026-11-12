@@ -16,12 +16,16 @@ Aggiungi account parte dall'indirizzo email, come Outlook e Thunderbird: Missiva
 ## Installare
 
 Da un rilascio pubblicato su GitHub (la pagina Releases): si scarica `Missiva-0.3.N.zip`, si estrae in una cartella e
-da lì si lancia `powershell -ExecutionPolicy Bypass -File installa.ps1`. Non serve altro: lo script vede che accanto
-c'è `Missiva.exe` e non i sorgenti, prova l'eseguibile e lo installa, anche con il Windows PowerShell 5.1 di serie.
-Missiva finisce in `%LOCALAPPDATA%\Programs\Missiva`, compare nel menu Start e in Impostazioni, App installate (da dove
-si disinstalla), e da lì si aggiorna da sola (sotto, "Aggiornamenti"). Senza un certificato di firma del codice, la
-prima apertura di un file scaricato può far dire a Windows che "ha protetto il PC" (Ulteriori informazioni, Esegui
-comunque).
+si apre `Missiva.exe` con un doppio clic. Alla domanda "Installare Missiva?", Installa la copia in
+`%LOCALAPPDATA%\Programs\Missiva`, senza permessi di amministratore, con il collegamento nel menu Start e la voce in
+Impostazioni, App installate (da dove si disinstalla), e la apre; da lì si aggiorna da sola (sotto, "Aggiornamenti"), e
+la cartella estratta si può cancellare. Se Missiva è aperta, prima si chiude da sola (i messaggi che stai scrivendo
+chiedono se salvare la bozza). Con la stessa versione già installata la domanda offre Apri Missiva e Installa di nuovo;
+con una più nuova installata avvisa che si tornerebbe a una versione precedente. Impostazioni e account non si toccano.
+Lo stesso fa, dal terminale aperto in quella cartella, `powershell -ExecutionPolicy Bypass -File installa.ps1`: lo
+script vede che accanto c'è `Missiva.exe` e non i sorgenti, prova l'eseguibile e lo installa, anche con il Windows
+PowerShell 5.1 di serie. Senza un certificato di firma del codice, la prima apertura di un file scaricato può far dire
+a Windows che "ha protetto il PC" (Ulteriori informazioni, Esegui comunque).
 
 Dai sorgenti servono .NET 10 SDK e PowerShell 7 (il comando `pwsh`: su Windows non c'è di serie, si installa dal
 Microsoft Store o con `winget install Microsoft.PowerShell`). Dalla cartella dei sorgenti: `pwsh -ExecutionPolicy

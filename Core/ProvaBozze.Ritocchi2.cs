@@ -25,7 +25,93 @@ static partial class ProvaBozze
         RnTaskbarClient();
         RnTaskbarHook();
         RnUndoSources();
+        RnStartSize();
+        RnStartSizeReal();
     }
+
+    /// <summary>
+    /// La misura di partenza della finestra principale (12 novembre 2026, l'autore, su un altro PC: "la finestra non era
+    /// centrata nello schermo al primo avvio"): dove 1320 x 820 non ci sta scende all'area utile meno il margine, mai sotto
+    /// la minima; dove ci sta resta com'è. Nel costruttore della sola finestra principale, prima che esista.
+    /// </summary>
+    static void RnStartSize()
+    {
+        Size wanted = new(1320, 820), min = new(720, 560);
+        var small = WindowFit.Fit(wanted, new Size(1280, 672), min); // 1920 x 1080 al 150%, barra delle applicazioni di 48
+        var big = WindowFit.Fit(wanted, new Size(1707, 912), min); // 2560 x 1600 al 150%
+        var tiny = WindowFit.Fit(wanted, new Size(1024, 552), min); // 1024 x 600: la minima vale più del margine
+        bool fit = small == new Size(1280 - 2 * WindowFit.Margin, 672 - 2 * WindowFit.Margin) && big == wanted && tiny == new Size(1024 - 2 * WindowFit.Margin, 560);
+        bool hooked = Ch1Code("UI", "MainWindow.xaml.cs") is not { } main
+                      || (Ch3InOrder(Ch3Part(main, "public MainWindow((string AccountId, string FolderId)? only = null)", "ApplyContextWords();"), "InitializeComponent();", "if (only == null) WindowFit.FitStart(this);")
+                          && main.Split("WindowFit.FitStart(window);\n        window.Show();").Length == 3 && main.Contains("WindowFit.FitStart(source);\n        source.Show();"));
+        // Le altre finestre grandi, centrate sulla principale: la misura scende dopo Width e Height, prima di mostrarle.
+        string[] others = ["ComposeWindow.xaml.cs", "SettingsWindow.cs", "RuleWindow.cs", "PersonCard.cs", "P7mWindow.cs"];
+        var missing = others.Where(f => Ch1Code("UI", f) is { } code && !Ch3InOrder(code, "Height", "WindowFit.FitStart(this);", "WindowStartupLocation")
+                                        && !(f == "ComposeWindow.xaml.cs" && Ch3InOrder(code, "InitializeComponent();", "WindowFit.FitStart(this);"))).ToList();
+        Check(fit && hooked && missing.Count == 0,
+              $"finestra principale su uno schermo piccolo: 1320 x 820 scende a {small.Width} x {small.Height} su un'area utile di 1280 x 672 DIP, resta su una grande ({big.Width} x {big.Height}), " +
+              $"non scende sotto la minima ({tiny.Width} x {tiny.Height}) ({fit}); nel costruttore della sola finestra principale, dopo il XAML, e prima di mostrare le finestre dei messaggi " +
+              $"e dell'origine ({hooked}); lo stesso nella scrittura, in Impostazioni, nelle regole, nella scheda della persona e nella firma digitale ({(missing.Count == 0 ? "tutte" : "mancano " + string.Join(", ", missing))})");
+    }
+
+    /// <summary>
+    /// Con lo schermo vero di questo PC (quello del mouse, come CenterScreen di WPF) e due finestre create e mai mostrate,
+    /// più grandi della sua area utile: senza la correzione WPF la centra con il bordo in alto sopra l'area utile (il difetto
+    /// visto dall'autore), con WindowFit.FitStart sta dentro, al centro. L'area utile letta da WindowFit è quella di WPF
+    /// (SystemParameters.WorkArea) quando lo schermo è il principale.
+    /// </summary>
+    static void RnStartSizeReal()
+    {
+        if (WindowFit.WorkAtCursor() is not { } at)
+        {
+            Check(false, "finestra principale su uno schermo piccolo, con lo schermo vero: Windows non dice l'area utile dello schermo del mouse");
+            return;
+        }
+        var wpf = SystemParameters.WorkArea;
+        bool same = !at.Primary || (Math.Abs(wpf.Width - at.Work.Width) < 1 && Math.Abs(wpf.Height - at.Work.Height) < 1);
+        AutoHideTaskbar.Rect32 Place(bool fitted)
+        {
+            var window = new Window
+            {
+                ShowInTaskbar = false, ShowActivated = false, WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Width = at.Work.Width + 60, Height = at.Work.Height + 60, MinWidth = 300, MinHeight = 200,
+            };
+            try
+            {
+                if (fitted) WindowFit.FitStart(window);
+                var handle = new WindowInteropHelper(window).EnsureHandle();
+                GetWindowRect(handle, out var rect);
+                return rect;
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        var before = Place(false);
+        var after = Place(true);
+        int top = (int)Math.Round(at.Work.Top * at.Scale), bottom = (int)Math.Round(at.Work.Bottom * at.Scale);
+        int left = (int)Math.Round(at.Work.Left * at.Scale), right = (int)Math.Round(at.Work.Right * at.Scale);
+        int border = (int)Math.Ceiling(8 * at.Scale); // il bordo invisibile di Windows attorno alla finestra
+        bool problem = before.Top < top - border;
+        bool inside = after.Top >= top - border && after.Bottom <= bottom + border && after.Left >= left - border && after.Right <= right + border;
+        bool centered = Math.Abs((after.Left + after.Right) / 2 - (left + right) / 2) <= 2 && Math.Abs((after.Top + after.Bottom) / 2 - (top + bottom) / 2) <= 2;
+        // Con lo schermo a una scala diversa da quella del sistema WPF crea la finestra alla scala del sistema, la centra, e
+        // al cambio di scala la riporta a quella dello schermo tenendo fermo l'angolo in alto a sinistra: dentro, non al
+        // centro (come prima della correzione). Più piccola dentro c'è sempre se la scala del sistema è la più grande; nel
+        // caso contrario, che su questo PC non c'è, lo si dice soltanto.
+        bool mixed = Math.Abs(at.MonitorScale - at.SystemScale) > 0.01;
+        bool sure = !mixed || at.SystemScale >= at.MonitorScale;
+        Check(same && problem && (inside || !sure) && (centered || mixed),
+              $"finestra principale su uno schermo piccolo, con lo schermo vero (area utile {at.Work.Width:0} x {at.Work.Height:0} DIP contata a scala {at.Scale:0.##}, " +
+              $"schermo a {at.MonitorScale:0.##} e sistema a {at.SystemScale:0.##}, {(at.Primary ? "il principale, come SystemParameters.WorkArea: " + same : "non il principale")}): una " +
+              $"finestra più grande senza la correzione esce in alto (bordo a {before.Top} con l'area che comincia a {top}: {problem}); con la correzione sta dentro " +
+              $"({after.Left},{after.Top} - {after.Right},{after.Bottom}: {inside}{(sure ? "" : ", qui non garantito")}) e " +
+              (mixed ? $"con le due scale diverse non si chiede il centro ({centered})" : $"al centro ({centered})"));
+    }
+
+    [DllImport("user32.dll")]
+    static extern bool GetWindowRect(IntPtr hwnd, out AutoHideTaskbar.Rect32 rect);
 
     /// <summary>
     /// La barra di Annulla subito (l'autore: "il tasto annulla eliminazione compare in ritardo"): Elimina, Archivia e Sposta

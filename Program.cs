@@ -54,6 +54,15 @@ static class Program
 #if DEBUG
         if (DevTools.TryRun(args)) return;
 #endif
+#if !DEBUG && !PROVA
+        // Un doppio clic sull'eseguibile fuori dalla cartella di installazione (lo zip di un rilascio estratto): chiede se
+        // installarsi, e se sì lo fa e apre quella installata (UI.SelfInstall), prima del mutex, anche con una Missiva aperta.
+        if (UI.SelfInstall.Offers(Environment.ProcessPath, args, Updates.InstallFolder))
+        {
+            Environment.ExitCode = UI.SelfInstall.Run(Environment.ProcessPath!, args);
+            return;
+        }
+#endif
 #if DEBUG || PROVA
         // Le prove lavorano su una copia dei dati (MISSIVA_DATA, da strumenti\prova.ps1). Senza, la prova userebbe i dati
         // veri accanto alla Missiva installata (il mutex è un altro) e segnerebbe letti i messaggi aperti: succede con il

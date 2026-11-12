@@ -116,6 +116,12 @@
     <EmbeddedResource Include="Assets\lingue\en\*.json" LogicalName="lingue/en/%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- Quello che Missiva mette accanto a sé quando si installa da sola (UI/SelfInstall.cs, 12 novembre 2026) se
+       l'eseguibile è da solo, senza lo zip: il programma di disinstallazione e le licenze, "installa/<nome>". -->
+  <ItemGroup>
+    <EmbeddedResource Include="disinstalla.ps1;LICENSE;TERZE-PARTI.md" LogicalName="installa/%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="AngleSharp" Version="1.8.2" />
     <PackageReference Include="MailKit" Version="4.18.0" />

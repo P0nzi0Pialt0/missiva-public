@@ -37,6 +37,8 @@ public partial class MainWindow : Window
         this.only = only;
         if (only == null) Log.Startup("InitializeComponent");
         InitializeComponent();
+        // Su uno schermo piccolo 1320 x 820 non ci sta, e WPF la centrerebbe con la barra del titolo fuori dallo schermo (WindowFit).
+        if (only == null) WindowFit.FitStart(this);
         ApplyContextWords();
         MessageList.Loaded += (_, _) => AttachListScrolling(); // il cursore della barra senza scatti e il mouse fermo fuori dal hit test mentre l'elenco scorre veloce
         if (only == null) Log.Startup("XAML della finestra");
@@ -3403,6 +3405,7 @@ public partial class MainWindow : Window
         DockPanel.SetDock(bar, Dock.Top);
         content.Children.Add(bar);
         content.Children.Add(reader);
+        WindowFit.FitStart(window);
         window.Show();
         _ = reader.ShowAsync(item.Provider, item.Summary, S.ReadingWholeConversation, JunkOf(item.Provider));
         return window;
@@ -5072,8 +5075,10 @@ public partial class MainWindow : Window
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             BorderThickness = new Thickness(0), Padding = new Thickness(12),
         };
-        new Window { Title = T("Origine: {0}", item.Subject), Content = box, Width = 900, Height = 700, Owner = this, Icon = Icon,
-                     WindowStartupLocation = WindowStartupLocation.CenterOwner }.Show();
+        var source = new Window { Title = T("Origine: {0}", item.Subject), Content = box, Width = 900, Height = 700, Owner = this, Icon = Icon,
+                                  WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        WindowFit.FitStart(source);
+        source.Show();
     }
 
     // ---------------------------------------------------------------- scrittura
@@ -5214,6 +5219,7 @@ public partial class MainWindow : Window
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Icon = Icon,
         };
+        WindowFit.FitStart(window);
         window.Show();
         _ = reader.ShowAsync(eml, eml.Summary, false, ReadingView.EmlJunk(eml, fromJunk));
     }

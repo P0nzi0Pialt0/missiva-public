@@ -56,6 +56,7 @@ public sealed class RuleWindow : Window
         Width = 640;
         Height = 760;
         MinHeight = 420;
+        WindowFit.FitStart(this);
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
 

@@ -43,6 +43,7 @@ public sealed class PersonCard : Window
         Width = 520;
         Height = 640;
         MinHeight = 360;
+        WindowFit.FitStart(this);
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
 

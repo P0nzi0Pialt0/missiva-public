@@ -15,13 +15,17 @@ hand.
 
 ## Install
 
-From a release published on GitHub (the Releases page): download `Missiva-0.3.N.zip`, extract it to a folder and from
-there run `powershell -ExecutionPolicy Bypass -File installa.ps1`. Nothing else is needed: the script sees
-`Missiva.exe` next to it instead of the source code, tests the program and installs it, even with the Windows
-PowerShell 5.1 that comes with Windows. Missiva goes into `%LOCALAPPDATA%\Programs\Missiva`, appears in the Start menu
-and in Settings, Apps, Installed apps (where you can uninstall it), and from then on updates itself (below, "Updates").
-Without a code signing certificate, the first time you open a downloaded file Windows may say that it "protected your
-PC" (More info, Run anyway).
+From a release published on GitHub (the Releases page): download `Missiva-0.3.N.zip`, extract it to a folder and
+double-click `Missiva.exe`. At the question "Install Missiva?", Install copies it to `%LOCALAPPDATA%\Programs\Missiva`,
+without administrator rights, with a shortcut in the Start menu and an entry in Settings, Apps, Installed apps (where
+you can uninstall it), and opens it; from then on it updates itself (below, "Updates"), and you can delete the extracted
+folder. If Missiva is open, it first closes by itself (messages you're writing ask whether to save the draft). With the
+same version already installed, the question offers Open Missiva and Install again; with a newer one installed, it
+warns that you'd go back to an older version. Settings and accounts aren't touched. From a terminal opened in that
+folder, `powershell -ExecutionPolicy Bypass -File installa.ps1` does the same: the script sees `Missiva.exe` next to it
+instead of the source code, tests the program and installs it, even with the Windows PowerShell 5.1 that comes with
+Windows. Without a code signing certificate, the first time you open a downloaded file Windows may say that it
+"protected your PC" (More info, Run anyway).
 
 From source you need the .NET 10 SDK and PowerShell 7 (the `pwsh` command: Windows doesn't include it, you install it
 from the Microsoft Store or with `winget install Microsoft.PowerShell`). From the source folder: `pwsh -ExecutionPolicy

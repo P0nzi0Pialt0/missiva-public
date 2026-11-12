@@ -23,6 +23,7 @@ public sealed class P7mWindow : Window
         Title = result.Name;
         Width = 860;
         Height = 700;
+        WindowFit.FitStart(this);
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
 

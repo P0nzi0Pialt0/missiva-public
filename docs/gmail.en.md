@@ -19,15 +19,20 @@ server in between.
    Enable.
 3. **Describe the app.** Open https://console.cloud.google.com/auth/overview and select Get started. App name:
    Missiva. Support email: yours. Audience: External. Contact email: yours. Agree and create.
-4. **Publish the app.** In Audience select Publish app and confirm. Don't skip this step: if the app stays "In
+4. **Fill in Branding.** Google wants the app's home page and privacy policy before it lets you publish it: without
+   them, Publish app stays grayed out. In Branding enter Missiva's pages: App home page
+   `https://missiva.cmqndfrpv33.com/`, Privacy policy link `https://missiva.cmqndfrpv33.com/privacy.html`, Terms of
+   service link `https://missiva.cmqndfrpv33.com/termini.html`, and under Authorized domains `cmqndfrpv33.com`,
+   without `missiva.` in front. Don't upload a logo: for a published app a logo starts Google's verification. Save.
+5. **Publish the app.** In Audience select Publish app and confirm. Don't skip this step: if the app stays "In
    testing", Google expires the sign-in every 7 days.
-5. **Give the app the mail permission.** In Data access select Add or remove scopes and check
+6. **Give the app the mail permission.** In Data access select Add or remove scopes and check
    `https://mail.google.com/`. If it isn't in the list, paste it at the bottom, under Manually add scopes. Then Update
    and Save.
-6. **Create the client.** In Clients select Create client. Application type: Desktop app. Name: Missiva. Create. Copy
+7. **Create the client.** In Clients select Create client. Application type: Desktop app. Name: Missiva. Create. Copy
    the **Client ID** and **Client secret** right away, or download the JSON file: the secret is shown only at that
    moment. The Client ID ends with `.apps.googleusercontent.com`.
-7. **Put them in Missiva.** Add account, type your Gmail address (or choose Google), open "Missiva's Google app",
+8. **Put them in Missiva.** Add account, type your Gmail address (or choose Google), open "Missiva's Google app",
    paste the Client ID and the Client secret and select Sign in with Google.
 
 ## In the browser, the first time
@@ -41,7 +46,7 @@ From the second Gmail account on there's nothing more to register: Missiva uses 
 
 You add them later, when you need them, to the same project:
 
-| For | Enable | Add the scope (as in step 5) | Then in Missiva |
+| For | Enable | Add the scope (as in step 6) | Then in Missiva |
 |---|---|---|---|
 | Calendar | [Google Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com) | `https://www.googleapis.com/auth/calendar` | Calendar, "Allow access to calendar" |
 | Contacts, read only | [People API](https://console.cloud.google.com/apis/library/people.googleapis.com) | `https://www.googleapis.com/auth/contacts.readonly` | People, "Allow access to contacts" |
@@ -52,8 +57,11 @@ is lost, and Missiva tells you.
 
 ## If something goes wrong
 
+- **Publish app is grayed out**: Branding is missing (step 4). Fill it in and save, then go back to Audience.
+- **Google doesn't accept the Branding addresses**: leave the app "In testing" and in Audience, Test users, add your
+  Gmail address. It works the same, but every 7 days Missiva asks you to sign in again.
 - **"Access blocked" with error 403 `access_denied`**: the app is still "In testing" and your account isn't among the
-  test users. Publish the app (step 4).
+  test users. Publish the app (step 5).
 - **After a week Missiva asks you to sign in again**: same cause, the app is "In testing". Publish it and then, in
   Missiva, Sign in again.
 - **Missiva says the Client ID and Client secret are missing**: both must be pasted into the "Missiva's Google app"

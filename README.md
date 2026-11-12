@@ -136,17 +136,21 @@ Serve Windows 11, e nient'altro.
 
 1. Dall'[ultimo rilascio](../../releases/latest) scarica `Missiva-0.3.N.zip`.
 2. Estrai lo zip in una cartella.
-3. In Esplora file, con il tasto destro dentro quella cartella, scegli Apri nel Terminale, e lancia:
+3. Apri `Missiva.exe` con un doppio clic e premi **Installa**.
 
-   ```
-   powershell -ExecutionPolicy Bypass -File installa.ps1
-   ```
+Missiva non ha un certificato di firma del codice: al doppio clic Windows può avvisare che "ha protetto il PC". Premi
+Ulteriori informazioni, poi Esegui comunque.
 
-Lo script prova che l'eseguibile parta e lo mette in `%LOCALAPPDATA%\Programs\Missiva`, senza permessi di
-amministratore. Missiva compare nel menu Start e in Impostazioni, App installate, da dove si disinstalla.
+Missiva si copia in `%LOCALAPPDATA%\Programs\Missiva`, senza permessi di amministratore, compare nel menu Start e in
+Impostazioni, App installate, da dove si disinstalla, e si apre. La cartella estratta poi si può cancellare.
 
-Missiva non ha un certificato di firma del codice: la prima volta che la apri Windows può avvisare che "ha protetto il
-PC". Premi Ulteriori informazioni, poi Esegui comunque.
+Chi preferisce il terminale: con il tasto destro dentro la cartella estratta scegli Apri nel Terminale, e lancia
+
+```
+powershell -ExecutionPolicy Bypass -File installa.ps1
+```
+
+che fa la stessa cosa.
 
 Da lì **si aggiorna da sola**: quando esce una versione nuova un pulsante nella barra del titolo lo dice, e Aggiorna la
 scarica, la controlla e riapre Missiva aggiornata. Accetta solo aggiornamenti firmati con la chiave di chi

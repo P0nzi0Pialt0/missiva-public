@@ -90,7 +90,16 @@ public static class Dialog
     public static Choice Ask(Window? owner, string heading, string body, string primary, string? secondary, string cancel) =>
         Build(owner, heading, body, primary, true, secondary, cancelText: cancel);
 
-    static Choice Build(Window? owner, string heading, string body, string primary, bool cancel, string? secondary = null, bool cancelFirst = false, string? cancelText = null)
+    /// <summary>
+    /// Una domanda senza finestre di Missiva sotto (l'installazione da sola, UI/SelfInstall.cs): con il suo pulsante nella
+    /// barra delle applicazioni, perché finita dietro un'altra finestra si ritrovi. Con secondary null due pulsanti.
+    /// </summary>
+    internal static Choice AskAlone(string heading, string body, string primary, string? secondary) => Build(null, heading, body, primary, true, secondary, taskbar: true);
+
+    /// <summary>Un avviso con OK, come AskAlone: con il suo pulsante nella barra delle applicazioni.</summary>
+    internal static void ShowAlone(string heading, string body) => Build(null, heading, body, "OK", false, taskbar: true);
+
+    static Choice Build(Window? owner, string heading, string body, string primary, bool cancel, string? secondary = null, bool cancelFirst = false, string? cancelText = null, bool taskbar = false)
     {
         cancelText ??= T("Annulla");
         var result = Choice.Cancel;
@@ -101,7 +110,7 @@ public static class Dialog
             Width = primary.Length + (secondary?.Length ?? 0) + (cancel ? cancelText.Length : 0) > 34 ? 540 : 440,
             SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.NoResize,
-            ShowInTaskbar = false,
+            ShowInTaskbar = taskbar,
             WindowStartupLocation = owner is { IsVisible: true } ? WindowStartupLocation.CenterOwner : WindowStartupLocation.CenterScreen,
         };
         if (owner is { IsVisible: true }) window.Owner = owner;

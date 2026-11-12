@@ -39,6 +39,7 @@ public sealed class SettingsWindow : Window
         Height = 700;
         MinWidth = 760;
         MinHeight = 480;
+        WindowFit.FitStart(this);
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
 

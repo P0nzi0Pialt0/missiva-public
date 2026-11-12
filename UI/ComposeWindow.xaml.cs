@@ -82,6 +82,8 @@ public partial class ComposeWindow : Window
                          MessageSummary? draft = null, MessageBody? draftBody = null, SendIdentity? sendAs = null)
     {
         InitializeComponent();
+        WindowFit.FitStart(this); // 820 x 700 su uno schermo piccolo
+
 #if DEBUG
         // Le foto (--foto): ogni scrittura nasce fuori dallo schermo, anche una risposta (--rispondi, le foto in inglese), non
         // solo quella di --formato-finto; senza --foto non fa nulla.

@@ -140,17 +140,21 @@ You need Windows 11, and nothing else.
 
 1. From the [latest release](../../releases/latest) download `Missiva-0.3.N.zip`.
 2. Extract the zip to a folder.
-3. In File Explorer, right-click inside that folder, choose Open in Terminal, and run:
+3. Double-click `Missiva.exe` and select **Install**.
 
-   ```
-   powershell -ExecutionPolicy Bypass -File installa.ps1
-   ```
+Missiva doesn't have a code signing certificate: when you double-click it, Windows may warn that it "protected your PC".
+Select More info, then Run anyway.
 
-The script checks that the program starts and puts it in `%LOCALAPPDATA%\Programs\Missiva`, without administrator
-rights. Missiva appears in the Start menu and in Settings, Apps, Installed apps, where you can uninstall it.
+Missiva copies itself to `%LOCALAPPDATA%\Programs\Missiva`, without administrator rights, appears in the Start menu and
+in Settings, Apps, Installed apps, where you can uninstall it, and opens. You can delete the extracted folder afterwards.
 
-Missiva doesn't have a code signing certificate: the first time you open it, Windows may warn that it "protected your
-PC". Select More info, then Run anyway.
+If you prefer the terminal: right-click inside the extracted folder, choose Open in Terminal, and run
+
+```
+powershell -ExecutionPolicy Bypass -File installa.ps1
+```
+
+which does the same thing.
 
 From then on **it updates itself**: when a new version comes out a button in the title bar says so, and Update
 downloads it, checks it and reopens Missiva up to date. It only accepts updates signed with the key of whoever
