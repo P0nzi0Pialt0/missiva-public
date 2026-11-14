@@ -72,6 +72,7 @@ static partial class ProvaBozze
         Keep("MessageItem.TestToday", () => UI.MessageItem.TestToday, v => UI.MessageItem.TestToday = v),
         Keep("ReadingView.TestDark", () => UI.ReadingView.TestDark, v => UI.ReadingView.TestDark = v),
         Keep("ReadingView.TestWithoutWeb", () => UI.ReadingView.TestWithoutWeb, v => UI.ReadingView.TestWithoutWeb = v),
+        Keep("ReadingView.TestLateWeb", () => UI.ReadingView.TestLateWeb, v => UI.ReadingView.TestLateWeb = v),
         // La lingua (Lingua.Force): l'italiano, sempre, qualunque sia quella di Windows; un gruppo che lascia l'inglese è detto.
         new("Lingua", () => Lingua.Code == "it", () => Lingua.Force("it")),
     ];

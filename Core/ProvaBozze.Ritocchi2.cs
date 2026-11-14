@@ -27,6 +27,99 @@ static partial class ProvaBozze
         RnUndoSources();
         RnStartSize();
         RnStartSizeReal();
+        RnNotifiedWindow();
+    }
+
+    /// <summary>
+    /// La finestra di un messaggio aperta dal clic su una notifica con Missiva nell'area di notifica (15 novembre 2026,
+    /// l'autore: "il riquadro di anteprima si apre subito, ma la mail all'interno ci mette troppo a caricare"): un riquadro
+    /// nuovo in una finestra vera, fuori dallo schermo e mai in primo piano, con l'ambiente di WebView2 dimenticato come dopo
+    /// ReleaseWeb (il processo del browser si ricrea), e il corpo dal server IMAP finto con 600 ms di attesa per ogni UID
+    /// FETCH, come un server vero. Con l'ordine di prima (ReadingView.TestLateWeb) WebView2 partiva solo a corpo arrivato e le
+    /// due attese si sommavano; ora parte con il corpo. Due aperture, una per ordine. Il controllo è sull'ordine (WebView2
+    /// già partito quando ShowAsync aspetta il corpo), che non dipende dai tempi; i millisecondi sono la misura. Il 15
+    /// novembre, otto aperture: con l'ordine di prima pagina a 1025-1670 ms con il corpo a 666-693; con il nuovo a 717-733,
+    /// cioè circa 50 ms dopo il corpo, con il processo del browser da ricreare (WebView2 pronto a 300-410 ms) e senza
+    /// (123-308 ms).
+    /// </summary>
+    static void RnNotifiedWindow()
+    {
+        List<(bool Late, bool Started, long Body, long Shown)> runs;
+        try { runs = Sec2Pump(RnNotifiedWindowAsync, 120); }
+        catch (Exception ex)
+        {
+            Report.Add($"      (finestra aperta da una notifica, non misurata: WebView2 in una finestra di prova non parte: {ex.GetType().Name}: {ex.Message})");
+            return;
+        }
+        var late = runs.Where(r => r.Late).ToList();
+        var early = runs.Where(r => !r.Late).ToList();
+        bool order = late.Count == 1 && early.Count == 1 && !late[0].Started && early[0].Started;
+        Check(order,
+              $"finestra aperta da una notifica, con il processo del browser da ricreare e il corpo dal server a 600 ms per comando: con l'ordine di prima WebView2 partiva a corpo " +
+              $"arrivato, pagina mostrata a {late.FirstOrDefault().Shown} ms (corpo a {late.FirstOrDefault().Body}); ora parte con il corpo ({order}), pagina mostrata a " +
+              $"{early.FirstOrDefault().Shown} ms (corpo a {early.FirstOrDefault().Body})");
+    }
+
+    static async Task<List<(bool Late, bool Started, long Body, long Shown)>> RnNotifiedWindowAsync()
+    {
+        using var fake = new FakeImap(new Flavor(Gmail: false));
+        ImapProvider.TestPlain = true;
+        bool[] order = [true, false];
+        for (int i = 0; i < order.Length; i++) fake.Add("INBOX", SpeedMail($"Ordine {i + 1} spedito", "Il tuo ordine è partito ed è in viaggio."));
+        var account = SpeedAccount(fake, "mario@studio-prova.example");
+        using var provider = new ImapProvider(account);
+        var inbox = (await provider.GetFoldersAsync()).First(f => f.Kind == FolderKind.Inbox);
+        var messages = (await provider.GetMessagesAsync(inbox, null, null)).Messages;
+        var runs = new List<(bool Late, bool Started, long Body, long Shown)>();
+        try
+        {
+            for (int k = 0; k < order.Length; k++)
+            {
+                UI.ReadingView.TestLateWeb = order[k];
+                UI.ReadingView.TestForgetEnvironment(); // come dopo ReleaseWeb: il processo del browser si ricrea
+                var view = new UI.ReadingView();
+                var window = new Window
+                {
+                    Content = view, Width = 900, Height = 700, Left = -30000, Top = -30000, WindowStartupLocation = WindowStartupLocation.Manual,
+                    ShowInTaskbar = false, ShowActivated = false, WindowStyle = WindowStyle.ToolWindow, Title = "Missiva, prova della notifica",
+                };
+                var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                view.TestPageShown += () => shown.TrySetResult();
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                long body = -1;
+                fake.Hold = async command =>
+                {
+                    if (command != "UID FETCH") return;
+                    await Task.Delay(600);
+                    body = clock.ElapsedMilliseconds;
+                };
+                try
+                {
+                    window.Show();
+                    var opening = view.ShowAsync(provider, messages[messages.Count - 1 - k], wholeConversation: false);
+                    bool started = view.TestWebReady != null; // ShowAsync è fermo alla prima attesa, quella del corpo
+                    await shown.Task.WaitAsync(TimeSpan.FromSeconds(30));
+                    runs.Add((order[k], started, body, clock.ElapsedMilliseconds));
+                    await opening.WaitAsync(TimeSpan.FromSeconds(10));
+                }
+                finally
+                {
+                    fake.Hold = null;
+                    window.Close();
+                }
+                // Il processo del browser esce con l'ultimo riquadro, e la prossima apertura lo ricrea. Non prima che sia uscito:
+                // un ambiente nuovo sulla stessa cartella creato 2,5 s dopo la chiusura ha aspettato fino a 3,5 s in più (tre volte
+                // su sette il 15 novembre, con tutti e due gli ordini), con 8 s mai. In Missiva succede solo andando nell'area di
+                // notifica e aprendo una notifica entro pochi secondi.
+                if (k < order.Length - 1) await Task.Delay(8000);
+            }
+        }
+        finally
+        {
+            UI.ReadingView.TestLateWeb = false;
+            ImapProvider.TestPlain = false;
+        }
+        return runs;
     }
 
     /// <summary>

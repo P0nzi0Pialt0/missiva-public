@@ -234,6 +234,24 @@ public partial class ReadingView : UserControl
     /// il letto secondo Gestione messaggi) ma il disegno si ferma prima di WebView2, che senza una finestra non nasce.
     /// </summary>
     internal static bool TestWithoutWeb;
+
+    /// <summary>
+    /// Prove (gruppo ritocchi-novembre, la finestra aperta da una notifica): vero rimette l'ordine di prima del 15 novembre
+    /// 2026, WebView2 preparato solo in Render dopo il corpo, per misurare la differenza nella stessa prova.
+    /// </summary>
+    internal static bool TestLateWeb;
+
+    /// <summary>Prove: la pagina di un messaggio si è mostrata (dove il registro della prova scrive "pagina mostrata").</summary>
+    internal event Action? TestPageShown;
+
+    /// <summary>Prove: WebView2 di questo riquadro, se è partito.</summary>
+    internal Task? TestWebReady => webReady;
+
+    /// <summary>
+    /// Prove: l'ambiente condiviso di WebView2 dimenticato, come quando l'ultimo riquadro si chiude con Missiva nell'area di
+    /// notifica (ReleaseWeb): il riquadro dopo ricrea anche il processo del browser.
+    /// </summary>
+    internal static void TestForgetEnvironment() => environment = null;
 #endif
 
     /// <summary>
@@ -339,6 +357,14 @@ public partial class ReadingView : UserControl
         actionsPage = null; // i pulsanti della pagina di prima non valgono più per i nuovi messaggi
         var current = new Entry(selected) { Expanded = true };
         entries = new List<Entry> { current };
+        // Un riquadro ancora senza WebView2 (la finestra di un messaggio, anche quella aperta dal clic su una notifica, e con
+        // Missiva nell'area di notifica anche il processo del browser da ricreare) lo prepara subito, insieme al corpo. Prima
+        // partiva solo in Render, cioè a corpo arrivato (o dopo ShowDelay), e le due attese si sommavano (15 novembre 2026,
+        // l'autore: "quando apro una mail dalle notifiche ... la mail all'interno ci mette troppo a caricare").
+#if DEBUG
+        if (!TestWithoutWeb && !TestLateWeb)
+#endif
+        if (webReady == null) Prepare();
         if (hurried)
         {
             await Task.Delay(HurryDelay);
@@ -1241,6 +1267,9 @@ public partial class ReadingView : UserControl
             }
             else ShowContent(); // la pagina si è già mostrata nello stesso giro
             if (opened.IsRunning) Log.Time($"{clock}, pagina mostrata", opened);
+#if DEBUG
+            TestPageShown?.Invoke();
+#endif
         };
         core.NavigationCompleted += async (_, e) =>
         {
