@@ -376,6 +376,12 @@ public sealed class MessageRowElement : FrameworkElement
     {
         public FormattedText Text = null!;
         public Point At;
+        /// <summary>
+        /// Solo per un testo che WPF non è riuscito a tagliare dentro lo spazio dato (Fit): il disegno si ferma lì. Succede con
+        /// un pezzo che WPF non sa spezzare, come una fila di selettori di variante senza carattere davanti, che disegna come
+        /// quadratini (16 novembre 2026: l'oggetto di uno spam copriva la data). Gli altri testi non hanno ritaglio, che costa.
+        /// </summary>
+        public Rect? Clip;
     }
 
     sealed class ChipBox
@@ -421,6 +427,19 @@ public sealed class MessageRowElement : FrameworkElement
         text.Trimming = TextTrimming.CharacterEllipsis;
         return text;
     }
+
+    /// <summary>Il testo tagliato con Fit, al suo posto (Bounded).</summary>
+    static Piece Fitted(FormattedText text, double width, Point at) => Bounded(Fit(text, width), at);
+
+    /// <summary>
+    /// Un testo già tagliato al suo posto, con il ritaglio solo se WPF ne ha disegnato più dello spazio dato (Piece.Clip):
+    /// largo quanto lo spazio, alto il triplo del testo, perché accenti e segni sopra e sotto restino.
+    /// </summary>
+    static Piece Bounded(FormattedText text, Point at) => new()
+    {
+        Text = text, At = at,
+        Clip = text.WidthIncludingTrailingWhitespace > text.MaxTextWidth + 0.5 ? new Rect(at.X, at.Y - text.Height, text.MaxTextWidth, text.Height * 3) : null,
+    };
 
     static Size Infinite => new(double.PositiveInfinity, double.PositiveInfinity);
 
@@ -546,11 +565,11 @@ public sealed class MessageRowElement : FrameworkElement
                 result.DotBrush = it.AccountBrush;
                 wx += 7 + 5;
             }
-            result.Texts.Add(new Piece { Text = where, At = new Point(wx, stackY + (stackH - where.Height) / 2) });
+            result.Texts.Add(Bounded(where, new Point(wx, stackY + (stackH - where.Height) / 2)));
             result.WhereTip = it.WhereTip;
         }
         double text1W = Math.Max(0, (first ? right : x1 - 8) - left - chevronW);
-        result.Texts.Add(new Piece { Text = Fit(ft1, text1W), At = new Point(left + chevronW, top) });
+        result.Texts.Add(Fitted(ft1, text1W, new Point(left + chevronW, top)));
         chevronRect = showChevron ? new Rect(left, top + (h1 - chevronH) / 2, chevronW, chevronH) : Rect.Empty;
 
         // Riga 2: oggetto (o mittente), data, e con il mouse sopra il cestino
@@ -565,7 +584,7 @@ public sealed class MessageRowElement : FrameworkElement
         deleteRect = showActions && deleteButton != null
             ? new Rect(right + 4, y2 + (h2 - deleteButton.DesiredSize.Height) / 2, deleteButton.DesiredSize.Width, deleteButton.DesiredSize.Height)
             : Rect.Empty;
-        result.Texts.Add(new Piece { Text = Fit(ft2, Math.Max(0, x2 - 8 - left)), At = new Point(left, y2) });
+        result.Texts.Add(Fitted(ft2, Math.Max(0, x2 - 8 - left), new Point(left, y2)));
         double y = y2 + h2;
 
         // Anteprima
@@ -585,7 +604,7 @@ public sealed class MessageRowElement : FrameworkElement
                 Fit(preview, colW);
                 previewH = it.Preview.Length == 0 ? Make("A", small, secondary, FontWeights.Normal).Height : preview.Height; // anche vuota la riga ha la sua altezza
             }
-            result.Texts.Add(new Piece { Text = preview, At = new Point(left, y) });
+            result.Texts.Add(Bounded(preview, new Point(left, y)));
             y += previewH;
         }
 
@@ -763,7 +782,12 @@ public sealed class MessageRowElement : FrameworkElement
             dc.DrawGeometry(brush, null, shape);
             dc.Pop();
         }
-        foreach (var piece in l.Texts) dc.DrawText(piece.Text, piece.At);
+        foreach (var piece in l.Texts)
+        {
+            if (piece.Clip is { } clip) dc.PushClip(new RectangleGeometry(clip));
+            dc.DrawText(piece.Text, piece.At);
+            if (piece.Clip != null) dc.Pop();
+        }
     }
 
     /// <summary>I bordi di una forma sui pixel del dispositivo, come i Border di WPF (guide di allineamento; poi dc.Pop).</summary>
@@ -842,6 +866,26 @@ public sealed class MessageRowElement : FrameworkElement
                 buttons.Add((System.Windows.Automation.AutomationProperties.GetName(b), b.TestIdle, b.TestOver, b.TestOverBrush));
         return (l.Height, l.Texts.Select(p => (p.Text.Text, p.At, p.Text.WidthIncludingTrailingWhitespace)).ToList(), l.Shapes.Select(s => (s.Shape, s.Box)).ToList(),
                 showActions ? actionsRect : Rect.Empty, showDelete ? deleteRect : Rect.Empty, buttons);
+    }
+
+    /// <summary>Prove: il ritaglio che la riga darebbe a questo testo tagliato a questa larghezza (in Segoe UI a 14), senza pulirlo.</summary>
+    internal static Rect? TestClipFor(string text, double width) =>
+        Fitted(new FormattedText(text, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), 14, Brushes.Black, 1.0), width, new Point()).Clip;
+
+    /// <summary>
+    /// Prove: per ogni testo della riga, dove comincia, lo spazio concesso (MaxTextWidth, infinito se non tagliato), la
+    /// larghezza che WPF dice e fin dove arriva davvero il disegno (i contorni dei glifi, quadratini compresi).
+    /// </summary>
+    internal List<(string Text, double Left, double Max, double Width, double InkRight)> TestInk()
+    {
+        var l = Ensure(ActualWidth > 0 ? ActualWidth : DesiredSize.Width);
+        return l.Texts.Select(p =>
+        {
+            var ink = p.Text.BuildGeometry(p.At).Bounds;
+            double right = ink.IsEmpty ? p.At.X : ink.Right;
+            if (p.Clip is { } clip) right = Math.Min(right, clip.Right); // il disegno si ferma al ritaglio
+            return (p.Text.Text, p.At.X, p.Text.MaxTextWidth, p.Text.WidthIncludingTrailingWhitespace, right);
+        }).ToList();
     }
 #endif
 

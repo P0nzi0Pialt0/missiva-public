@@ -364,6 +364,36 @@ public static class SenderCheck
                 result.Append(rune.ToString());
             }
         }
+        return WithoutStrayVariations(result.ToString());
+    }
+
+    /// <summary>
+    /// Un testo da mostrare (oggetto, anteprima, nome) senza i selettori di variante che non seguono un carattere (16
+    /// novembre 2026): uno spam ne metteva decine all'inizio dell'oggetto. Gmail e il browser non li mostrano; WPF li
+    /// disegna come quadratini, tutti insieme in un pezzo che non sa tagliare con i puntini, e l'oggetto copriva la data.
+    /// Un selettore subito dopo un carattere che lo può prendere (✅ seguito da U+FE0F, il 1 di un tasto numerato) resta,
+    /// uno solo. Quasi sempre non c'è nulla da togliere, e torna la stessa stringa.
+    /// </summary>
+    public static string WithoutStrayVariations(string text)
+    {
+        int first = 0;
+        while (first < text.Length && text[first] is not (>= '︀' and <= '️' or '\uDB40')) first++;
+        if (first == text.Length) return text;
+        var result = new System.Text.StringBuilder(text.Length);
+        bool based = false; // l'ultimo carattere tenuto può prendere un selettore
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (rune.Value is >= 0xFE00 and <= 0xFE0F or >= 0xE0100 and <= 0xE01EF)
+            {
+                if (based) result.Append(rune.ToString());
+                based = false;
+                continue;
+            }
+            result.Append(rune.ToString());
+            based = !System.Text.Rune.IsWhiteSpace(rune) && !Unseen(rune)
+                    && System.Text.Rune.GetUnicodeCategory(rune) is not (System.Globalization.UnicodeCategory.NonSpacingMark
+                        or System.Globalization.UnicodeCategory.SpacingCombiningMark or System.Globalization.UnicodeCategory.EnclosingMark);
+        }
         return result.ToString();
     }
 

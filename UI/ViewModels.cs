@@ -793,10 +793,14 @@ public sealed class MessageItem : Observable
         ? Summary.To.Count > 0 ? string.Join("; ", Summary.To.Select(a => a.Display)) : T("(nessun destinatario)")
         : Summary.From.Display.Length > 0 ? Summary.From.Display : T("(nessun mittente)");
     string? sender;
-    public string Subject => Summary.Subject.Length > 0 ? Summary.Subject : T("(nessun oggetto)");
+    /// <summary>
+    /// L'oggetto come si mostra: senza i selettori di variante che non seguono un carattere (SenderCheck.WithoutStrayVariations:
+    /// WPF li disegna come quadratini che coprivano la data della riga); il messaggio resta com'è.
+    /// </summary>
+    public string Subject => SenderCheck.WithoutStrayVariations(Summary.Subject) is { Length: > 0 } subject ? subject : T("(nessun oggetto)");
     /// <summary>"[Bozza]" in rosso prima dell'oggetto, come in Outlook.</summary>
     string DraftTag => IsDraft ? T("[Bozza]") + " " : "";
-    public string Preview => Summary.Preview;
+    public string Preview => SenderCheck.WithoutStrayVariations(Summary.Preview);
 
     /// <summary>L'anteprima è arrivata dopo l'elenco (Gmail).</summary>
     public void RefreshPreview()

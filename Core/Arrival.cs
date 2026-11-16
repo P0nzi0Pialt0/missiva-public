@@ -109,9 +109,10 @@ public static class Arrival
     /// <summary>
     /// Quanti millisecondi il PC ha passato sospeso da quando Windows è partito: GetTickCount64 (Environment.TickCount64)
     /// conta anche la sospensione, QueryUnbiasedInterruptTime no. I timer di .NET contano con il secondo (sonda A-04), quindi
-    /// non vedono la sospensione: questo sì.
+    /// non vedono la sospensione: questo sì. Mai sotto zero: GetTickCount64 avanza a scatti di circa 15,6 ms, l'altro no, e
+    /// su un PC mai sospeso dall'avvio la differenza usciva di qualche millisecondo negativa (16 novembre 2026, la suite).
     /// </summary>
-    public static long SleptMs() => QueryUnbiasedInterruptTime(out var unbiased) ? Environment.TickCount64 - (long)(unbiased / 10_000) : 0;
+    public static long SleptMs() => QueryUnbiasedInterruptTime(out var unbiased) ? Math.Max(0, Environment.TickCount64 - (long)(unbiased / 10_000)) : 0;
 
     /// <summary>
     /// Si accorge che il PC ha dormito guardando SleptMs a ogni giro di un timer: la ripresa la dice Windows

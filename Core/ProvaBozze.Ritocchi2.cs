@@ -28,6 +28,60 @@ static partial class ProvaBozze
         RnStartSize();
         RnStartSizeReal();
         RnNotifiedWindow();
+        OnUiThread(RnStrayVariationsAsync);
+    }
+
+    /// <summary>
+    /// L'oggetto che copriva la data (16 novembre 2026, l'autore con una foto: "correggi questo problema della
+    /// compenetrazione"): uno spam con decine di selettori di variante (U+FE0F) all'inizio dell'oggetto, che WPF disegna come
+    /// quadratini in un pezzo solo che non sa tagliare (con 45 era largo 418 DIP su 322). La pulizia
+    /// (SenderCheck.WithoutStrayVariations) su casi scritti apposta; la riga vera, larga 420 senza finestra, con l'oggetto
+    /// di quello spam e con una fila più lunga, e il nome del mittente pieno di selettori; il ritaglio di sicurezza per un
+    /// testo che WPF non riesce a tagliare (MessageRowElement.TestClipFor), assente per uno normale.
+    /// </summary>
+    static async Task RnStrayVariationsAsync()
+    {
+        await Task.Yield();
+        string Many(char c, int n) => new(c, n);
+        const string spam = "\U0001F4B8\U0001F4B8 5.000,00 $ di bonus \U0001F4B0\U0001F4B0 Offerta a tempo limitato ⌛ Controlla il tuo account ✅";
+        const string plain = "Preventivo per la cucina";
+        bool clean = SenderCheck.WithoutStrayVariations(Many('️', 32) + spam) == spam
+                     && SenderCheck.WithoutStrayVariations("Fatto ✅️️️") == "Fatto ✅️"
+                     && SenderCheck.WithoutStrayVariations("Premi 1️⃣") == "Premi 1️⃣"
+                     && SenderCheck.WithoutStrayVariations("❤️‍\U0001F525 e ❤︎") == "❤️‍\U0001F525 e ❤︎"
+                     && SenderCheck.WithoutStrayVariations("葛\U000E0100 e \U000E0100x") == "葛\U000E0100 e x"
+                     && SenderCheck.WithoutStrayVariations("é️") == "é"
+                     && ReferenceEquals(SenderCheck.WithoutStrayVariations(plain), plain)
+                     && SenderCheck.CleanName(Many('️', 20) + "Congrats") == "Congrats";
+        var account = new AccountItem(new GraphProvider(new MailAccount { Kind = AccountKind.Microsoft, Email = "ada.righe@studio-prova.example" }));
+        var rows = new List<string>();
+        bool row = true;
+        foreach (var (subject, shown) in new[] { (Many('️', 32) + spam, spam), (Many('️', 45) + "premi.example.com", "premi.example.com"), (Many('️', 60), T("(nessun oggetto)")) })
+        {
+            var summary = new MessageSummary
+            {
+                Id = "AQMkSelettori", FolderId = "inbox", From = new Address { Name = Many('️', 40) + "Congrats", Email = "premi@premi-prova.example" },
+                Subject = subject, Preview = Many('️', 50) + "Ada, sei stata scelta", Date = DateTime.Now.AddMinutes(-5),
+            };
+            var item = new MessageItem(summary, account);
+            var element = new MessageRowElement();
+            var host = new Border { Width = 420, DataContext = item, Child = element };
+            host.Measure(new Size(420, double.PositiveInfinity));
+            host.Arrange(new Rect(host.DesiredSize));
+            var ink = element.TestInk();
+            var line2 = ink.FirstOrDefault(t => t.Text == item.Line2);
+            var date = ink.FirstOrDefault(t => t.Text == item.DateText);
+            bool ok = item.Subject == shown && line2.Text != null && line2.InkRight <= date.Left && ink.All(t => t.InkRight <= 420)
+                      && item.Preview == "Ada, sei stata scelta" && !ink.Any(t => t.Text.Contains('️') && !t.Text.Contains('✅'));
+            row &= ok;
+            rows.Add($"{subject.Length - subject.TrimStart('️').Length} selettori: oggetto mostrato fino a {line2.InkRight:0}, data da {date.Left:0} ({ok})");
+        }
+        var stray = MessageRowElement.TestClipFor(Many('️', 45) + "premi.example.com", 322);
+        bool net = stray is { Width: 322 } && MessageRowElement.TestClipFor(plain, 322) == null && MessageRowElement.TestClipFor(new string('M', 80), 322) == null;
+        Check(clean && row && net,
+              $"oggetto con i selettori di variante: tolti quelli senza un carattere davanti, resta uno dopo l'emoji, il tasto numerato, le sequenze di emoji e le varianti degli ideogrammi; " +
+              $"un testo normale torna lo stesso; anche nei nomi ({clean}); la riga vera dentro i suoi spazi, con anteprima e mittente puliti ({row}: {string.Join("; ", rows)}); " +
+              $"un testo che WPF non riesce a tagliare si ritaglia al suo spazio, uno normale o una parola lunga no ({net}: {stray?.Width.ToString("0") ?? "nessun ritaglio"})");
     }
 
     /// <summary>

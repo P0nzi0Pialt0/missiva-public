@@ -200,7 +200,7 @@ public sealed class PersonCard : Window
                 DockPanel.SetDock(when, Dock.Right);
                 row.Children.Add(when);
                 var text = new StackPanel();
-                text.Children.Add(new TextBlock { Text = m.Subject.Length > 0 ? m.Subject : T("(senza oggetto)"), TextTrimming = TextTrimming.CharacterEllipsis, FontWeight = m.IsRead ? FontWeights.Normal : FontWeights.SemiBold });
+                text.Children.Add(new TextBlock { Text = SenderCheck.WithoutStrayVariations(m.Subject) is { Length: > 0 } shown ? shown : T("(senza oggetto)"), TextTrimming = TextTrimming.CharacterEllipsis, FontWeight = m.IsRead ? FontWeights.Normal : FontWeights.SemiBold });
                 if (m.FolderName.Length > 0) text.Children.Add(Secondary(m.FolderName));
                 row.Children.Add(text);
                 messages.Children.Add(Opener(row, m, $"{m.Subject}, {m.Date.ToString("d MMM yyyy", Lingua.Culture)}"));
