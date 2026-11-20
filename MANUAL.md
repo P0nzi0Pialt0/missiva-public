@@ -422,6 +422,9 @@ too: if the steps change, they're fixed only in that file and in its Italian ver
   and Sent Items of all accounts together, in date order. Each row has the color and name of its account (and the
   reading pane repeats it under the subject); Reply goes out from that account, Delete and Archive use each account's
   Deleted Items and Archive, Undo included.
+- Accounts are tabs in a row above the command bar, like browser tabs: All (with two or more accounts), one per account
+  with its unread count, and "+" to add one. The selected tab decides which folders show on the left; right-click opens
+  the account menu, with Move left and Move right to change the order of the tabs.
 - Search in all folders of the open account, only in the open folder or in all accounts (the menu next to the box;
   from the all-accounts views it always searches all of them); each result shows its folder (and its account) and the
   next ones arrive as you scroll. For Gmail with the same syntax as Gmail's search, which like Gmail doesn't look in
@@ -466,6 +469,9 @@ too: if the steps change, they're fixed only in that file and in its Italian ver
 - Light or dark theme like Windows, also when it changes with Missiva open (for example the automatic switch at
   sunset): the open message is redrawn staying where it was. Or always light or always dark (Settings, General,
   Appearance).
+- Glass look: translucent panels with rounded corners over the Windows background, also in the reading pane, in the
+  compose window and in Settings. You choose the color (Settings, General, Appearance, Color): the Windows one, White or
+  Black (no color: they bring the light or dark theme with them), or one of the eight presets.
 
 ## Security
 

@@ -43,7 +43,9 @@ public sealed class SettingsWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
 
-        var grid = new Grid { Margin = new Thickness(12) };
+        // Il vetro (20 novembre 2026), come la finestra principale: un foglio solo; le categorie nella fascia più scura (la
+        // striscia delle icone), le sezioni sul foglio (le cartelle), la pagina in una scheda appoggiata sopra (il riquadro).
+        var grid = new Grid { Margin = new Thickness(12, 2, 12, 12) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(210) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -54,23 +56,34 @@ public sealed class SettingsWindow : Window
         categories.Items.Add(Nav("\uE77B", N("Account")));
         categories.Items.Add(Nav("\uE715", N("Posta")));
         categories.SelectionChanged += (_, _) => FillSections();
+        var sheet = new GlassBorder { Style = (Style)FindResource("GlassPanel"), ShadowSize = 14 };
+        Grid.SetColumnSpan(sheet, 3);
+        grid.Children.Add(sheet);
+        var shade = new Border { CornerRadius = new CornerRadius(19, 0, 0, 19), Margin = new Thickness(1, 1, 0, 1), BorderThickness = new Thickness(0, 0, 1, 0) };
+        shade.SetResourceReference(Border.BackgroundProperty, "GlassShadeBrush");
+        shade.SetResourceReference(Border.BorderBrushProperty, "GlassDividerBrush");
+        grid.Children.Add(shade);
+        categories.Margin = new Thickness(6, 8, 6, 8);
         grid.Children.Add(categories);
 
         page.Margin = new Thickness(0, 0, 16, 0); // la barra di scorrimento Fluent sta sopra il contenuto: il testo non ci finisce sotto
         sections.SelectionChanged += (_, _) => ShowPage();
-        sections.Margin = new Thickness(8, 0, 8, 0);
+        sections.Margin = new Thickness(6, 8, 6, 8);
         Grid.SetColumn(sections, 1);
         grid.Children.Add(sections);
 
-        var content = new Border
+        var content = new GlassBorder
         {
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = new CornerRadius(14),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(24, 16, 24, 16),
+            Margin = new Thickness(0, 6, 6, 6),
+            ShadowSize = 7,
+            Padding = new Thickness(24, 16, 10, 16),
             Child = new ScrollViewer { Content = page, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
         };
-        content.SetResourceReference(Border.BackgroundProperty, "CardBackgroundFillColorDefaultBrush");
-        content.SetResourceReference(Border.BorderBrushProperty, "CardStrokeColorDefaultBrush");
+        content.SetResourceReference(Border.BackgroundProperty, "GlassPaperBrush");
+        content.SetResourceReference(Border.BorderBrushProperty, "GlassEdgeBrush");
+        content.SetResourceReference(GlassBorder.ShadowColorProperty, "GlassShadowColor");
         Grid.SetColumn(content, 2);
         grid.Children.Add(content);
 
@@ -457,11 +470,62 @@ public sealed class SettingsWindow : Window
         p.Children.Add(Question(T("Missiva può seguire il tema delle app di Windows, che può cambiare da solo all'alba e al tramonto, o restare sempre chiara o sempre scura.")));
         p.Children.Add(Radios("theme", S.Theme, v => App.Current.SetTheme(v), false,
             (AppTheme.System, T("Come Windows")), (AppTheme.Light, T("Chiaro")), (AppTheme.Dark, T("Scuro"))));
+        p.Children.Add(Section(T("Colore")));
+        p.Children.Add(Question(T("Il colore del fondo e dei pulsanti: quello di Windows, bianco o nero (senza colore: scegliendoli il tema diventa chiaro o scuro), oppure uno di questi.")));
+        p.Children.Add(ColorSwatches());
         p.Children.Add(Rule());
         p.Children.Add(Section(T("Cartelle")));
         p.Children.Add(Check(T("Mostra \"Tutti gli account\" in cima alle cartelle"), S.ShowUnified, on => S.ShowUnified = on));
         p.Children.Add(Question(T("Con due o più account: Posta in arrivo, Non letti, Contrassegnati, Bozze e Posta inviata di tutti gli account insieme.")));
         return p;
+    }
+
+    /// <summary>
+    /// Il colore di Missiva (Glass, 20 novembre 2026, richiesta dell'autore: "la scelta del colore resta dell'utente, che può
+    /// decidere se seguire il colore di sistema o scegliere tra bianco, nero e colori predefiniti"): una fila di pallini, il
+    /// primo quello di Windows; quello scelto ha l'anello. Si applica subito (App.SetColor), come il tema.
+    /// </summary>
+    WrapPanel ColorSwatches()
+    {
+        var panel = new WrapPanel { Margin = new Thickness(0, 4, 0, 4) };
+        var choices = new List<(string Key, string Name, Color Color)>
+        {
+            ("", T("Come Windows"), SystemColors.AccentColor), (Glass.White, T("Bianco"), Colors.White), (Glass.Black, T("Nero"), Color.FromRgb(0x1F, 0x1F, 0x1F)),
+        };
+        choices.AddRange(Glass.Presets.Select(c => (c.Key, T(c.Name), c.Color)));
+        var rings = new List<(string Key, Border Ring)>();
+        void Mark()
+        {
+            foreach (var (key, ring) in rings)
+            {
+                if (key == S.Color) ring.SetResourceReference(Border.BorderBrushProperty, "TextFillColorPrimaryBrush");
+                else ring.BorderBrush = Brushes.Transparent;
+            }
+        }
+        foreach (var (key, name, color) in choices)
+        {
+            var dot = new Border
+            {
+                Width = 26, Height = 26, CornerRadius = new CornerRadius(13), Background = new SolidColorBrush(color),
+                BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Color.FromArgb(0x50, 0x80, 0x80, 0x80)),
+            };
+            var ring = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(18), BorderThickness = new Thickness(2), BorderBrush = Brushes.Transparent, Child = dot };
+            var button = new Button
+            {
+                Content = ring, Padding = new Thickness(0), Margin = new Thickness(0, 0, 6, 6), MinWidth = 0, Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0), ToolTip = name, Cursor = System.Windows.Input.Cursors.Hand,
+            };
+            System.Windows.Automation.AutomationProperties.SetName(button, name);
+            button.Click += (_, _) =>
+            {
+                App.Current.SetColor(key);
+                Mark();
+            };
+            rings.Add((key, ring));
+            panel.Children.Add(button);
+        }
+        Mark();
+        return panel;
     }
 
     /// <summary>

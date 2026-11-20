@@ -68,13 +68,16 @@ public partial class MainWindow
     /// <summary>Il pulsante dell'app aperta ha il fondo e il glifo colorato, come nel nuovo Outlook.</summary>
     void PaintRail()
     {
+        // In Calendario e Persone la barra in alto è la loro, dentro la vista: le icone partono sotto di lei, come nella posta
+        // stanno sotto la barra dei comandi.
+        Rail.Margin = new Thickness(6, calendarShown || peopleShown ? 4 + BarHeight : 4, 6, 8);
         foreach (var (button, glyph, on) in new[]
                  {
                      (MailRailButton, MailRailGlyph, !calendarShown && !peopleShown), (CalendarRailButton, CalendarRailGlyph, calendarShown),
                      (PeopleRailButton, PeopleRailGlyph, peopleShown),
                  })
         {
-            if (on) button.SetResourceReference(BackgroundProperty, "SubtleFillColorSecondaryBrush");
+            if (on) button.SetResourceReference(BackgroundProperty, "GlassPillBrush"); // la pastiglia chiara del vetro
             else button.Background = System.Windows.Media.Brushes.Transparent;
             glyph.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, on ? "AccentTextFillColorPrimaryBrush" : "TextFillColorPrimaryBrush");
         }

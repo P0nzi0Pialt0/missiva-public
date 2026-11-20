@@ -880,7 +880,7 @@ static partial class ProvaBozze
     /// </summary>
     static readonly string[] U4Allowed =
     [
-            "CssFonts(look.Fonts)", "Px(look.FontSize)", "Px(2 * look.Down)", "Px(48)", "Hex(look.Glyph)", "Px(12)", "Hex(look.Text)", "f", "Hex(color)", "blocked", "ActionUrl(\"images/0\")", "i",
+            "vetro", "flat", "CssFonts(look.Fonts)", "Px(look.FontSize)", "Px(2 * look.Down)", "Px(48)", "Hex(look.Glyph)", "Px(12)", "Hex(look.Text)", "f", "Hex(color)", "blocked", "ActionUrl(\"images/0\")", "i",
             "(entry.Expanded ? \" open\" : \"\")", "(toggles ? \" tg\" : \"\")", "Hex(Avatars.ColorOf(s.From))", "ActionUrl($\"person/{i}\")", "picClass", "picStyle", "cardTitle", "pic", "real",
             "tip", "tipEnd", "CategoryPalette.Hex(preset)", "CategoryPalette.TextHex(preset)", "who", "ActionUrl($\"toggle/{i}\")", "what", "ActionUrl($\"edit/{i}\")",
             "ActionUrl($\"unsubscribe/{i}\")", "System.Text.Json.JsonSerializer.Serialize(UnsubscribeRow(i, unsubscribe))", "pec.Signer", "(tone == \"warn\" ? \"\" : tone)", "glyph",
@@ -891,7 +891,7 @@ static partial class ProvaBozze
             "bytes / 1048576.0:0.#", "(light ? \"#005FB8\" : \"#6CB8F6\")", "(hold ? \" class=\\\"fitting\\\" style=\\\"scrollbar-gutter: stable\\\"\" : \"\")", "images",
             "(light ? \"light\" : \"dark\")", "paper", "ink", "subtle", "hover", "link", "press", "(light ? \"#FFF4CE\" : \"#433519\")", "(light ? \"#5C4400\" : \"#FCE100\")",
             "(light ? \"#FDE7E9\" : \"#442726\")", "(light ? \"#A4262C\" : \"#FF99A4\")", "(light ? \"#DFF6DD\" : \"#1F3B20\")", "(light ? \"#0E5C0E\" : \"#9FD89F\")", "rule", "thumb", "thumbHover",
-            "body",
+            "body", "glass", "glassEdge", // la fascia di vetro dell'oggetto (20 novembre 2026): due colori calcolati dal tema
     ];
 
     /// <summary>

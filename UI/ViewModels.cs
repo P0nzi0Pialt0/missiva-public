@@ -122,7 +122,54 @@ public sealed class AccountItem : Observable
         Changed(nameof(HeaderUnreadText));
         Changed(nameof(HeaderUnreadVisibility));
         Changed(nameof(HeaderAutomationName));
+        Changed(nameof(TabUnreadText));
+        Changed(nameof(TabUnreadVisibility));
+        Changed(nameof(TabAutomationName));
     }
+
+    // ---- La scheda dell'account, in fila sopra la barra dei comandi (20 novembre 2026, MainWindow.Tabs.cs)
+
+    bool inTab;
+    /// <summary>
+    /// La scheda scelta è questo account: le sue cartelle sono quelle mostrate a sinistra. Nella finestra di una sola
+    /// cartella, che non ha schede, è sempre vero.
+    /// </summary>
+    public bool InTab
+    {
+        get => inTab;
+        set
+        {
+            if (inTab == value) return;
+            inTab = value;
+            Changed();
+            Changed(nameof(TabVisibility));
+        }
+    }
+    public Visibility TabVisibility => inTab ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>
+    /// Il nome sulla scheda, corto: la parte prima della @ se nessun altro account ce l'ha uguale; altrimenti il dominio
+    /// senza l'ultima parte ("studio-esempio" per ada.galli@studio-esempio.example, "gmail" per un secondo ada.galli su
+    /// Gmail), che è quello che li distingue. L'indirizzo intero è nel suggerimento.
+    /// </summary>
+    public string TabTitle
+    {
+        get
+        {
+            var email = Provider.Account.Email;
+            int at = email.IndexOf('@');
+            if (at <= 0) return email;
+            var local = email[..at];
+            if (Store.Settings.Accounts.Count(a => a.Email.StartsWith(local + "@", StringComparison.OrdinalIgnoreCase)) <= 1) return local;
+            var domain = email[(at + 1)..];
+            int dot = domain.LastIndexOf('.');
+            return dot > 0 ? domain[..dot] : domain;
+        }
+    }
+    /// <summary>I non letti della Posta in arrivo, sempre: la scheda è l'intestazione dell'account anche quando non è scelta.</summary>
+    public string TabUnreadText => InboxUnread > 0 ? InboxUnread.ToString() : "";
+    public Visibility TabUnreadVisibility => InboxUnread > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public string TabTip => HeaderTip;
+    public string TabAutomationName => InboxUnread > 0 ? HeaderTip + ", " + UnreadWords(InboxUnread) : HeaderTip;
 
     public Visibility FoldersVisibility => expanded ? Visibility.Visible : Visibility.Collapsed;
     public string Chevron => expanded ? "\uE70D" : "\uE76C";

@@ -1,5 +1,13 @@
 param([string[]]$Solo = @("principale", "scuro", "scrittura", "pec", "calendario", "persone"), [string]$Uscita = "", [string]$Lavoro = "",
-      [ValidateSet("it", "en")][string]$Lingua = "it")
+      [ValidateSet("it", "en")][string]$Lingua = "it", [string]$Colore = "", [switch]$Mostra, [string]$Tema = "System", [int]$Scorri = 0)
+# -Scorri N: nelle foto principali (chiara e scura) il riquadro di lettura scorre a N pixel dall'inizio prima della foto
+# (la mail sotto la fascia di vetro dell'oggetto).
+# -Tema Dark vale anche per le foto delle altre finestre (scrittura, impostazioni, pec, calendario, persone): senza, chiare.
+# -Colore: il colore di Missiva nelle foto (Settings.Color: "" quello di Windows, white, black, blue, teal, green, amber,
+# orange, red, pink, purple).
+# -Mostra: niente foto. Apre sullo schermo la prova della foto principale, con le caselle e i dati finti, e la lascia aperta
+# finché non la si chiude: per vedere dal vero quello che fuori dallo schermo non si fotografa (lo sfondo acrilico di
+# Windows) e per provare la finestra senza toccare la posta vera. Con -Tema System|Light|Dark e -Colore.
 # Le foto della pagina GitHub (README.md, docs\immagini) con i dati finti di Core\ProvaBozze.Foto.cs: account, persone e
 # messaggi inventati, domini .example, server IMAP finti su 127.0.0.1 (--imap-finto porta foto studio|personale|pec), mai
 # la posta vera né la rete. Va compilata prima la versione di Debug (dotnet build). Uso:
@@ -83,6 +91,7 @@ $ids = @{ studio = "5a1d0c3e9b7f4e2a8c6d1f0b3e5a7c90"; personale = "7c2e4a6b8d0f
 $ports = @{ studio = 14300; personale = 14310; pec = 14320 }
 $script:app = $null; $script:data = $null
 
+$temaFoto = $Tema -eq "Dark" ? "Dark" : "Light"
 function Start-Foto([string]$Nome, [string[]]$Caselle = @(), [switch]$Microsoft, [string]$Tema = "Light", [string]$Argomenti = "") {
     # La prova: i server finti delle caselle, le impostazioni finte, la finestra con --foto.
     $script:data = Join-Path $work $Nome
@@ -108,7 +117,7 @@ function Start-Foto([string]$Nome, [string[]]$Caselle = @(), [switch]$Microsoft,
             Imap = [ordered]@{ ImapHost = "127.0.0.1"; ImapPort = $ports[$c]; ImapSecurity = "Ssl"; SmtpHost = "127.0.0.1"; SmtpPort = $ports[$c] + 1; SmtpSecurity = "StartTls"; UserName = $email; ProtectedPassword = $password } }
     }
     $settings = [ordered]@{
-        Accounts = $accounts; Theme = $Tema; NotificationsOff = @($accounts | ForEach-Object { $_.Id }); NotificationSound = $false
+        Accounts = $accounts; Theme = $Tema; Color = $Colore; NotificationsOff = @($accounts | ForEach-Object { $_.Id }); NotificationSound = $false
         KeepInTray = $false; TrayExplained = $true; UpdatesAuto = $false; ShowSenderLogos = $false; StartWithWindows = $false
         LocalCategories = @{ ($ids.studio) = $categorie.studio; ($ids.personale) = $categorie.personale }
         CategoryColors = @{ "$($ids.studio)|$($categorie.studio[0])" = 7; "$($ids.studio)|$($categorie.studio[1])" = 4; "$($ids.personale)|$($categorie.personale[0])" = 1 }
@@ -121,7 +130,7 @@ function Start-Foto([string]$Nome, [string[]]$Caselle = @(), [switch]$Microsoft,
     }
     $env:MISSIVA_DATA = $script:data
     $env:MISSIVA_KEYS = Join-Path $script:data "tasti.txt"
-    $script:app = Start-Process $exe -ArgumentList "--foto --lingua $Lingua $Argomenti".Trim() -PassThru
+    $script:app = Start-Process $exe -ArgumentList "$($Mostra ? '' : '--foto') --lingua $Lingua $Argomenti".Trim() -PassThru
     for ($i = 0; $i -lt 200 -and -not (Get-Finestra "Missiva" -Quiet); $i++) { Start-Sleep -Milliseconds 50 }
     Start-Sleep 5 # account, cartelle, elenco e WebView2
 }
@@ -259,11 +268,19 @@ function Save-Sopra([string]$Sotto, [string]$Sopra, [string]$Nome, [double]$Sini
 # ---------------------------------------------------------------- le foto
 
 try {
+    if ($Mostra) {
+        Start-Foto mostra studio, personale -Tema $Tema
+        Send-Tasto "apri tutti"; Send-Tasto "clic 0" 2
+        "Missiva di prova aperta sullo schermo, con i dati finti: chiudi la finestra quando hai finito."
+        $script:app.WaitForExit()
+        return
+    }
     if ($Solo -contains "principale") {
         # La Posta in arrivo di tutti gli account con la newsletter aperta; poi la frode sulle coordinate bancarie, quando
         # la rubrica ha letto la Posta inviata (il sosia, il nome di Luca Bianchi da un altro indirizzo, si vede solo allora).
         Start-Foto principale studio, personale
         Send-Tasto "apri tutti"; Send-Tasto "clic 0" 5
+        if ($Scorri -gt 0) { Send-Tasto "riquadro giù $Scorri" 2 }
         Save-Finestra "Missiva" "$work\principale-chiaro.png"
         $log = Join-Path $script:data "missiva.log"
         for ($i = 0; $i -lt 60 -and -not (Select-String -Path $log -Pattern "rubrica: .* $($domini.personale)" -Quiet); $i++) { Start-Sleep -Milliseconds 500 }
@@ -271,17 +288,36 @@ try {
         Save-Finestra "Missiva" "$work\sicurezza.png"
         Stop-Foto
         Save-Pagina "$work\principale-chiaro.png" "principale-chiaro.png"
-        Save-Pagina "$work\sicurezza.png" "sicurezza.png" @(0.55, 0.1463, 0.4402, 0.8372) # il riquadro di lettura
+        Save-Pagina "$work\sicurezza.png" "sicurezza.png" @(0.55, 0.2153, 0.4402, 0.7682) # il riquadro di lettura
     }
     if ($Solo -contains "scuro") {
         Start-Foto scuro studio, personale -Tema Dark
         Send-Tasto "apri tutti"; Send-Tasto "clic 0" 5
+        if ($Scorri -gt 0) { Send-Tasto "riquadro giù $Scorri" 2 }
         Save-Finestra "Missiva" "$work\principale-scuro.png"
         Stop-Foto
         Save-Pagina "$work\principale-scuro.png" "principale-scuro.png"
     }
+    if ($Solo -contains "impostazioni") {
+        # Le Impostazioni, Generali, Aspetto (il tema e il colore): non è fra le foto della pagina, serve a guardare la finestra.
+        Start-Foto impostazioni studio, personale -Tema $temaFoto
+        Send-Tasto "impostazioni Generali Aspetto" 3
+        Save-Finestra ($english ? "Settings" : "Impostazioni") "$work\impostazioni.png"
+        Send-Tasto "impostazioni chiudi" 1
+        Stop-Foto
+        Save-Pagina "$work\impostazioni.png" "impostazioni.png"
+    }
+    if ($Solo -contains "domanda") {
+        # Una finestra di domanda, con un testo finto: non è fra le foto della pagina, serve a guardarla.
+        Start-Foto domanda studio, personale -Tema $temaFoto
+        Send-Tasto "domanda" 3
+        Save-Finestra "Domanda di prova" "$work\domanda.png"
+        Send-Tasto "domanda chiudi" 1
+        Stop-Foto
+        Save-Pagina "$work\domanda.png" "domanda.png"
+    }
     if ($Solo -contains "scrittura") {
-        Start-Foto scrittura studio, personale -Argomenti "--formato-finto"
+        Start-Foto scrittura studio, personale -Argomenti "--formato-finto" -Tema $temaFoto
         Start-Sleep 1
         Set-Dimensione "Re: *" 800 620
         Save-Finestra "Re: *" "$work\scrittura.png"
@@ -289,7 +325,7 @@ try {
         Save-Pagina "$work\scrittura.png" "scrittura.png"
     }
     if ($Solo -contains "pec") {
-        Start-Foto pec studio, pec
+        Start-Foto pec studio, pec -Tema $temaFoto
         Send-Tasto "apri posta 2"; Send-Tasto "clic 0" 5
         Save-Finestra "Missiva" "$work\pec-messaggio.png"
         Send-Tasto "allegato 0" 4
@@ -299,7 +335,7 @@ try {
         Save-Sopra "$work\pec-messaggio.png" "$work\pec-fattura.png" "posta-certificata.png" 0.3977 0.4207
     }
     if ($Solo -contains "calendario") {
-        Start-Foto calendario -Microsoft -Argomenti "--calendario --calendario-finto"
+        Start-Foto calendario -Microsoft -Argomenti "--calendario --calendario-finto" -Tema $temaFoto
         Start-Sleep 2
         Save-Finestra "Missiva" "$work\calendario.png"
         Stop-Foto
@@ -307,7 +343,7 @@ try {
     }
     if ($Solo -contains "persone") {
         # Luca Bianchi, la scheda più ricca: in italiano la sesta persona dell'elenco, in inglese la settima (ContactSamples.Photo).
-        Start-Foto persone -Microsoft -Argomenti "--persone --contatti-finti --persona $($english ? 6 : 5)"
+        Start-Foto persone -Microsoft -Argomenti "--persone --contatti-finti --persona $($english ? 6 : 5)" -Tema $temaFoto
         Start-Sleep 2
         Save-Finestra "Missiva" "$work\persone.png"
         Stop-Foto

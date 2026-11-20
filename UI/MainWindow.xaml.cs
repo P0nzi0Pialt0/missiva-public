@@ -39,6 +39,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         // Su uno schermo piccolo 1320 x 820 non ci sta, e WPF la centrerebbe con la barra del titolo fuori dallo schermo (WindowFit).
         if (only == null) WindowFit.FitStart(this);
+        LayoutUpdated += (_, _) => FitChrome(); // la cornice di vetro segue la barra dei comandi e la colonna delle cartelle
         ApplyContextWords();
         MessageList.Loaded += (_, _) => AttachListScrolling(); // il cursore della barra senza scatti e il mouse fermo fuori dal hit test mentre l'elenco scorre veloce
         if (only == null) Log.Startup("XAML della finestra");
@@ -697,6 +698,7 @@ public partial class MainWindow : Window
         // Dopo che WPF ha rimesso il modello della finestra del tema nuovo: intanto la finestra è senza figli visibili.
         Dispatcher.BeginInvoke(RefreshMenus, DispatcherPriority.Loaded);
         Dispatcher.BeginInvoke(AttachListScrolling, DispatcherPriority.Loaded); // lo ScrollViewer dell'elenco è un altro
+        Dispatcher.BeginInvoke(ApplyBackdrop, DispatcherPriority.Loaded); // WPF ha rimesso Mica: di nuovo l'acrilico
     }
 
     /// <summary>
@@ -740,7 +742,7 @@ public partial class MainWindow : Window
     {
         WorkArea.ColumnDefinitions.Clear();
         WorkArea.RowDefinitions.Clear();
-        foreach (UIElement e in new UIElement[] { ListCard, WorkSplitter, ReadingCard })
+        foreach (UIElement e in new UIElement[] { ListCard, WorkSplitter, WorkDivider, ReadingCard })
         {
             Grid.SetRow(e, 0);
             Grid.SetColumn(e, 0);
@@ -748,6 +750,15 @@ public partial class MainWindow : Window
         WorkSplitter.HorizontalAlignment = HorizontalAlignment.Stretch;
         WorkSplitter.VerticalAlignment = VerticalAlignment.Stretch;
         WorkSplitter.ResizeBehavior = GridResizeBehavior.PreviousAndNext;
+        // Elenco e riquadro di lettura stanno in un pannello solo (WorkCard), senza spazio: fra i due un bordino di un DIP, sul
+        // lato del divisore che tocca il riquadro. La pagina del riquadro ha gli angoli tondi solo verso il bordo del pannello,
+        // e un DIP di margine da quel lato lascia vedere il bordo.
+        WorkDivider.Width = WorkDivider.Height = double.NaN;
+        WorkDivider.HorizontalAlignment = HorizontalAlignment.Stretch;
+        WorkDivider.VerticalAlignment = VerticalAlignment.Stretch;
+        // Dal passo dopo (l'autore: "stacca leggermente il riquadro di lettura") il riquadro è una scheda staccata dal foglio:
+        // 6 DIP dai bordi, 8 (la colonna del divisore) dall'elenco, angoli tondi dappertutto; il bordino a filo non serve più.
+        const double paper = 13; // dentro gli angoli di 14 della scheda del riquadro (ReadingCard), che ha un bordo di 1
 
         switch (S.ReadingPane)
         {
@@ -757,7 +768,13 @@ public partial class MainWindow : Window
                 WorkArea.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 320 });
                 WorkSplitter.ResizeDirection = GridResizeDirection.Columns;
                 Grid.SetColumn(WorkSplitter, 1);
+                Grid.SetColumn(WorkDivider, 1);
                 Grid.SetColumn(ReadingCard, 2);
+                WorkDivider.Width = 1;
+                WorkDivider.HorizontalAlignment = HorizontalAlignment.Right;
+                WorkDivider.Margin = new Thickness(0, 1, 0, 1);
+                ReadingCard.Margin = new Thickness(0, 6, 6, 6);
+                Reader.SetPaperCorners(new CornerRadius(paper));
                 break;
             case ReadingPanePosition.Bottom:
                 WorkArea.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 160 });
@@ -765,11 +782,18 @@ public partial class MainWindow : Window
                 WorkArea.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1.4, GridUnitType.Star), MinHeight = 200 });
                 WorkSplitter.ResizeDirection = GridResizeDirection.Rows;
                 Grid.SetRow(WorkSplitter, 1);
+                Grid.SetRow(WorkDivider, 1);
                 Grid.SetRow(ReadingCard, 2);
+                WorkDivider.Height = 1;
+                WorkDivider.VerticalAlignment = VerticalAlignment.Bottom;
+                WorkDivider.Margin = new Thickness(0, 0, 1, 0);
+                ReadingCard.Margin = new Thickness(6, 0, 6, 6);
+                Reader.SetPaperCorners(new CornerRadius(paper));
                 break;
         }
         bool pane = S.ReadingPane != ReadingPanePosition.Off;
         WorkSplitter.Visibility = ReadingCard.Visibility = pane ? Visibility.Visible : Visibility.Collapsed;
+        WorkDivider.Visibility = Visibility.Collapsed; // il riquadro è staccato: lo spazio e il suo bordo fanno da confine
         FitColumns();
     }
 
@@ -800,6 +824,7 @@ public partial class MainWindow : Window
             ShowFolders();
         }
         FitMaximized();
+        FitBackdrop(); // la velatura del fondo sfuma attorno ai pulsanti di sistema, dove sono adesso
         // La ricerca resta al centro senza coprire il nome né finire sotto i pulsanti di sistema e quelli della barra del
         // titolo (aggiornamento: MainWindow.Updates.cs, FitTitleBar).
         FitTitleBar();
@@ -820,6 +845,19 @@ public partial class MainWindow : Window
     {
         base.OnSourceInitialized(e);
         AutoHideTaskbar.Attach(this);
+        ApplyBackdrop();
+    }
+
+    /// <summary>
+    /// Lo sfondo acrilico di Windows dietro la finestra (Glass.Acrylic): alla nascita e dopo ogni cambio di tema, perché WPF
+    /// rimette Mica. Non nelle foto della pagina (--foto): fuori dallo schermo Windows non lo disegna.
+    /// </summary>
+    void ApplyBackdrop()
+    {
+#if DEBUG
+        if (DevTools.Photos) return;
+#endif
+        Glass.Acrylic(this);
     }
 
     /// <summary>
@@ -888,23 +926,24 @@ public partial class MainWindow : Window
         bool over = only == null && compact && foldersOver;
         FolderPane.Visibility = docked || over ? Visibility.Visible : Visibility.Collapsed;
         FolderColumn.Width = new GridLength(docked ? folderWidth : 0);
-        FolderSplitter.Visibility = docked ? Visibility.Visible : Visibility.Collapsed;
+        FolderSplitter.Visibility = FolderDivider.Visibility = docked ? Visibility.Visible : Visibility.Collapsed;
         Grid.SetColumnSpan(FolderPane, over ? 5 : 1);
         FolderPane.HorizontalAlignment = over ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
         if (!over) FolderPane.Width = double.NaN; // aperte sopra l'elenco, la larghezza la decide FitColumns
-        FolderPane.Padding = over ? new Thickness(8, 8, 4, 8) : new Thickness(0);
-        FolderPane.BorderThickness = new Thickness(over ? 1 : 0);
+        // Affiancate, le cartelle non hanno un fondo loro: stanno nella cornice di vetro, in un pezzo solo con la colonna di
+        // Posta, Calendario e Persone e con la barra dei comandi (Chrome, FitChrome). Aperte sopra l'elenco sono un pannello
+        // a sé con il fondo pieno: il vetro di WPF non sfoca quello che ha sotto, e sopra le righe non si leggerebbero.
         if (over)
         {
             FolderPane.SetResourceReference(Border.BackgroundProperty, "SolidBackgroundFillColorBaseBrush");
-            FolderPane.SetResourceReference(Border.BorderBrushProperty, "SurfaceStrokeColorDefaultBrush");
-            FolderPane.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 24, ShadowDepth = 4, Opacity = 0.35, Direction = 270 };
+            FolderPane.ClearValue(Border.BorderBrushProperty);
+            FolderPane.ShadowSize = 28;
         }
         else
         {
-            FolderPane.ClearValue(Border.BackgroundProperty);
-            FolderPane.ClearValue(Border.BorderBrushProperty);
-            FolderPane.Effect = null;
+            FolderPane.Background = System.Windows.Media.Brushes.Transparent;
+            FolderPane.BorderBrush = System.Windows.Media.Brushes.Transparent;
+            FolderPane.ShadowSize = 0;
         }
         // WebView2 si disegna sopra tutto: con il riquadro in basso coprirebbe le cartelle aperte sopra l'elenco.
         Reader.Visibility = over && S.ReadingPane == ReadingPanePosition.Bottom ? Visibility.Hidden : Visibility.Visible;
@@ -1883,7 +1922,7 @@ public partial class MainWindow : Window
             favorites.Clear();
             foreach (var f in wanted) favorites.Add(f);
         }
-        FavoritesPanel.Visibility = favorites.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowTabPanels(); // i Preferiti nella scheda Tutti, o in ogni scheda se Tutti non c'è
         FavoritesList.Visibility = S.FavoritesCollapsed ? Visibility.Collapsed : Visibility.Visible;
         FavoritesChevron.Text = S.FavoritesCollapsed ? "" : "";
         if (folder != null) MarkSelectedFolder(searching ? null : folder);
@@ -2147,6 +2186,7 @@ public partial class MainWindow : Window
     /// <summary>Una sola cartella selezionata fra tutti gli account.</summary>
     void SelectFolder(FolderItem item)
     {
+        SyncTab(item, unifiedView: false); // la scheda dell'account della cartella (o Tutti, per un Preferito aperto da lì)
         MarkSelectedFolder(item);
         // All'avvio (cartelle dalla copia locale) gli elenchi degli account non sono ancora disegnati: si ripete dopo.
         Dispatcher.BeginInvoke(() => { if (folder == item) MarkSelectedFolder(item); }, DispatcherPriority.Loaded);
@@ -5425,6 +5465,24 @@ public partial class MainWindow : Window
         var parts = what.Split(' ', 2, StringSplitOptions.TrimEntries);
         Dispatcher.BeginInvoke(() => OpenSettings(parts[0], parts.Length > 1 ? parts[1] : "Informazioni"));
     }
+
+    /// <summary>
+    /// "domanda": una finestra di domanda con un testo finto e tre pulsanti, per fotografarla (il titolo diventa "Domanda di
+    /// prova", perché la foto non la confonda con la finestra principale); "domanda chiudi" la chiude.
+    /// </summary>
+    internal void TestQuestion(string what)
+    {
+        if (what.Equals("chiudi", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var open in OwnedWindows.Cast<Window>().Where(w => w.Title == "Domanda di prova").ToList()) open.Close();
+            return;
+        }
+        Dispatcher.BeginInvoke(() => Dialog.Ask(this, "Salvare la bozza?", "Il messaggio per Giulia Neri non è stato inviato. Puoi salvarlo nelle Bozze e riprenderlo più tardi, oppure scartarlo.", "Salva nelle Bozze", "Scarta"));
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () =>
+        {
+            foreach (var open in OwnedWindows.Cast<Window>().Where(w => w.GetType() == typeof(Window) && w.Title == "Missiva")) open.Title = "Domanda di prova";
+        });
+    }
 #endif
 
     // ---------------------------------------------------------------- regole
@@ -5624,7 +5682,12 @@ public partial class MainWindow : Window
 
     void OnAccountMenu(object sender, ContextMenuEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: AccountItem account, ContextMenu: { } menu }) return;
+        if (sender is FrameworkElement { Tag: AccountItem account, ContextMenu: { } menu }) FillAccountMenu(menu, account);
+    }
+
+    /// <summary>Il menu dell'account: dal tasto destro sulla sua scheda (OnAccountTabMenu).</summary>
+    void FillAccountMenu(ContextMenu menu, AccountItem account)
+    {
         menu.Items.Clear();
         var mail = account.Provider.Account;
         // Una casella condivisa non ha accesso né nome suoi: li ha l'account di lavoro che la apre.
@@ -5653,10 +5716,11 @@ public partial class MainWindow : Window
         if (only != null || accounts.Count < 2) return;
         int index = accounts.IndexOf(account);
         menu.Items.Add(new Separator());
-        var up = new MenuItem { Header = T("Sposta su"), IsEnabled = index > 0 };
+        // Gli account sono schede in fila: prima erano uno sopra l'altro (Sposta su e giù).
+        var up = new MenuItem { Header = T("Sposta a sinistra"), IsEnabled = index > 0 };
         up.Click += (_, _) => MoveAccount(account, index - 1);
         menu.Items.Add(up);
-        var down = new MenuItem { Header = T("Sposta giù"), IsEnabled = index < accounts.Count - 1 };
+        var down = new MenuItem { Header = T("Sposta a destra"), IsEnabled = index < accounts.Count - 1 };
         down.Click += (_, _) => MoveAccount(account, index + 1);
         menu.Items.Add(down);
     }

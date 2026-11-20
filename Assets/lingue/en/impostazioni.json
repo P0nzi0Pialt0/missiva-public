@@ -586,5 +586,9 @@
   "{0} del {1} ({2}), con modifiche non ancora in un commit": "{0} ({1}, {2}), with changes not yet committed",
   "{0} del {1} ({2})": "{0} ({1}, {2})",
   "non si lascia spostare, forse è in uso da un altro programma": "can't be moved, maybe because another program is using it",
-  "Server": "Servers"
+  "Server": "Servers",
+  "Bianco": "White",
+  "Ambra": "Amber",
+  "Arancio": "Orange",
+  "Il colore del fondo e dei pulsanti: quello di Windows, bianco o nero (senza colore: scegliendoli il tema diventa chiaro o scuro), oppure uno di questi.": "The color of the background and of the buttons: the Windows one, white or black (no color: choosing them makes the theme light or dark), or one of these."
 }

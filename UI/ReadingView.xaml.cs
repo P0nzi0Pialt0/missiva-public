@@ -110,6 +110,7 @@ public partial class ReadingView : UserControl
     {
         InitializeComponent();
         App.ThemeChanged += OnThemeChanged;
+        Paper.SizeChanged += (_, _) => OnPaperSize();
         Loaded += (_, _) =>
         {
             if (Window.GetWindow(this) is not { } window || window == host) return;
@@ -544,7 +545,7 @@ public partial class ReadingView : UserControl
             bool light = Light;
             var summary = new MessageSummary { Id = "", FolderId = "", From = new Address { Name = "Missiva", Email = "missiva@missiva.example" } };
             page = ReadingPage.Build([new PageEntry(summary, new MessageBody { Html = sample }, true, false, null, false)], light);
-            var paper = light ? Colors.White : MailHtml.DarkPaper;
+            var paper = PaperColor(light);
             Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(paper.R, paper.G, paper.B);
             blankNext = true; // poi la pagina vuota, che si vedrà per un attimo al primo messaggio
             Web.CoreWebView2.Navigate($"{ReadingPage.Origin}/?v={++pageNumber}");
@@ -596,7 +597,7 @@ public partial class ReadingView : UserControl
         // riquadro chiaro nel tema scuro il segnaposto nel foglio bianco aveva i colori del tema scuro, quasi bianchi, e non
         // si vedeva niente: solo un rettangolo bianco all'apertura (l'autore, 28 settembre 2026).
         bool light = !Dark;
-        var paper = light ? Colors.White : MailHtml.DarkPaper;
+        var paper = PaperColor(light);
         ApplyZoom();
         // WPF posa il testo semitrasparente in luce lineare, non come Chromium: con lo stesso conto la busta e la scritta hanno
         // i colori che si vedevano (misurati: #C9C7C5 e #A9A7A6 nel chiaro, #D1D1D1 e #EAEAEA nello scuro; mescolati come
@@ -616,10 +617,10 @@ public partial class ReadingView : UserControl
         var margin = FullPaper ? Paper.Padding : Paper.Margin;
         // I nomi dei caratteri come li dà WPF e i colori come colori: il CSS lo scrive la pagina (ReadingPage.CssFonts).
         page = ReadingPage.Empty(light, new EmptyLook(label.FontFamily.Source, label.FontSize,
-            On("TextFillColorTertiaryBrush"), On("TextFillColorSecondaryBrush"), web.ZoomFactor, (margin.Bottom - margin.Top) / 2));
+            On("TextFillColorTertiaryBrush"), On("TextFillColorSecondaryBrush"), web.ZoomFactor, (margin.Bottom - margin.Top) / 2), PageGlass(light));
         // Il fondo intorno a WebView2 cambia quando il segnaposto è disegnato (NavigationCompleted), non subito: finché
         // Chromium tiene il messaggio (bianco con il riquadro chiaro) una cornice scura intorno si vedrebbe.
-        blankPaper = new SolidColorBrush(paper);
+        blankPaper = PaperBrush(light);
         if (ContentPanel.Visibility != Visibility.Visible) Paper.Background = blankPaper;
         Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(paper.R, paper.G, paper.B);
         blankNumber = ++pageNumber;
@@ -643,9 +644,17 @@ public partial class ReadingView : UserControl
             if (!value) return;
             Paper.Padding = Paper.Margin;
             Paper.Margin = default;
-            Paper.CornerRadius = new CornerRadius(7); // dentro la scheda del riquadro (ReadingCard: 8, bordo di 1)
+            // Dentro il pannello di vetro del riquadro (ReadingCard: angoli di 20, bordo di 1). WebView2, che è un rettangolo,
+            // sta dentro gli angoli: i margini della pagina (12 di lato, 6 sopra, 12 sotto) lo tengono oltre la curva.
+            Paper.CornerRadius = new CornerRadius(19);
         }
     }
+
+    /// <summary>
+    /// Gli angoli della pagina nel riquadro della finestra principale, che sta nello stesso pannello dell'elenco: tondi solo
+    /// dove la pagina tocca il bordo del pannello (a destra, o in basso con il riquadro sotto l'elenco), dritti verso l'elenco.
+    /// </summary>
+    public void SetPaperCorners(CornerRadius corners) => Paper.CornerRadius = corners;
 
     /// <summary>Stampa quello che il riquadro mostra, con l'anteprima di stampa di Edge (Ctrl+P, menu del tasto destro).</summary>
     public void Print()
@@ -679,6 +688,9 @@ public partial class ReadingView : UserControl
     {
         if (web?.CoreWebView2 != null) web.ZoomFactor = factor;
     }
+
+    /// <summary>Prove ("riquadro giù 300" in MISSIVA_KEYS): la pagina scorre a quella distanza dall'inizio.</summary>
+    internal void TestScroll(int y) => _ = Script($"scrollTo(0, {y})");
 
     /// <summary>Prove ("sole" e "immagini" in MISSIVA_KEYS): il sole o "Mostra immagini" del primo messaggio della pagina, come il clic.</summary>
     internal void TestAction(string action)
@@ -1011,11 +1023,11 @@ public partial class ReadingView : UserControl
             e.Expanded && e.Body != null && provider != null ? SenderCheck.Of(provider.Account, e.Summary, e.Body) : null,
             LogoOf(e.Summary), InJunk(e.Summary, junk), UnsubscribeLine(e), ImagesOnce(provider?.Account, e.Summary, e.Body, junk, IsEml))).ToList(), light, provider?.Account.Id ?? "",
             new PageHeader(Selected is { Subject.Length: > 0 } s ? s.Subject : T("(nessun oggetto)"), Dark,
-                ShowAccount && provider != null ? (provider.Account.Email, Avatars.AccountColor(provider.Account)) : null));
+                ShowAccount && provider != null ? (provider.Account.Email, Avatars.AccountColor(provider.Account)) : null), PageGlass(light));
         Log.Time($"pagina costruita ({entries.Count(e => e.Body != null)} corpi)", building);
         page = actionsPage = built;
-        var paper = light ? Colors.White : MailHtml.DarkPaper;
-        Paper.Background = new SolidColorBrush(paper);
+        var paper = PaperColor(light);
+        Paper.Background = PaperBrush(light);
 
         foreach (var entry in entries.Where(e => e.Expanded && e.Body == null && !e.Loading && e.Error == null))
             _ = LoadBodyAsync(entry, version);
@@ -1371,6 +1383,8 @@ public partial class ReadingView : UserControl
           const body = m.shadowRoot && m.shadowRoot.querySelector('.missiva-body');
           const need = body ? body.scrollWidth : m.scrollWidth, have = m.clientWidth;
           if (need > have + 2) m.style.zoom = Math.max(0.5, have / need).toFixed(3);
+          const box = m.closest('.content');
+          if (box) box.classList.toggle('wide', need > have + 2 && have / need < 0.5);
         }
         """;
 

@@ -30,6 +30,13 @@ public sealed record PageHeader(string Subject, bool Sun, (string Email, Color C
 /// FontFamily.Source di WPF, separati da virgole: il valore per il CSS lo scrive la pagina (ReadingPage.CssFonts), e i due
 /// colori sono colori, non testi: nella pagina non entra una stringa fatta altrove (revisione del 14 ottobre 2026, U-04).
 /// </summary>
+/// <summary>
+/// Il vetro dietro la pagina (ReadingView.PageGlass): Css è il fondo intero, a strati (veli, macchie di luce, fondo pieno),
+/// Flat il colore che ne risulta al centro, per quello che sta fuori dalla pagina, Band lo stesso colore a metà
+/// trasparenza, per la fascia dell'oggetto. Solo numeri e colori calcolati.
+/// </summary>
+public sealed record PageBack(string Css, string Flat, string Band);
+
 public sealed record EmptyLook(string Fonts, double FontSize, Color Glyph, Color Text, double Zoom, double Down);
 
 /// <summary>
@@ -72,7 +79,7 @@ public sealed class ReadingPage
 
     /// <param name="accountId">Per i colori delle categorie.</param>
     /// <param name="header">Oggetto e pulsanti sopra la conversazione; null per le pagine senza messaggio vero.</param>
-    public static ReadingPage Build(IReadOnlyList<PageEntry> entries, bool light, string accountId = "", PageHeader? header = null)
+    public static ReadingPage Build(IReadOnlyList<PageEntry> entries, bool light, string accountId = "", PageHeader? header = null, PageBack? back = null)
     {
         var page = new ReadingPage { Blocked = new int[entries.Count], accountId = accountId, Bodies = entries.Select(e => e.Body).ToList() };
         var messages = new StringBuilder();
@@ -81,7 +88,7 @@ public sealed class ReadingPage
         var html = new StringBuilder();
         if (header != null) page.Header(html, header, entries, light);
         html.Append(messages);
-        page.Html = Document(html.ToString(), light, page.RemoteAllowed, hold: entries.Count > 0);
+        page.Html = Document(html.ToString(), light, page.RemoteAllowed, hold: entries.Count > 0, back);
         return page;
     }
 
@@ -91,14 +98,14 @@ public sealed class ReadingPage
     /// si passa dentro Chromium, che tiene la pagina di prima fino al primo disegno della nuova: prima WebView2 si nascondeva
     /// e, tornando visibile, mostrava per 55-60 ms l'ultima immagine disegnata, un foglio bianco (giro D1 di A).
     /// </summary>
-    public static ReadingPage Empty(bool light, EmptyLook look)
+    public static ReadingPage Empty(bool light, EmptyLook look, PageBack? back = null)
     {
         // Le misure di WPF in pixel dello schermo: la pagina ha lo zoom del riquadro, che le ingrandirebbe.
         string Px(double v) => (v / look.Zoom).ToString("0.###", CultureInfo.InvariantCulture) + "px";
         var body = $"<div class=\"empty\" style=\"font-family:{CssFonts(look.Fonts)};font-size:{Px(look.FontSize)};padding-top:{Px(2 * look.Down)}\">" +
                    $"<span class=\"glyph\" style=\"font-size:{Px(48)};color:{Hex(look.Glyph)}\"></span>" +
                    $"<span style=\"margin-top:{Px(12)};color:{Hex(look.Text)}\">{E(T("Seleziona un elemento da leggere"))}</span></div>";
-        return new ReadingPage { Html = Document(body, light, false, hold: false) };
+        return new ReadingPage { Html = Document(body, light, false, hold: false, back) };
     }
 
     /// <summary>
@@ -580,23 +587,38 @@ public sealed class ReadingPage
     /// Missiva non arriva, dopo 600 ms si mostra da sola (l'animazione del CSS). E tiene sempre lo spazio della barra di
     /// scorrimento (scrollbar-gutter): la conversazione che arriva e allunga la pagina non la stringe più di 8 pixel.
     /// </param>
-    static string Document(string body, bool light, bool remote, bool hold)
+    static string Document(string body, bool light, bool remote, bool hold, PageBack? back = null)
     {
         string paper = light ? "#FFFFFF" : Hex(MailHtml.DarkPaper), ink = light ? "#1B1B1B" : "#E8E8E8", subtle = light ? "#616161" : "#ADADAD";
         string rule = light ? "#E5E5E5" : "#3A3A3A", hover = light ? "rgba(0,0,0,.05)" : "rgba(255,255,255,.07)", press = light ? "rgba(0,0,0,.09)" : "rgba(255,255,255,.11)";
         // I comandi della pagina (Mostra immagini, Salva tutti, inviti) nel colore d'accento di Windows, come il resto di
         // Missiva (richiesta dell'autore, giro D1): la tonalità scura sulla pagina chiara e la chiara sulla scura, come il testo
         // d'accento di Fluent. I link dentro le email restano blu (ShadowCss).
-        string link = Hex(light ? System.Windows.SystemColors.AccentColorDark2 : System.Windows.SystemColors.AccentColorLight3);
+        // Con un colore scelto in Impostazioni (Settings.Color) quello, come nel resto della finestra.
+        string link = Hex(Glass.AccentText(Store.Settings.Color, !light) ?? (light ? System.Windows.SystemColors.AccentColorDark2 : System.Windows.SystemColors.AccentColorLight3));
         string thumb = light ? "rgba(0,0,0,.36)" : "rgba(255,255,255,.36)", thumbHover = light ? "rgba(0,0,0,.52)" : "rgba(255,255,255,.52)";
+        // Il vetro nella pagina (20 novembre 2026): l'oggetto resta in cima mentre la mail scorre, su una fascia traslucida del
+        // colore della pagina che sfoca quello che le passa sotto (backdrop-filter: qui la sfocatura è vera, la fa Chromium).
+        var dark = MailHtml.DarkPaper;
+        string glass = light ? "rgba(255,255,255,.70)" : "rgba(" + dark.R + "," + dark.G + "," + dark.B + ",.68)"; // tre numeri: niente da codificare
+        // Il riquadro di vetro (ReadingView.Glass.cs): il fondo della pagina è il vetro della finestra ridisegnato qui, fermo
+        // mentre la mail scorre (un elemento fisso dietro a tutto, non un fondo "fixed", che in Chromium fa ridipingere tutta la
+        // pagina a ogni passo dello scorrimento); la fascia dell'oggetto è del colore del vetro, a metà trasparenza: ferma in
+        // cima non si stacca dal riquadro, e con la mail che le scorre sotto, sfocata, il titolo si legge sempre.
+        string vetro = back?.Css ?? paper, flat = back?.Flat ?? paper;
+        if (back != null) glass = back.Band;
+        string glassEdge = light ? "rgba(0,0,0,.07)" : "rgba(255,255,255,.09)";
         var images = remote ? " https: http:" : "";
         return $$"""
             <!doctype html><html lang="{{E(Lingua.Tag)}}"{{(hold ? " class=\"fitting\" style=\"scrollbar-gutter: stable\"" : "")}}><head><meta charset="utf-8">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src {{Origin}} data:{{images}}; font-src data:; form-action {{Origin}}">
             <meta name="referrer" content="no-referrer">
             <style>
-              :root { color-scheme: {{(light ? "light" : "dark")}}; }
-              html, body { margin: 0; background: {{paper}}; color: {{ink}}; }
+              :root { color-scheme: {{(light ? "light" : "dark")}}; --vetro: {{vetro}}; }
+              html { margin: 0; background: {{flat}}; color: {{ink}}; }
+              html::before { content: ""; position: fixed; inset: 0; z-index: -1; background: var(--vetro); pointer-events: none; }
+              body { margin: 0; background: transparent; color: {{ink}}; }
+              @media print { html { background: {{paper}}; } html::before { display: none; } }
               body { font: 14px "Segoe UI Variable Text", "Segoe UI", sans-serif; padding: 4px 0 12px; }
               .fitting body { visibility: hidden; animation: missiva-show 0s linear .6s forwards; }
               /* Il riquadro vuoto (Empty), come il segnaposto di WPF: al centro, un po' più in basso quanto i margini attorno */
@@ -607,7 +629,11 @@ public sealed class ReadingPage
               .leaving body { opacity: .4; transition: opacity .15s; }
               form { display: contents; }
               button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: left; }
-              .subject { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0 6px 8px; }
+              /* L'oggetto è una fascia di vetro che resta in cima: la mail le scorre sotto, sfocata. In stampa torna al suo posto. */
+              .subject { display: flex; align-items: flex-start; gap: 8px; padding: 12px 0 8px 8px; margin-top: -4px; position: sticky; top: 0; z-index: 4;
+                         background: {{glass}}; backdrop-filter: blur(18px) saturate(1.6); border-bottom: 1px solid {{glassEdge}}; }
+              .msg { scroll-margin-top: 64px; }
+              @media print { .subject { position: static; background: none; backdrop-filter: none; border-bottom: 0; } }
               .subject h1 { flex: 1; min-width: 0; margin: 2px 0 0; font-size: 20px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
               .account { display: flex; align-items: center; gap: 6px; margin: -2px 0 6px 8px; font-size: 12px; color: {{subtle}}; }
               .account .dot { flex: none; width: 8px; height: 8px; border-radius: 4px; }
@@ -704,8 +730,14 @@ public sealed class ReadingPage
                  riquadro di riferimento) e quello che sborda sopra o sotto si taglia, così non può coprire mittente e
                  pulsanti veri. Di lato no: un'email ancora troppo larga dopo il rimpicciolimento (FitAsync) fa scorrere di
                  lato la pagina, con la barra in fondo al riquadro come in Outlook, invece di una barra in fondo all'email
-                 che nessuno vedeva. Non contain: layout, con cui quello che sborda non conta per lo scorrimento della pagina. */
-              .content { margin: 10px 0 4px 48px; display: flow-root; overflow-x: visible; overflow-y: clip; position: relative; transform: translate(0); }
+                 che nessuno vedeva. Non contain: layout, con cui quello che sborda non conta per lo scorrimento della pagina.
+                 Gli angoli sono tondi (20 novembre 2026, l'autore: "smussa gli angoli del riquadro della mail vera e propria,
+                 oggi è completamente squadrato e stona con il resto"): l'email si ritaglia sul riquadro, anche di lato; quella
+                 che resta troppo larga (classe "wide", la mette lo script che adatta, ReadingView.Fit) torna dritta e scorre
+                 di lato come prima. In stampa dritta. */
+              .content { margin: 10px 0 4px 48px; display: flow-root; overflow: clip; border-radius: 12px; position: relative; transform: translate(0); }
+              .content.wide { overflow-x: visible; overflow-y: clip; border-radius: 0; }
+              @media print { .content { border-radius: 0; } }
               .status { padding: 8px 0; }
               /* Segnaposto del corpo che tarda (oltre 300 ms): righe grigie invece della scritta "Caricamento" */
               .placeholder { padding: 6px 0; }

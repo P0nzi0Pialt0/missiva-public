@@ -59,22 +59,25 @@ public partial class MainWindow
     void ShowUnifiedGroup()
     {
         UnifiedList.ItemsSource ??= unifiedItems;
-        UnifiedList.Visibility = S.UnifiedCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        // Dal 20 novembre 2026 le viste comuni stanno nella scheda Tutti, sempre aperte: l'intestazione del gruppo, con la
+        // freccia per chiuderlo (Settings.UnifiedCollapsed), non si mostra più.
+        UnifiedList.Visibility = Visibility.Visible;
         UpdateGroupMarks();
         UnifiedChevron.Text = S.UnifiedCollapsed ? "" : "";
     }
 
     /// <summary>
-    /// Il gruppo "Tutti gli account" c'è con due o più account (non nella finestra di una sola cartella), se non è spento
-    /// nelle Impostazioni (Settings.ShowUnified); Posta in arrivo e Non letti hanno la somma dei non letti delle Posta in
-    /// arrivo, come il numero sull'icona.
+    /// Le viste di tutti gli account ci sono con due o più account (non nella finestra di una sola cartella), se non sono
+    /// spente nelle Impostazioni (Settings.ShowUnified): sono la scheda Tutti (MainWindow.Tabs.cs). Posta in arrivo e Non
+    /// letti hanno la somma dei non letti delle Posta in arrivo, come il numero sull'icona e come la scheda.
     /// </summary>
     void UpdateUnified()
     {
-        UnifiedPanel.Visibility = only == null && accounts.Count >= 2 && S.ShowUnified ? Visibility.Visible : Visibility.Collapsed;
         int unread = accounts.SelectMany(a => a.Folders).Where(f => f.Folder.Kind == FolderKind.Inbox).Sum(f => f.Unread);
         foreach (var u in unifiedItems) u.Unread = u.View is UnifiedView.Inbox or UnifiedView.Unread ? unread : 0;
-        if (unified != null && UnifiedPanel.Visibility != Visibility.Visible) SelectInbox(); // rimasto un account solo
+        allTab.Unread = unread;
+        UpdateTabs();
+        if (unified != null && !HasAllTab) SelectInbox(); // rimasto un account solo, o Tutti gli account spento
     }
 
     void OnUnifiedToggle(object sender, RoutedEventArgs e)
@@ -101,6 +104,8 @@ public partial class MainWindow
             Store.SaveSoon();
             ShowUnifiedGroup();
         }
+        lastUnified = item;
+        SyncTab(null, unifiedView: true); // le viste comuni stanno nella scheda Tutti
         MarkSelectedFolder(null);
         MarkUnified(item);
         folder = null;

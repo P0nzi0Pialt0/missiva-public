@@ -433,6 +433,10 @@ pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel 
   Contrassegnati, Bozze e Posta inviata di tutti gli account insieme, in ordine di data. Ogni riga ha il colore e il nome
   del suo account (e il riquadro di lettura lo ripete sotto l'oggetto); Rispondi parte da quell'account, Elimina e
   Archivia usano il Cestino e l'Archivio di ognuno, Annulla compreso.
+- Gli account sono schede in fila sopra la barra dei comandi, come le schede di un browser: Tutti (con due o più
+  account), una per account con il numero dei messaggi da leggere, e "+" per aggiungerne uno. La scheda scelta decide
+  le cartelle che si vedono a sinistra; il tasto destro apre il menu dell'account, con Sposta a sinistra e Sposta a
+  destra per cambiare l'ordine delle schede.
 - Ricerca in tutte le cartelle dell'account aperto, solo nella cartella aperta o in tutti gli account (menu accanto alla
   casella; dalle viste di tutti gli account si cerca sempre in tutti); ogni risultato mostra la sua cartella (e il suo
   account) e scorrendo arrivano i successivi. Per Gmail con la stessa sintassi della ricerca di
@@ -478,6 +482,9 @@ pagina di ingresso (README.md): se i passi cambiano, si correggono solo in quel 
 - Tema chiaro o scuro come Windows, anche quando cambia con Missiva aperta (per esempio il cambio automatico al
   tramonto): il messaggio aperto si ridisegna restando dov'era. Oppure sempre chiaro o sempre scuro (Impostazioni,
   Generali, Aspetto).
+- Aspetto di vetro: pannelli traslucidi con gli angoli tondi sopra lo sfondo di Windows, anche nel riquadro di lettura,
+  nella scrittura e nelle Impostazioni. Il colore lo scegli tu (Impostazioni, Generali, Aspetto, Colore): quello di
+  Windows, bianco o nero (senza colore: portano con sé il tema chiaro o scuro), oppure uno degli otto predefiniti.
 
 ## Sicurezza
 

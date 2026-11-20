@@ -40,13 +40,15 @@ public sealed partial class PeopleView : UserControl
     {
         this.providers = providers;
         var root = new Grid();
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        // La barra alta quanto quella dei comandi della posta (MainWindow.BarHeight), come nel Calendario; sotto, 8 DIP.
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(MainWindow.BarHeight + 8) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(340) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-        Grid.SetColumnSpan(bar, 2);
+        var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        var band = new Border { Height = MainWindow.BarHeight, VerticalAlignment = VerticalAlignment.Top, Child = bar };
+        Grid.SetColumnSpan(band, 2);
         var create = new Button { Content = T("Nuovo contatto"), Padding = new Thickness(14, 5, 14, 6), Margin = new Thickness(0, 0, 12, 0) };
         create.SetResourceReference(StyleProperty, "AccentButtonStyle");
         AutomationProperties.SetName(create, T("Nuovo contatto"));
@@ -70,7 +72,7 @@ public sealed partial class PeopleView : UserControl
         }
         status.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryTextBrush");
         bar.Children.Add(status);
-        root.Children.Add(bar);
+        root.Children.Add(band);
 
         var left = new DockPanel();
         AutomationProperties.SetName(search, T("Cerca fra le persone"));

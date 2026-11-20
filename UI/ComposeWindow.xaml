@@ -32,9 +32,16 @@
         </Style>
     </Window.Resources>
 
-    <DockPanel Margin="20,14,20,16">
+    <!-- Il vetro (20 novembre 2026), come la finestra principale: un foglio solo con gli angoli grandi; in cima la fascia
+         dei comandi, più scura e alta quanto la barra dei comandi della principale (56), con un bordino sotto; i campi sul
+         foglio; il testo in una scheda appoggiata sopra, come il riquadro di lettura. -->
+    <Grid Margin="12,2,12,12">
+        <local:GlassBorder Style="{StaticResource GlassPanel}" ShadowSize="14" />
+    <DockPanel>
         <!-- Invia / Scarta -->
-        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10" LastChildFill="False">
+        <Border DockPanel.Dock="Top" Height="56" CornerRadius="19,19,0,0" Margin="1,1,1,0" Padding="11,0,14,0" BorderThickness="0,0,0,1"
+                Background="{DynamicResource GlassShadeBrush}" BorderBrush="{DynamicResource GlassDividerBrush}">
+        <DockPanel LastChildFill="False" VerticalAlignment="Center">
             <Button x:Name="SendButton" Style="{DynamicResource AccentButtonStyle}" Padding="16,6" Click="OnSend" ToolTip="{local:T 'Invia (Ctrl+Invio)'}" AutomationProperties.Name="{local:T 'Invia'}">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="&#xE724;" FontFamily="{StaticResource Icons}" VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -89,9 +96,10 @@
             </Button>
             <TextBlock x:Name="Status" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
         </DockPanel>
+        </Border>
 
         <!-- Intestazione -->
-        <Grid DockPanel.Dock="Top">
+        <Grid DockPanel.Dock="Top" Margin="16,12,16,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -149,16 +157,16 @@
         </Grid>
 
         <!-- Account di lavoro: destinatari fuori dall'organizzazione, come il suggerimento di Outlook (ComposeWindow.UpdateExternal) -->
-        <Border x:Name="ExternalBar" DockPanel.Dock="Top" Visibility="Collapsed" CornerRadius="6" Padding="10,5" Margin="0,0,0,6" Background="#26F7B500">
+        <Border x:Name="ExternalBar" DockPanel.Dock="Top" Visibility="Collapsed" CornerRadius="10" Padding="12,6" Margin="16,0,16,6" Background="#26F7B500">
             <TextBlock x:Name="ExternalText" TextWrapping="Wrap" FontSize="12" />
         </Border>
 
-        <WrapPanel x:Name="AttachmentsPanel" DockPanel.Dock="Top" Margin="0,0,0,4" />
+        <WrapPanel x:Name="AttachmentsPanel" DockPanel.Dock="Top" Margin="16,0,16,4" />
 
         <!-- Formattazione, come Formato testo del nuovo Outlook: carattere, dimensione, grassetto, corsivo, sottolineato, colore,
              evidenziatore, elenchi, allineamento, rientro, tabella, immagine, collegamento, cancella formattazione, firma.
              Va a capo nella finestra stretta. -->
-        <WrapPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+        <WrapPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="16,0,12,4">
             <ComboBox x:Name="FontBox" Width="150" Height="32" Margin="0,0,4,4" AutomationProperties.Name="{local:T 'Carattere'}" ToolTip="{local:T 'Carattere'}"
                       SelectionChanged="OnFontPick" />
             <ComboBox x:Name="SizeBox" Width="72" Height="32" Margin="0,0,8,4" AutomationProperties.Name="{local:T 'Dimensione del carattere'}"
@@ -186,7 +194,7 @@
                     <Border x:Name="HighlightMark" Height="3" Width="16" VerticalAlignment="Bottom" Margin="0,0,0,-4" Background="#FFF100" />
                 </Grid>
             </Button>
-            <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Border Width="1" Margin="6,6" Background="{DynamicResource GlassDividerBrush}" />
             <ToggleButton Style="{StaticResource Tool}" ToolTip="{local:T 'Elenco puntato'}" Click="OnBullets" AutomationProperties.Name="{local:T 'Elenco puntato'}">
                 <TextBlock Text="&#xE8FD;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
@@ -199,7 +207,7 @@
             <Button Style="{StaticResource PlainTool}" ToolTip="{local:T 'Aumenta rientro'}" AutomationProperties.Name="{local:T 'Aumenta rientro'}" Click="OnIndent">
                 <TextBlock Text="&#xE291;" FontFamily="{StaticResource Icons}" />
             </Button>
-            <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Border Width="1" Margin="6,6" Background="{DynamicResource GlassDividerBrush}" />
             <ToggleButton x:Name="AlignLeftButton" Style="{StaticResource Tool}" ToolTip="{local:T 'Allinea a sinistra'}" Click="OnAlignLeft" AutomationProperties.Name="{local:T 'Allinea a sinistra'}">
                 <TextBlock Text="&#xE8E4;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
@@ -209,7 +217,7 @@
             <ToggleButton x:Name="AlignRightButton" Style="{StaticResource Tool}" ToolTip="{local:T 'Allinea a destra'}" Click="OnAlignRight" AutomationProperties.Name="{local:T 'Allinea a destra'}">
                 <TextBlock Text="&#xE8E2;" FontFamily="{StaticResource Icons}" />
             </ToggleButton>
-            <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Border Width="1" Margin="6,6" Background="{DynamicResource GlassDividerBrush}" />
             <Button x:Name="TableButton" Style="{StaticResource PlainTool}" ToolTip="{local:T 'Inserisci tabella'}" AutomationProperties.Name="{local:T 'Inserisci tabella'}" Click="OnTable">
                 <TextBlock Text="&#xE80A;" FontFamily="{StaticResource Icons}" />
             </Button>
@@ -222,7 +230,7 @@
             <Button Style="{StaticResource PlainTool}" ToolTip="{local:T 'Cancella formattazione'}" AutomationProperties.Name="{local:T 'Cancella formattazione'}" Click="OnClearFormat">
                 <TextBlock Text="&#xE75C;" FontFamily="{StaticResource Icons}" />
             </Button>
-            <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Border Width="1" Margin="6,6" Background="{DynamicResource GlassDividerBrush}" />
             <!-- Firma, come nel nuovo Outlook: le firme dell'indirizzo del Da, per cambiare quella messa da Missiva -->
             <Button x:Name="SignatureButton" Height="32" Padding="8,0" Margin="0,0,4,0" Background="Transparent" BorderThickness="0"
                     ToolTip="{local:T 'Firma'}" AutomationProperties.Name="{local:T 'Firma'}" Click="OnSignatureMenu">
@@ -236,8 +244,8 @@
 
         <!-- Il messaggio a cui si risponde o che si inoltra, di sola lettura, come nel nuovo Outlook: è quello che il provider
              citerà sotto il testo (ComposeWindow.ShowOriginalAsync). Compresso a dieci righe, con "Mostra tutto". -->
-        <Border x:Name="OriginalPanel" DockPanel.Dock="Bottom" Margin="0,10,0,0" Padding="0,10,0,0" BorderThickness="0,1,0,0"
-                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" Visibility="Collapsed"
+        <Border x:Name="OriginalPanel" DockPanel.Dock="Bottom" Margin="16,2,12,12" Padding="0,10,0,0" BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource GlassDividerBrush}" Visibility="Collapsed"
                 ToolTip="{local:T 'Il messaggio originale: verrà citato sotto il tuo testo'}" AutomationProperties.Name="{local:T 'Messaggio originale'}">
             <DockPanel>
                 <!-- In alto a destra: in una finestra bassa il fondo del riquadro scorre, il pulsante resta in vista -->
@@ -257,11 +265,21 @@
         </Border>
 
         <!-- La lingua dell'editor (correttore ortografico) è quella di Missiva (Lingua.Xml): it-IT in italiano, come quando era scritta qui -->
-        <local:RichEditor x:Name="Editor" AutomationProperties.Name="{local:T 'Testo del messaggio'}" AcceptsTab="True" Language="{x:Static missiva:Lingua.Xml}" Padding="8"
-                     VerticalScrollBarVisibility="Auto" SelectionChanged="OnEditorSelection" FontSize="14">
+        <!-- Il testo è la scheda: il modello di Fluent (fondo, bordo e riga colorata sotto) lascia il posto al solo testo -->
+        <local:GlassBorder Margin="6,0,6,6" CornerRadius="14" BorderThickness="1" Background="{DynamicResource GlassPaperBrush}"
+                           BorderBrush="{DynamicResource GlassEdgeBrush}" ShadowSize="7" ShadowColor="{DynamicResource GlassShadowColor}">
+        <local:RichEditor x:Name="Editor" AutomationProperties.Name="{local:T 'Testo del messaggio'}" AcceptsTab="True" Language="{x:Static missiva:Lingua.Xml}" Padding="12,10"
+                     VerticalScrollBarVisibility="Auto" SelectionChanged="OnEditorSelection" FontSize="14" Background="Transparent" BorderThickness="0">
+            <local:RichEditor.Template>
+                <ControlTemplate TargetType="RichTextBox">
+                    <ScrollViewer x:Name="PART_ContentHost" Padding="{TemplateBinding Padding}" Focusable="False" Background="Transparent" />
+                </ControlTemplate>
+            </local:RichEditor.Template>
             <FlowDocument FontFamily="Segoe UI" FontSize="14">
                 <Paragraph />
             </FlowDocument>
         </local:RichEditor>
+        </local:GlassBorder>
     </DockPanel>
+    </Grid>
 </Window>

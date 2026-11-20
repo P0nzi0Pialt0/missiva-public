@@ -35,8 +35,9 @@ static partial class ProvaBozze
 
     /// <summary>
     /// La rotellina in fondo alla colonna delle app apre subito le Impostazioni, come in Outlook: prima un menu con
-    /// Impostazioni, Aggiungi account e Apri la cartella dei registri. Aggiungi account resta in fondo alle cartelle e in
-    /// Impostazioni, Account; la cartella dei registri è un pulsante di Impostazioni, Generali, Informazioni.
+    /// Impostazioni, Aggiungi account e Apri la cartella dei registri. Aggiungi account resta nella finestra (dal 20 novembre
+    /// 2026 il "+" in fondo alle schede degli account, prima in fondo alle cartelle) e in Impostazioni, Account; la cartella
+    /// dei registri è un pulsante di Impostazioni, Generali, Informazioni.
     /// </summary>
     static void RitSettingsButton()
     {
@@ -51,15 +52,19 @@ static partial class ProvaBozze
         string handler = Ch3Part(main, "void OnSettings(object sender, RoutedEventArgs e)", "\n}");
         bool direct = handler.Contains("=> OpenSettings();") && !main.Contains("OnSettingsMenu") && !main.Contains("\"Aggiungi account…\"")
                       && !main.Contains("\"Apri la cartella dei registri\"");
-        // Aggiungi account resta in fondo alle cartelle (con il suo nome) e in Impostazioni, Account.
-        bool addKept = System.Text.RegularExpressions.Regex.IsMatch(xaml, "<Button DockPanel.Dock=\"Bottom\"[^>]*Click=\"OnAddAccount\" AutomationProperties.Name=\"\\{local:T 'Aggiungi account'\\}\">")
+        // Aggiungi account resta nella finestra principale e in Impostazioni, Account. Dal 20 novembre 2026 (gli account come
+        // schede) è il "+" in fondo alle schede, con il suo nome per UI Automation: prima un pulsante in fondo alle cartelle.
+        var tabsCode = Ch1Code("UI", "MainWindow.Tabs.cs") ?? "";
+        bool addKept = xaml.Contains("<DataTemplate DataType=\"{x:Type local:AddAccountTab}\">")
+                       && Ch3InOrder(Ch3Part(tabsCode, "void OnAccountTabSelected(", "\n    }"), "if (chosen == addTab)", "AccountTabs.SelectedItem = tab;", "OnAddAccount(this, new RoutedEventArgs());")
+                       && Ch3Part(tabsCode, "public sealed class AddAccountTab", "\n}").Contains("public string TabAutomationName => T(\"Aggiungi account\");")
                        && Ch3Part(settings, "StackPanel AccountsPage()", "\n    }").Contains("addAccount()");
         // La cartella dei registri in Informazioni, come pulsante, con lo stesso avvio di prima (la cartella dei dati, dalla shell).
         string about = Ch3Part(settings, "StackPanel AboutPage()", "\n    }");
         bool logs = Ch3InOrder(about, "Section(T(\"Registri\"))", "Content = T(\"Apri la cartella dei registri\")",
                                "logs.Click += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Store.Dir) { UseShellExecute = true });", "p.Children.Add(logs);");
         Check(named && direct && addKept && logs,
-              "la rotellina apre subito le Impostazioni, senza menu (suggerimento e nome per UI Automation \"Impostazioni\"); Aggiungi account resta in fondo alle cartelle e in Impostazioni, Account; " +
+              "la rotellina apre subito le Impostazioni, senza menu (suggerimento e nome per UI Automation \"Impostazioni\"); Aggiungi account resta in fondo alle schede degli account (il \"+\") e in Impostazioni, Account; " +
               $"\"Apri la cartella dei registri\" è un pulsante di Impostazioni, Generali, Informazioni [{named} {direct} {addKept} {logs}]");
     }
 

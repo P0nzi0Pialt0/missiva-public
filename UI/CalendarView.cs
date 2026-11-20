@@ -55,15 +55,19 @@ public sealed class CalendarView : UserControl
     {
         this.providers = providers;
         var root = new Grid();
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        // La barra è alta BarHeight, quanto è larga la colonna di Posta, Calendario e Persone e quanto la barra dei comandi
+        // della posta (l'autore, 20 novembre 2026): la finestra principale la disegna come la fascia più scura del foglio di
+        // vetro (MainWindow.FitChrome). Sotto, 8 DIP prima della vista.
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(MainWindow.BarHeight + 8) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(230) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         // Barra: Oggi, frecce, periodo, e la vista a destra.
-        var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 8), LastChildFill = true };
-        Grid.SetColumnSpan(bar, 3);
+        var bar = new DockPanel { Margin = new Thickness(8, 0, 8, 0), LastChildFill = true, VerticalAlignment = VerticalAlignment.Center };
+        var band = new Border { Height = MainWindow.BarHeight, VerticalAlignment = VerticalAlignment.Top, Child = bar };
+        Grid.SetColumnSpan(band, 3);
         var views = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         foreach (var (m, name) in new[] { (CalendarMode.Day, T("Giorno")), (CalendarMode.WorkWeek, T("Settimana lavorativa")), (CalendarMode.Week, T("Settimana")), (CalendarMode.Month, T("Mese")) })
         {
@@ -94,7 +98,7 @@ public sealed class CalendarView : UserControl
         bar.Children.Add(title);
         status.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryTextBrush");
         bar.Children.Add(status);
-        root.Children.Add(bar);
+        root.Children.Add(band);
 
         var left = new ScrollViewer { Content = accountsPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Grid.SetRow(left, 1);

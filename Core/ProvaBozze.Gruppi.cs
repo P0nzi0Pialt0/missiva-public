@@ -114,6 +114,7 @@ static partial class ProvaBozze
         new("affidabilita-elenco", ListFixTests, Audit: true), // audit di affidabilità del 25 ottobre 2026, elenco e conteggi: le correzioni, E-01..E-15 (ProvaBozze.AffidabilitaElenco.cs)
         new("ritocchi-novembre", NovemberTouchUps), // ritocchi dell'8 novembre 2026: le icone della riga come nel nuovo Outlook, la barra delle applicazioni nascosta (ProvaBozze.Ritocchi2.cs)
         new("installazione", SelfInstallTests), // 12 novembre 2026: Missiva che si installa da sola con un doppio clic (ProvaBozze.Installazione.cs)
+        new("vetro", GlassTests), // 20 novembre 2026: il vetro, le schede degli account, il riquadro di lettura di vetro (ProvaBozze.Vetro.cs)
         new("caduta", RobCrash, Manual: true), // solo a mano: chiude il processo con un errore su un altro thread (C-24)
     ];
 

@@ -67,7 +67,7 @@ Il manuale completo, con quello che Missiva fa e quello che ancora manca, è in 
   suggerimenti mentre scrivi.
 - I nuovi messaggi arrivano subito (con Gmail e IMAP li annuncia il server, con Microsoft Missiva chiede ogni 30
   secondi), con le notifiche di Windows: Rispondi, Contrassegna ed Elimina dalla notifica.
-- Anteprima di PDF, immagini e testi allegati, senza aprire altri programmi. Tema chiaro o scuro, come Windows.
+- Anteprima di PDF, immagini e testi allegati, senza aprire altri programmi. Tema chiaro o scuro, come Windows, con l'aspetto di vetro e il colore che scegli tu.
 - Chiudendo la finestra Missiva resta nell'area di notifica e continua a controllare la posta.
 
 ### Scrittura

@@ -29,6 +29,11 @@ public sealed class Settings
     // Generali
     public AppTheme Theme { get; set; } = AppTheme.System;
     /// <summary>
+    /// Il colore di Missiva (Impostazioni, Generali, Aspetto; 20 novembre 2026): "" quello di Windows (di base), "white" o
+    /// "black" (senza colore: scegliendoli il tema diventa chiaro o scuro), o la chiave di uno dei predefiniti (UI.Glass.Presets).
+    /// </summary>
+    public string Color { get; set; } = "";
+    /// <summary>
     /// La lingua di Missiva (Impostazioni, Generali, Aspetto; 21 ottobre 2026): "" come Windows (di base: italiano se la
     /// lingua di visualizzazione di Windows è l'italiano, inglese altrimenti), "it" o "en". Vale dal prossimo avvio (Lingua.Start).
     /// </summary>

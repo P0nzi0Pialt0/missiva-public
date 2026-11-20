@@ -82,6 +82,8 @@ public sealed class App : Application
         base.OnStartup(e);
         Log.Startup("OnStartup");
         Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/UI/Styles.xaml") });
+        // Il fondo di vetro dietro a ogni finestra che si carica (Glass.Dress): scrittura, Impostazioni, domande e le altre.
+        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnWindowLoaded));
         WheelScrolling.Enable();
         Log.Startup("stili");
         // Le impostazioni sono già lette (costruttore, LoadSettingsEarly), dopo un'importazione di una copia di sicurezza in
@@ -912,6 +914,7 @@ public sealed class App : Application
         Log.Write($"tema cambiato: {(dark ? "scuro" : "chiaro")}");
         SetTextColors();
         ThemeChanged?.Invoke();
+        Dispatcher.BeginInvoke(ReapplyAcrylic, DispatcherPriority.Loaded);
     }
 
     /// <summary>
@@ -932,7 +935,7 @@ public sealed class App : Application
         // del passaggio del mouse). Nello scuro la stessa tinta si vede meno, quindi un po' più forte.
         Resources["RowHoverBrush"] = Frozen(dark ? Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x0A, 0, 0, 0));
         Resources["RowSelectedBrush"] = Frozen(dark ? Color.FromArgb(0x1C, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x17, 0, 0, 0));
-        Resources["UnreadTintOpacity"] = dark ? 0.10 : 0.07;
+        Resources["UnreadTintOpacity"] = dark ? 0.08 : 0.05; // sul vetro la tinta si vede di più che sulle schede piene di prima (0,10 e 0,07)
         // Schede dei messaggi in rilievo: piene (le ombre sotto non devono trasparire), un po' più chiare dell'elenco, con
         // il bordo più scuro in basso (nel tema scuro più chiaro in alto, come i controlli di Fluent), un alone su tutti i
         // lati (due anelli, scelta 2 dell'autore) e una striscia d'ombra sotto.
@@ -948,6 +951,54 @@ public sealed class App : Application
         border.GradientStops.Add(new GradientStop(dark ? Color.FromArgb(0x0C, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x26, 0, 0, 0), 1));
         border.Freeze();
         Resources["RowBorderBrush"] = border;
+        // Il vetro: fondo, pannelli, pastiglie e, con un colore scelto, l'accento dei controlli (Glass).
+        Glass.Apply(Resources, dark, Store.Settings.Color);
+    }
+
+    /// <summary>
+    /// Una finestra di Missiva si è caricata: prende il fondo di vetro, come la principale (che ha il suo, con il foro per i
+    /// pulsanti di sistema). Non i pannellini senza cornice (i filtri della ricerca, quelli della barra del titolo), che
+    /// sono trasparenti apposta. Nelle foto fuori dallo schermo niente acrilico: Windows lì non lo disegna.
+    /// </summary>
+    void OnWindowLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Window window || window is UI.MainWindow || window.AllowsTransparency) return;
+        Glass.Dress(window, AcrylicAllowed);
+    }
+
+    static bool AcrylicAllowed =>
+#if DEBUG
+        !DevTools.Photos;
+#else
+        true;
+#endif
+
+    /// <summary>Dopo un cambio di tema WPF rimette Mica dietro le finestre: di nuovo l'acrilico, a tutte tranne la principale (che fa da sé).</summary>
+    void ReapplyAcrylic()
+    {
+        if (!AcrylicAllowed) return;
+        foreach (Window window in Windows)
+            if (window is not UI.MainWindow && !window.AllowsTransparency) Glass.Acrylic(window);
+    }
+
+    /// <summary>
+    /// Il colore scelto in Impostazioni, Generali, Aspetto: si salva e si applica subito. Bianco e Nero sono senza colore e
+    /// portano con sé il tema, chiaro o scuro; con un colore, o con quello di Windows, il tema resta quello scelto.
+    /// </summary>
+    public void SetColor(string color)
+    {
+        if (Store.Settings.Color == color) return;
+        Store.Settings.Color = color;
+        if (Glass.ForcesDark(color) is { } wantDark && Store.Settings.Theme != (wantDark ? AppTheme.Dark : AppTheme.Light))
+        {
+            bool before = dark;
+            SetTheme(wantDark ? AppTheme.Dark : AppTheme.Light); // salva, e se il tema cambia davvero rifà i colori
+            if (dark != before) return;
+        }
+        Store.Save();
+        SetTextColors();
+        ThemeChanged?.Invoke();
+        Log.Write($"colore cambiato: {(color.Length > 0 ? color : "quello di Windows")}");
     }
 
     static SolidColorBrush Frozen(Color color)

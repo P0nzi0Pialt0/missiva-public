@@ -27,16 +27,16 @@
         <!-- Pulsante leggero come nel nuovo Outlook: senza fondo né bordo, un grigio al passaggio del mouse; disabilitato resta
              senza fondo e con icona e testo tenui (il modello Fluent del Button gli dava il fondo grigio, e sembrava premuto) -->
         <ControlTemplate x:Key="SubtleButton" TargetType="Button">
-            <Border x:Name="Back" CornerRadius="4" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+            <Border x:Name="Back" CornerRadius="10" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
                 <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                   VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True" />
             </Border>
             <ControlTemplate.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter TargetName="Back" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                    <Setter TargetName="Back" Property="Background" Value="{DynamicResource GlassHoverBrush}" />
                 </Trigger>
                 <Trigger Property="IsPressed" Value="True">
-                    <Setter TargetName="Back" Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+                    <Setter TargetName="Back" Property="Background" Value="{DynamicResource GlassPressedBrush}" />
                     <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
@@ -48,8 +48,8 @@
              strato tenue sopra il fondo invece di un fondo nuovo, così si vede anche sul pulsante pieno del colore d'accento -->
         <ControlTemplate x:Key="TitleButton" TargetType="Button">
             <Grid>
-                <Border CornerRadius="4" Background="{TemplateBinding Background}" />
-                <Border x:Name="Hover" CornerRadius="4" Background="{DynamicResource SubtleFillColorSecondaryBrush}" Visibility="Hidden" />
+                <Border CornerRadius="10" Background="{TemplateBinding Background}" />
+                <Border x:Name="Hover" CornerRadius="10" Background="{DynamicResource SubtleFillColorSecondaryBrush}" Visibility="Hidden" />
                 <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True" />
             </Grid>
             <ControlTemplate.Triggers>
@@ -80,27 +80,26 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Template" Value="{StaticResource SubtleButton}" />
         </Style>
-        <!-- Scheda come nel nuovo Outlook: solo testo, con una barretta del colore principale sotto quella attiva -->
+        <!-- Scheda (Home e Visualizza, Evidenziata e Altra): solo testo, quella attiva in una pastiglia chiara, come il
+             selettore del riferimento del vetro. Prima, come nel nuovo Outlook, una barretta del colore principale sotto. -->
         <Style x:Key="Tab" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Padding" Value="10,3,10,4" />
+            <Setter Property="Padding" Value="12,5,12,6" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                            <Grid>
-                                <ContentPresenter HorizontalAlignment="Center" Margin="0,0,0,5" />
-                                <Border x:Name="Bar" Width="18" Height="3" CornerRadius="1.5" VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                                        Background="{DynamicResource AccentFillColorDefaultBrush}" Visibility="Hidden" />
-                            </Grid>
+                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="10" Padding="{TemplateBinding Padding}"
+                                BorderThickness="1" BorderBrush="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource GlassHoverBrush}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bar" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource GlassPillBrush}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource GlassPillBorderBrush}" />
                                 <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
                             </Trigger>
@@ -137,6 +136,36 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Template" Value="{StaticResource SubtleButton}" />
         </Style>
+        <!-- Scheda di un account, come le schede di un browser ma a pastiglia: quella scelta è chiara, le altre un velo al
+             passaggio del mouse (20 novembre 2026, MainWindow.Tabs.cs) -->
+        <Style x:Key="AccountTab" TargetType="ListBoxItem">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding TabAutomationName}" />
+            <Setter Property="ToolTip" Value="{Binding TabTip}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Back" CornerRadius="12" Background="Transparent" BorderThickness="1" BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Back" Property="Background" Value="{DynamicResource GlassHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Back" Property="Background" Value="{DynamicResource GlassPillBrush}" />
+                                <Setter TargetName="Back" Property="BorderBrush" Value="{DynamicResource GlassPillBorderBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid x:Name="Root">
@@ -145,6 +174,15 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
+        <!-- Il fondo di vetro: la velatura del colore scelto sopra lo sfondo acrilico di Windows, sfumata attorno ai pulsanti
+             di sistema (GlassBackdrop; il foro lo aggiorna MainWindow.FitBackdrop) -->
+        <local:GlassBackdrop x:Name="Backdrop" Grid.RowSpan="3" Wash="{DynamicResource GlassWashColor}" BlobLight="{DynamicResource GlassBlobLightColor}"
+                             BlobHue="{DynamicResource GlassBlobHueColor}" BlobHue2="{DynamicResource GlassBlobHue2Color}" />
+        <!-- La cornice in un pezzo solo di vetro: la barra dei comandi e, sotto a sinistra, la colonna con Posta, Calendario,
+             Persone e le cartelle, unite in una L (GlassShape; i due rettangoli li dà MainWindow.FitChrome) -->
+        <local:GlassShape x:Name="Chrome" Grid.RowSpan="3" Fill="{DynamicResource GlassPanelBrush}" Stroke="{DynamicResource GlassBorderBrush}"
+                          Shade="{DynamicResource GlassShadeBrush}" Divider="{DynamicResource GlassEdgeBrush}" ShadowColor="{DynamicResource GlassShadowColor}" />
 
         <!-- Barra del titolo: nome della finestra e ricerca; a destra lo spazio dei pulsanti di sistema -->
         <!-- Alta 44 invece di 48 (l'autore: più bassa), con logo e ricerca più in basso; il pixel più alto del logo è quello della
@@ -163,6 +201,10 @@
             </StackPanel>
             <!-- Larga 520 finché la finestra lo permette, sempre al centro e mai sotto i pulsanti di sistema (OnWindowSize) -->
             <Grid x:Name="SearchArea" Grid.Column="1" Width="520" Height="30" VerticalAlignment="Top" Margin="0,11,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
+                <!-- La casella della ricerca è una pastiglia: gli angoli dei controlli di Fluent, qui, a metà dell'altezza -->
+                <Grid.Resources>
+                    <CornerRadius x:Key="ControlCornerRadius">15</CornerRadius>
+                </Grid.Resources>
                 <TextBox x:Name="SearchBox" MinHeight="30" Padding="34,4,34,4" KeyDown="OnSearchKeyDown" TextChanged="OnSearchTextChanged"
                          PreviewKeyDown="OnSearchPreviewKeyDown" GotKeyboardFocus="OnSearchFocus" LostKeyboardFocus="OnSearchBlur" />
                 <TextBlock Text="&#xE721;" Style="{StaticResource Glyph}" FontSize="14" Margin="12,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"
@@ -300,14 +342,63 @@
         </Grid>
 
         <!-- Schede e barra dei comandi, come nel nuovo Outlook -->
-        <StackPanel x:Name="CommandArea" Grid.Row="1" Margin="12,0,12,4">
-            <StackPanel Orientation="Horizontal" Margin="4,0,0,2">
+        <StackPanel x:Name="CommandArea" Grid.Row="1" Margin="12,0,12,0">
+            <StackPanel Orientation="Horizontal" Margin="4,0,0,4">
                 <RadioButton x:Name="HomeTab" Style="{StaticResource Tab}" Content="Home" IsChecked="True" Margin="0,0,4,0" Checked="OnTab" />
                 <RadioButton x:Name="ViewTab" Style="{StaticResource Tab}" Content="{local:T 'Visualizza'}" Checked="OnTab" />
             </StackPanel>
-            <Border Padding="6,3" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                <Grid>
+            <!-- Gli account in fila, come le schede di un browser (richiesta dell'autore, 20 novembre 2026): sotto Home e
+                 Visualizza, sopra la barra dei comandi. Tutti, poi una scheda per account con il suo colore e i non letti della
+                 Posta in arrivo, e in fondo "+" per aggiungerne uno. A sinistra restano le cartelle della scheda scelta
+                 (MainWindow.Tabs.cs). Il menu del tasto destro è quello dell'account. -->
+            <ListBox x:Name="AccountTabs" Margin="0,0,0,8" Visibility="Collapsed" BorderThickness="0" Background="Transparent" Padding="0"
+                     SelectionChanged="OnAccountTabSelected" ContextMenuOpening="OnAccountTabMenu" ItemContainerStyle="{StaticResource AccountTab}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                     AutomationProperties.Name="{local:T 'Account'}">
+                <ListBox.ContextMenu><ContextMenu /></ListBox.ContextMenu>
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate><local:TabStripPanel /></ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.Resources>
+                    <DataTemplate DataType="{x:Type local:AccountItem}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse Width="8" Height="8" Fill="{Binding Brush}" Margin="0,1,8,0" VerticalAlignment="Center" />
+                            <!-- Casella condivisa di Microsoft 365 -->
+                            <TextBlock Grid.Column="1" Text="&#xE716;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Visibility="{Binding SharedVisibility}"
+                                       VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Grid.Column="2" Text="{Binding TabTitle}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3" Text="{Binding TabUnreadText}" Visibility="{Binding TabUnreadVisibility}" FontWeight="SemiBold" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            <!-- Password rifiutata o nuovo accesso chiesto: il rimedio è in cima alle cartelle della scheda -->
+                            <Ellipse Grid.Column="4" Width="7" Height="7" Margin="7,1,0,0" VerticalAlignment="Center" Visibility="{Binding FixVisibility}"
+                                     Fill="{DynamicResource SystemFillColorCautionBrush}" />
+                        </Grid>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type local:AllAccountsTab}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8A9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Text="{local:T 'Tutti'}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding TabUnreadText}" Visibility="{Binding TabUnreadVisibility}" FontWeight="SemiBold" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                        </StackPanel>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type local:AddAccountTab}">
+                        <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" />
+                    </DataTemplate>
+                </ListBox.Resources>
+            </ListBox>
+            <!-- Senza fondo suo: è il braccio in alto della cornice di vetro (Chrome) -->
+            <!-- Alta 56, quanto è larga la colonna di Posta, Calendario e Persone (la prima colonna di MainArea): l'autore, 20
+                 novembre 2026, "rendi l'altezza della riga nuovo messaggio uguale a quella larghezza". I comandi al centro. -->
+            <Border x:Name="CommandBar" Padding="8,0" Height="56" Background="Transparent">
+                <Grid VerticalAlignment="Center">
                     <!-- I pulsanti che non entrano finiscono nel menu "..." (CommandOverflow) -->
                     <DockPanel x:Name="HomeBar" LastChildFill="False" SizeChanged="OnBarSize">
                         <Button x:Name="HomeRefresh" Style="{StaticResource Command}" DockPanel.Dock="Right" Click="OnRefresh" ToolTip="{local:T 'Sincronizza (F5)'}"
@@ -337,7 +428,7 @@
                             <Button x:Name="MoveButton" Style="{StaticResource Command}" Click="OnMoveMenu" AutomationProperties.Name="{local:T 'Sposta in'}">
                                 <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8DE;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Sposta in'}" /></StackPanel>
                             </Button>
-                            <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+                            <Border Width="1" Margin="6,7" Background="{DynamicResource GlassDividerBrush}" />
                             <Button x:Name="ReplyButton" Style="{StaticResource Command}" Click="OnReply" ToolTip="{local:T 'Rispondi (Ctrl+R)'}" AutomationProperties.Name="{local:T 'Rispondi'}">
                                 <TextBlock Text="&#xE97A;" Style="{StaticResource Glyph}" />
                             </Button>
@@ -357,7 +448,7 @@
                                     <TextBlock.RenderTransform><ScaleTransform ScaleX="-1" /></TextBlock.RenderTransform>
                                 </TextBlock>
                             </Button>
-                            <Border Width="1" Margin="6,6" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
+                            <Border Width="1" Margin="6,7" Background="{DynamicResource GlassDividerBrush}" />
                             <Button x:Name="ReadButton" Style="{StaticResource Command}" Click="OnToggleRead" ToolTip="{local:T 'Segna come già letto (Ctrl+Q) o da leggere (Ctrl+U)'}"
                                     AutomationProperties.Name="{local:T 'Già letto/Da leggere'}">
                                 <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8C3;" Style="{StaticResource Glyph}" Margin="0,0,6,0" /><TextBlock Text="{local:T 'Già letto/Da leggere'}" /></StackPanel>
@@ -413,9 +504,9 @@
         </StackPanel>
 
         <!-- Contenuto -->
-        <Grid x:Name="MainArea" Grid.Row="2" Margin="0,0,12,12">
+        <Grid x:Name="MainArea" Grid.Row="2" Margin="12,0,12,12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="60" />
+                <ColumnDefinition Width="56" />
                 <ColumnDefinition x:Name="FolderColumn" Width="250" MinWidth="0" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -423,9 +514,9 @@
                 <ColumnDefinition Width="0" />
             </Grid.ColumnDefinitions>
 
-            <!-- Colonna delle app -->
-            <DockPanel Margin="8,0,8,0">
-                <Button x:Name="MailRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" ToolTip="{local:T 'Posta'}" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+            <!-- Colonna delle app: dentro la cornice di vetro, accanto alle cartelle -->
+            <DockPanel x:Name="Rail" Margin="6,4,6,8">
+                <Button x:Name="MailRailButton" Style="{StaticResource RailButton}" DockPanel.Dock="Top" ToolTip="{local:T 'Posta'}" Background="{DynamicResource GlassPillBrush}"
                         AutomationProperties.Name="{local:T 'Posta'}" Click="OnMailRail">
                     <TextBlock x:Name="MailRailGlyph" Text="&#xE715;" Style="{StaticResource Glyph}" FontSize="18" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                 </Button>
@@ -446,20 +537,16 @@
             </DockPanel>
 
             <!-- Cartelle: nella finestra stretta si aprono sopra l'elenco, come nel nuovo Outlook (SetCompact) -->
-            <Border Grid.Column="1" x:Name="FolderPane" Panel.ZIndex="10" CornerRadius="8" SizeChanged="OnFolderPaneSize">
+            <!-- Un pannello di vetro con le cartelle della scheda scelta (AccountTabs): con Tutti le viste comuni e i Preferiti,
+                 con un account le sue cartelle. Aggiungi account è il "+" in fondo alle schede. -->
+            <local:GlassBorder Grid.Column="1" x:Name="FolderPane" Panel.ZIndex="10" Style="{StaticResource GlassPanel}" Padding="4,6,4,8" SizeChanged="OnFolderPaneSize">
             <DockPanel>
-                <Button DockPanel.Dock="Bottom" Margin="4,8,8,0" HorizontalAlignment="Stretch" Click="OnAddAccount" AutomationProperties.Name="{local:T 'Aggiungi account'}">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE710;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,8,0" />
-                        <TextBlock Text="{local:T 'Aggiungi account'}" />
-                    </StackPanel>
-                </Button>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                     <!-- Tutti gli account: le viste comuni, con due o più account, come in Thunderbird, Apple Mail ed eM Client -->
                     <StackPanel x:Name="UnifiedPanel" Margin="0,0,4,12" Visibility="Collapsed">
-                        <!-- Gruppo chiuso con una sua vista aperta: l'intestazione e' evidenziata come una cartella scelta (SidebarMarks) -->
-                        <Grid>
+                        <!-- L'intestazione del gruppo non si mostra più: la dice la scheda Tutti (resta per il codice che la aggiorna) -->
+                        <Grid Visibility="Collapsed">
                         <Grid x:Name="UnifiedHeaderMark" Visibility="Collapsed" IsHitTestVisible="False">
                             <Border CornerRadius="4" Background="{DynamicResource SubtleFillColorSecondaryBrush}" />
                             <Border Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left" VerticalAlignment="Center"
@@ -550,9 +637,11 @@
                     <ItemsControl x:Name="AccountsList">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Margin="0,0,4,12">
-                                    <!-- Gli account si riordinano trascinandoli per l'intestazione o dal tasto destro (Sposta su e giù) -->
-                                    <Border BorderThickness="{Binding DropLine}" BorderBrush="{DynamicResource AccentFillColorDefaultBrush}">
+                                <!-- Solo l'account della scheda scelta (AccountItem.InTab); la sua intestazione, con la freccia per
+                                     aprirlo e chiuderlo, non si mostra più: è la scheda. Gli account si riordinano dal tasto destro
+                                     sulla scheda (Sposta a sinistra e a destra). -->
+                                <StackPanel Margin="0,0,4,12" Visibility="{Binding TabVisibility}">
+                                    <Border BorderThickness="{Binding DropLine}" BorderBrush="{DynamicResource AccentFillColorDefaultBrush}" Visibility="Collapsed">
                                       <Grid>
                                         <!-- Account chiuso con la cartella aperta: intestazione evidenziata come una cartella scelta (SidebarMarks) -->
                                         <Grid Visibility="{Binding HeaderSelectedVisibility}" IsHitTestVisible="False">
@@ -666,16 +755,26 @@
                     </StackPanel>
                 </ScrollViewer>
             </DockPanel>
-            </Border>
+            </local:GlassBorder>
 
-            <GridSplitter x:Name="FolderSplitter" Grid.Column="2" Width="6" HorizontalAlignment="Center" Background="Transparent"
+            <!-- Fra le cartelle e l'elenco non c'è più spazio, solo un bordino (l'autore, 20 novembre 2026: "unisci anche elenco
+                 delle mail e tab di posta in arrivo e non letti"): tutto sta in un foglio solo di vetro (Chrome). Il divisore che
+                 si trascina resta, invisibile, largo 5; il bordino sta sul suo lato destro. -->
+            <Border x:Name="FolderDivider" Grid.Column="2" Width="1" HorizontalAlignment="Right" Background="{DynamicResource GlassEdgeBrush}" IsHitTestVisible="False" />
+            <GridSplitter x:Name="FolderSplitter" Grid.Column="2" Width="5" HorizontalAlignment="Center" Background="Transparent"
                           DragCompleted="OnFolderSplitterDragged" />
 
             <!-- Elenco e riquadro di lettura: la disposizione cambia con Visualizza, Riquadro di lettura -->
             <Grid x:Name="WorkArea" Grid.Column="3" Grid.ColumnSpan="3">
-                <Border x:Name="ListCard" CornerRadius="8" BorderThickness="1"
-                        Background="{DynamicResource ListPanelBrush}"
-                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+                <!-- Elenco e riquadro di lettura in un pannello solo di vetro, senza spazio in mezzo: solo un bordino (l'autore, 20
+                     novembre 2026: "togli lo spazio tra riquadri di posta in arrivo e lettore mail, aggiungi solo un bordino").
+                     Il pannello sta sotto tutti e due (ApplyLayout lo stende su tutte le righe e colonne); l'elenco non ha un
+                     fondo suo, il riquadro di lettura ha la sua pagina piena; il divisore che si trascina resta, invisibile, nella
+                     sua colonna di 8, che si vede come vetro dell'elenco. -->
+                <!-- Dal passo dopo (tutto in un foglio solo) il vetro lo dà la cornice (Chrome), che arriva fino al bordo destro:
+                     questo pannello resta, senza fondo, bordo né ombra. -->
+                <local:GlassBorder x:Name="WorkCard" Background="Transparent" BorderThickness="0" ShadowSize="0" Grid.ColumnSpan="3" Grid.RowSpan="3" />
+                <local:GlassBorder x:Name="ListCard" Background="Transparent" BorderThickness="0" ShadowSize="0" CornerRadius="20">
                     <Grid>
                     <DockPanel>
                         <!-- Intestazione dell'elenco, come nel nuovo Outlook: titolo e Preferiti, poi Seleziona, Vai a, Filtro, Ordina -->
@@ -756,12 +855,13 @@
                                                 <!-- Profondità senza effetti di WPF (un'ombra vera per riga pesa sullo scorrimento): la scheda
                                                      piena più chiara del pannello dell'elenco e il bordo più scuro in basso, senza ombre né alone
                                                      (ogni forma in più per scheda si paga a ogni fotogramma dello scorrimento veloce) -->
+                                                <!-- Dal 20 novembre 2026 (il vetro) le righe stanno sul pannello senza scheda né bordo: due forme per
+                                                     riga invece di tre, e la scelta è una pastiglia chiara -->
                                                 <Grid x:Name="Root">
-                                                    <Border CornerRadius="6" Background="{DynamicResource RowCardBrush}" />
-                                                    <Border x:Name="Tint" CornerRadius="6" Opacity="0" Background="{DynamicResource AccentFillColorDefaultBrush}" />
-                                                    <!-- Padding 1: col bordo da 2 della selezione il contenuto non si sposta -->
-                                                    <Border x:Name="Card" CornerRadius="6" BorderThickness="1" Padding="1" Background="Transparent"
-                                                            BorderBrush="{DynamicResource RowBorderBrush}">
+                                                    <Border x:Name="Tint" CornerRadius="12" Opacity="0" Background="{DynamicResource AccentFillColorDefaultBrush}" />
+                                                    <!-- Padding 1 e bordo da 1, come prima: le misure del contenuto non cambiano -->
+                                                    <Border x:Name="Card" CornerRadius="12" BorderThickness="1" Padding="1" Background="Transparent"
+                                                            BorderBrush="Transparent">
                                                         <ContentPresenter />
                                                     </Border>
                                                 </Grid>
@@ -797,14 +897,12 @@
                                                         </DataTrigger.EnterActions>
                                                     </DataTrigger>
                                                     <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Card" Property="Background" Value="{DynamicResource RowHoverBrush}" />
+                                                        <Setter TargetName="Card" Property="Background" Value="{DynamicResource GlassHoverBrush}" />
                                                     </Trigger>
                                                     <Trigger Property="IsSelected" Value="True">
                                                         <Setter TargetName="Tint" Property="Opacity" Value="0" />
-                                                        <Setter TargetName="Card" Property="Background" Value="{DynamicResource RowSelectedBrush}" />
-                                                        <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                                                        <Setter TargetName="Card" Property="BorderThickness" Value="2" />
-                                                        <Setter TargetName="Card" Property="Padding" Value="0" />
+                                                        <Setter TargetName="Card" Property="Background" Value="{DynamicResource GlassPillBrush}" />
+                                                        <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource GlassPillBorderBrush}" />
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
@@ -1080,15 +1178,21 @@
                     </Border>
                     </StackPanel>
                     </Grid>
-                </Border>
+                </local:GlassBorder>
 
+                <!-- Il bordino fra elenco e riquadro di lettura: sul lato del divisore che tocca il riquadro (ApplyLayout) -->
+                <Border x:Name="WorkDivider" Background="{DynamicResource GlassSeamBrush}" IsHitTestVisible="False" />
                 <GridSplitter x:Name="WorkSplitter" Background="Transparent" DragCompleted="OnWorkSplitterDragged" />
 
-                <Border x:Name="ReadingCard" CornerRadius="8" BorderThickness="1"
-                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+                <!-- Il riquadro di lettura: dentro lo stesso pannello dell'elenco, ma con la pagina piena (carta), perché WebView2
+                     non può essere traslucido sopra WPF; gli angoli della pagina sono tondi solo dove tocca il bordo del pannello
+                     (ApplyLayout, ReadingView.SetPaperCorners), e un DIP di margine lascia vedere quel bordo -->
+                <!-- Dal passo dopo ("stacca leggermente il riquadro di lettura"): una scheda appoggiata sul foglio, a 6 DIP dai bordi e
+                     8 dall'elenco, con gli angoli tondi, un bordo sottile e un'ombra corta -->
+                <local:GlassBorder x:Name="ReadingCard" Background="Transparent" CornerRadius="14" BorderThickness="1" BorderBrush="{DynamicResource GlassEdgeBrush}"
+                                   ShadowSize="7" ShadowColor="{DynamicResource GlassShadowColor}">
                     <local:ReadingView x:Name="Reader" FullPaper="True" />
-                </Border>
+                </local:GlassBorder>
             </Grid>
         </Grid>
     </Grid>

@@ -166,14 +166,21 @@ static partial class ProvaBozze
 
     /// <summary>
     /// Un giorno e un'ora relativi a oggi (0 è oggi, 1 ieri). Un'ora di oggi non ancora arrivata (le foto fatte al mattino)
-    /// diventa qualche minuto fa, tenendo l'ordine: più tardi nella giornata, più vicino ad adesso.
+    /// diventa qualche minuto fa, tenendo l'ordine: più tardi nella giornata, più vicino ad adesso. Finché l'ultima ora di
+    /// oggi (FotoLastHour) non è passata lo diventano tutte quelle di oggi, anche le già passate: il 20 novembre 2026, con
+    /// le foto fatte alle 16:30, il messaggio delle 16:12 restava alla sua ora e quelli delle 17:24, 18:36 e 19:00
+    /// finivano prima di lui (16:05, 16:03, 15:58): l'elenco cambiava ordine e due foto mostravano il messaggio sbagliato.
     /// </summary>
     static DateTimeOffset FotoWhen(int daysAgo, double hour)
     {
         var at = DateTime.Today.AddDays(-daysAgo).AddHours(hour);
-        if (at > DateTime.Now.AddMinutes(-5)) at = DateTime.Now.AddMinutes(-5 - (24 - hour) * 4);
+        bool early = daysAgo == 0 && DateTime.Today.AddHours(FotoLastHour) > DateTime.Now.AddMinutes(-5);
+        if (early || at > DateTime.Now.AddMinutes(-5)) at = DateTime.Now.AddMinutes(-5 - (24 - hour) * 4);
         return new DateTimeOffset(at);
     }
+
+    /// <summary>L'ora più tarda fra i messaggi di oggi delle foto (la newsletter, FotoWhen(0, 19.0)).</summary>
+    const double FotoLastHour = 19.0;
 
     /// <summary>
     /// Un'email in HTML (una pagina intera: l'anteprima dell'elenco la legge solo dentro il body) con gli allegati dati. Un

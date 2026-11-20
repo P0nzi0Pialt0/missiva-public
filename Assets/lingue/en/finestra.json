@@ -399,5 +399,7 @@
   "Aggiorno a Missiva {0}…": "Updating to Missiva {0}…",
   "Aggiornamento a Missiva {0} annullato: resta questa.": "Update to Missiva {0} canceled: this version stays.",
   "Apri Missiva": "Open Missiva",
-  "Esci": "Exit"
+  "Esci": "Exit",
+  "Sposta a sinistra": "Move left",
+  "Sposta a destra": "Move right"
 }

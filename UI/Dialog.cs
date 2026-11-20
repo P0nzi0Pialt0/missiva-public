@@ -118,7 +118,7 @@ public static class Dialog
         DevTools.HideForPhotos(window); // le foto della pagina GitHub (--foto): nessuna domanda sullo schermo di chi usa il PC
 #endif
 
-        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
+        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 22) };
         panel.Children.Add(new TextBlock { Text = heading, FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
         // Il testo si seleziona e si copia (un errore da incollare a chi aiuta): una casella di sola lettura senza bordo né
         // fondo, come gli indirizzi della scheda di una persona. Prima era un TextBlock (audit, F-44 punto 7). Ctrl+C senza
@@ -138,7 +138,7 @@ public static class Dialog
             e.Handled = true;
         };
 
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 22, 0, 0) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         if (cancel)
         {
             var no = new Button { Content = cancelText, MinWidth = 100, Margin = new Thickness(0, 0, 8, 0), IsCancel = true, IsDefault = cancelFirst };
@@ -164,8 +164,12 @@ public static class Dialog
             window.Close();
         };
         buttons.Children.Add(yes);
-        panel.Children.Add(buttons);
-        window.Content = panel;
+        // Il vetro (20 novembre 2026): i pulsanti in una fascia più scura con un bordino sopra, come la barra dei comandi
+        // della finestra principale e il fondo delle domande di Windows 11.
+        var foot = new Border { Padding = new Thickness(24, 14, 24, 16), BorderThickness = new Thickness(0, 1, 0, 0), Child = buttons };
+        foot.SetResourceReference(Border.BackgroundProperty, "GlassShadeBrush");
+        foot.SetResourceReference(Border.BorderBrushProperty, "GlassDividerBrush");
+        window.Content = new StackPanel { Children = { panel, foot } };
         window.ShowDialog();
         return result;
     }

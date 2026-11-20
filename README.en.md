@@ -68,7 +68,7 @@ The full manual, with what Missiva does and what is still missing, is in [MANUAL
   suggestions as you type.
 - New messages arrive right away (with Gmail and IMAP the server announces them, with Microsoft Missiva asks every 30
   seconds), with Windows notifications: Reply, Flag and Delete from the notification.
-- Preview of PDF, image and text attachments, without opening other programs. Light or dark theme, like Windows.
+- Preview of PDF, image and text attachments, without opening other programs. Light or dark theme, like Windows, with a glass look and the color you choose.
 - When you close the window, Missiva stays in the notification area and keeps checking mail.
 
 ### Writing

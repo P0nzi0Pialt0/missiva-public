@@ -472,6 +472,14 @@ static partial class DevTools
                 reader.TestZoom(percent / 100.0);
                 return;
             }
+            // "riquadro giù 300": la pagina del riquadro di lettura scorre a 300 pixel dall'inizio (le foto dell'intestazione di
+            // vetro, sotto cui passa la mail).
+            if (combo.StartsWith("riquadro giù ", StringComparison.OrdinalIgnoreCase) && int.TryParse(combo[13..], out var down)
+                && main.FindName("Reader") is UI.ReadingView scrolled)
+            {
+                scrolled.TestScroll(down);
+                return;
+            }
             // "apri posta 2": la Posta in arrivo dell'account 2; "apri tutti": quella di tutti gli account.
             if (combo.Equals("apri tutti", StringComparison.OrdinalIgnoreCase))
             {
@@ -522,6 +530,12 @@ static partial class DevTools
             if (combo.StartsWith("impostazioni ", StringComparison.OrdinalIgnoreCase))
             {
                 main.TestSettings(combo[13..].Trim());
+                return;
+            }
+            // "domanda" una finestra di domanda finta, per fotografarla; "domanda chiudi" la chiude.
+            if (combo.StartsWith("domanda", StringComparison.OrdinalIgnoreCase))
+            {
+                main.TestQuestion(combo[7..].Trim());
                 return;
             }
             // "scaricamenti prova|pannello|chiudi": il gestore degli scaricamenti con elementi finti in ogni stato, e il suo pannello.
